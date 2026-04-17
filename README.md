@@ -1,148 +1,96 @@
 # MindMapMd
 
-MindMapMd 是一個將 Markdown 文件結構視覺化的 Obsidian 插件構想。它不是把筆記轉成獨立格式，而是維持 Markdown 作為唯一資料來源，並用心智圖式介面協助使用者理解整份文件的階層、快速調整 heading 結構，以及在圖形模式下直接編輯內容。
+MindMapMd 是一個為 Obsidian 設計的 Markdown 結構視覺化插件。它的目標不是發明另一套筆記格式，而是直接建立在原本的 Markdown 之上，提供一個更直觀的心智圖式編輯視圖，讓使用者能看懂整份筆記的階層、快速調整 heading 結構，並在圖形介面中完成編輯。
 
-目前這個專案仍處於早期開發階段，程式碼骨架仍是 Obsidian sample plugin。這份 README 反映的是目前的產品設計、問題定義與預計實作方向。
+> 這個專案目前仍在早期設計與原型階段，現有程式碼基底仍接近 Obsidian sample plugin。
 
-## 專案目標
+## 為什麼做這個插件
 
-整理長篇筆記時，純 Markdown 編輯器很難快速看出整體層級，尤其在以下情境特別明顯：
+當一份筆記越寫越長，純文字的 Markdown 編輯體驗會開始出現幾個問題：
 
-- 不容易掌握目前文件的整體架構。
-- 調整某個 heading 的層級時，底下所有子階層也需要一起調整。
-- 使用現有文字型工具做階層變更，效率與可視性都不夠直覺。
+- 很難一眼看出整份文件的層級與結構。
+- 調整一個 heading 時，底下整個子樹也常常要跟著一起重整。
+- 文字型的階層編輯方式不夠直覺，尤其在大綱重組時成本很高。
 
-MindMapMd 想解決的核心問題是：
+MindMapMd 想做的事情很直接：把 Markdown 的結構變成可以看、可以拖、可以編輯的圖。
 
-- 用圖像化方式呈現 Markdown 結構。
-- 讓使用者能直接從視覺結構編輯文件，而不是只把它當成只讀預覽。
-- 在不脫離 Markdown 的前提下，提供更直觀的階層操作體驗。
+## 核心概念
 
-## 產品定位
+- Markdown 是唯一資料來源。
+- 心智圖是文件的另一種編輯視圖，不是匯出格式。
+- 所有視圖中的操作，最終都必須能穩定回寫成合法的 Markdown。
 
-MindMapMd 的本質仍然是 Markdown 編輯器的延伸視圖。
+這代表 MindMapMd 不只是預覽器，而是一個面向「結構編輯」的工作介面。
 
-- Markdown 是唯一真實資料來源。
-- 心智圖只是文件結構的另一種編輯與瀏覽方式。
-- 使用者在圖上拖拉、調整層級、切換區塊時，最終都應回寫成合法的 Markdown。
+## 預計體驗
 
-## 預期功能
+MindMapMd 預期提供以下能力：
 
-### 核心視圖
+- 將 heading 與內容區塊轉成可瀏覽的結構圖。
+- 以目前操作中的區塊為視覺中心，降低長文切換成本。
+- 直接在圖中編輯節點內容。
+- 用 drag and drop 調整節點順序與階層。
+- 當父節點升降級或移動時，自動同步處理整個子樹。
+- 提供 keyboard-first 的快捷操作來快速整理結構。
+- 長期支援不只一種佈局，例如 mind map、fishbone 等視圖模式。
 
-- 將 Markdown 內容依 heading 與區塊階層轉成心智圖結構。
-- 以目前操作中的區塊為視覺中心，提升聚焦效率。
-- 支援不只一種佈局，後續可擴展為心智圖、魚骨圖等不同呈現方式。
+## 這個專案要解的難題
 
-### 視圖內編輯
+這不是單純把 Markdown 畫成樹狀圖而已。真正困難的部分在於：
 
-- 在心智圖模式下直接編輯節點內容。
-- 允許拖拉節點改變階層。
-- 當一個 heading 被移動或升降級時，子節點需一起同步調整。
+- 如何與 Obsidian / CodeMirror editor 保持雙向同步。
+- 如何把 heading、paragraph、quote、list 等區塊轉成穩定的中介模型。
+- 如何判定拖拉操作的意圖，是改順序、改父節點，還是改層級。
+- 如何在大型筆記中維持可讀的佈局、縮放與聚焦體驗。
 
-### 快捷操作
-
-- 提供 shortcut command 提升結構編輯效率。
-- 快速跳到目前 heading 區段的最前或最後區塊。
-- 快速跳到同階層的最前或最後區塊。
-- 合併相鄰區塊。
-
-### 與 Markdown 編輯器同步
-
-- 保持心智圖視圖與原始 Markdown editor 的雙向同步。
-- 視圖切換後仍能追蹤原本 editor 狀態。
-- 能接收外部 editor 的變更並更新目前視圖。
-- 在心智圖中發出的操作，應能轉為 editor transaction 或等效文件更新。
-
-## 目前規劃中的難點
-
-### 1. 結構同步
-
-- 如何在保留 editor 狀態的前提下切換成自訂 view。
-- 如何把其他 editor 對同一份文件的修改同步回目前視圖。
-- 如何判斷何時需要整體重排，何時只需局部重渲染。
-
-### 2. Markdown 解析與回寫
-
-- heading 下方的段落、quote、list item 應如何分組呈現。
-- 使用者在同一個 block 輸入多段內容時，是否自動拆分成多個 block。
-- 使用者輸入錯誤層級的 heading 時，應自動修正、保留原樣，或交由使用者決定。
-
-### 3. 拖拉意圖判定
-
-- 拖拉行為是改順序、改父節點，還是改 heading level。
-- 拖拉後的 Markdown 重寫邏輯要如何保持穩定可預期。
-- 一次移動父節點時，子樹的整體層級變更要如何計算。
-
-### 4. 佈局演算法
-
-- 如何安排同層節點的寬度與間距，讓大型筆記仍可閱讀。
-- 是否根據內容長度動態調整節點寬度。
-- 如何在水平展開與垂直展開之間切換。
-- 如何處理縮放、平移與聚焦區塊置中。
-
-## 建議開發順序
-
-### Phase 1: 驗證基礎同步能力
-
-- 先取得目前 Markdown editor 與文件狀態。
-- 建立最小可行自訂 view，把文件結構渲染成唯讀樹狀畫面。
-- 驗證 editor 變更是否能即時反映到自訂 view。
-- 驗證自訂 view 是否能安全送出文件更新。
-
-### Phase 2: 建立 Markdown 結構模型
-
-- 定義 heading、paragraph、list、quote 等節點模型。
-- 把文件解析成可供 UI 與拖拉邏輯使用的中介資料結構。
-- 明確定義每種節點對應的回寫規則。
-
-### Phase 3: 完成基礎心智圖介面
-
-- 先完成單一佈局的視覺呈現。
-- 支援目前節點聚焦與基本導覽。
-- 加入節點內編輯與基本快捷指令。
-
-### Phase 4: 加入拖拉與階層調整
-
-- 處理 drag and drop。
-- 實作父子節點重掛載與層級批次調整。
-- 釐清拖拉行為的意圖判定規則與使用者回饋方式。
-
-### Phase 5: 擴充進階能力
-
-- 多種佈局模式。
-- 每份文件的自訂佈局設定。
-- 更完整的 keyboard-first 編輯流程。
-
-## 技術方向
-
-根據目前規劃，技術上會優先驗證以下方向：
-
-- Obsidian custom view 與 Markdown editor 的整合。
-- CodeMirror transaction 或等效文件修改流程。
-- 事件監聽與外部變更同步。
-- 適合節點式操作的 drag and drop UI 套件。
-
-canvas 中目前記錄的參考方向包含：
-
-- MarkMind
-- Flexiboards
-- Fluid DnD for Svelte
-- Heading Shifter
-
-這些工具主要是用來參考互動模式、佈局方式與階層調整體驗，不代表專案一定會直接採用其實作。
+也因為這些問題，MindMapMd 目前的開發方向會先聚焦在同步模型與最小可行視圖，而不是一開始就做完整 UI。
 
 ## 開發現況
 
-目前 repo 狀態：
+目前 repository 狀態如下：
 
-- 專案已建立 Obsidian plugin 的 TypeScript 開發環境。
-- 已包含 esbuild、TypeScript、ESLint 等基本工具。
-- `src/` 內容仍接近 sample plugin，尚未進入 MindMapMd 的正式功能開發。
+- 已建立 Obsidian plugin 的 TypeScript 開發環境。
+- 已配置 esbuild、TypeScript 與 ESLint。
+- 功能實作仍未開始，`src/` 目前大致仍是 sample plugin 骨架。
+
+換句話說，這是一個正在成形中的產品原型，而不是已可安裝使用的正式插件。
+
+## Roadmap
+
+### Phase 1
+
+- 取得目前 Markdown editor 狀態。
+- 建立最小可行的唯讀結構視圖。
+- 驗證 editor 變更能否同步到自訂 view。
+- 驗證自訂 view 能否安全回寫文件內容。
+
+### Phase 2
+
+- 建立 Markdown 結構模型。
+- 定義 heading / paragraph / list / quote 的節點表示。
+- 建立穩定的解析與回寫規則。
+
+### Phase 3
+
+- 完成第一版心智圖式介面。
+- 加入聚焦、導覽與基本快捷操作。
+- 支援節點內編輯。
+
+### Phase 4
+
+- 加入 drag and drop。
+- 實作父子節點搬移與層級批次調整。
+- 優化互動回饋與操作可預期性。
+
+### Phase 5
+
+- 擴充多種佈局模式。
+- 研究每份文件的自訂佈局設定。
+- 強化 keyboard-first 的結構編輯流程。
 
 ## 本機開發
 
-### 環境需求
+### 需求
 
 - Node.js 18+
 - npm
@@ -160,7 +108,7 @@ npm install
 npm run dev
 ```
 
-### 正式建置
+### 建置
 
 ```bash
 npm run build
@@ -172,9 +120,9 @@ npm run build
 npm run lint
 ```
 
-## 安裝到 Obsidian 測試
+## 在 Obsidian 中測試
 
-將下列檔案放到你的 vault：
+建置後，將以下檔案放進你的 vault 插件資料夾：
 
 ```text
 <Vault>/.obsidian/plugins/<plugin-id>/
@@ -186,16 +134,20 @@ npm run lint
 - `manifest.json`
 - `styles.css`
 
-之後重新載入 Obsidian，並在 **Settings → Community plugins** 啟用插件。
+重新載入 Obsidian 後，可在 **Settings → Community plugins** 啟用插件。
 
-## 近期里程碑
+## 參考方向
 
-- 將 sample plugin 骨架改成實際的 MindMapMd plugin 結構。
-- 建立可解析 Markdown heading tree 的資料模型。
-- 做出第一版唯讀結構視圖。
-- 驗證與原始 editor 的同步機制。
+目前設計過程中有參考以下專案或工具的互動思路：
 
-## 參考資料
+- MarkMind
+- Flexiboards
+- Fluid DnD for Svelte
+- Heading Shifter
+
+這些內容主要用來研究互動模式、佈局方式與階層調整體驗，不代表專案一定會直接採用對應實作。
+
+## References
 
 - Obsidian Plugin Docs: https://docs.obsidian.md
 - Obsidian sample plugin: https://github.com/obsidianmd/obsidian-sample-plugin
