@@ -29,6 +29,10 @@
 
 <button onclick={logEditor}>Decrement</button>
 
+<span>{plugin.currentMarkdownDoc}</span>
+<h1>in plugin</h1>
+<span>{plugin.currentMarkdownEditor?.getValue()}</span>
+
 <style>
   .number {
     color: red;

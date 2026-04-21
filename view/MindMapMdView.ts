@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderChild, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderChild, TFile, WorkspaceLeaf } from "obsidian";
 import type MyPlugin from "../src/main";
 import MindMapEditorView from "./MindMapEditorView.svelte";
 import { mount, unmount } from "svelte";
@@ -7,7 +7,8 @@ import { mount, unmount } from "svelte";
 export const VIEW_TYPE_MINDMAPMD = "mindmap-md-view";
 
 export class MindMapMdView extends ItemView {
-    private mindMapEditorView:ReturnType<typeof MindMapEditorView>|undefined;
+    private mindMapEditorView: ReturnType<typeof MindMapEditorView> | undefined;
+    public file: TFile | undefined | null;
     getViewType(): string {
         return VIEW_TYPE_MINDMAPMD;
     }
@@ -16,11 +17,11 @@ export class MindMapMdView extends ItemView {
     }
     constructor(leaf: WorkspaceLeaf, private plugin: MyPlugin) {
         super(leaf);
-        
     }
 
     async onOpen() {
         // Attach the Svelte component to the ItemViews content element and provide the needed props.
+        this.file = this.plugin.currentFile;
         this.mindMapEditorView = mount(MindMapEditorView, {
             target: this.contentEl,
             props: {

@@ -1,12 +1,16 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import { DEFAULT_SETTINGS, SampleSettingTab, type MyPluginSettings } from "./settings";
 import { MindMapMdView, VIEW_TYPE_MINDMAPMD } from "../view/MindMapMdView";
+import { getActiveViewOfType } from "../extension/workspace";
+import { Effect, Option, pipe } from "effect";
 
 // Remember to rename these classes and interfaces!
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings = DEFAULT_SETTINGS;
 	currentMarkdownEditor: Editor | null = null;
+	currentMarkdownDoc: string | null = null;
+	currentFile: TFile | null = null;
 	async onload() {
 		await this.loadSettings();
 
@@ -17,7 +21,7 @@ export default class MyPlugin extends Plugin {
 		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
 			// new Notice('This is a notice! just kidding');
-			this.activateView();
+			this.toggleMindMapMdView();
 		});
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
@@ -86,31 +90,87 @@ export default class MyPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	async activateView() {
+	turnOnMindMapMdView = () =>
+		pipe(
+			getActiveViewOfType(this.app.workspace, MarkdownView),
+			Effect.andThen(v => Effect.tryPromise(() => {
+				// console.log("this", this)
+				// console.log("view", v)
+				this.currentMarkdownEditor = v.editor;
+				this.currentMarkdownDoc = v.editor.getValue();
+				this.currentFile = v.file;
+				// console.log("View found, activating it in map", this.currentFile);
+				console.log("View found, activating it in map", v, this);
+				console.log("this", this)
+				return v.leaf.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
+			}))
+		);
+
+	turnOnMarkdownView = Effect.gen(this, function* () {
+		const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
+		const file = yield* Effect.fromNullable(view.file);
+		yield* Effect.tryPromise(() => {
+			return view.leaf.openFile(file);
+		});
+	});
+
+	async toggleMindMapMdView() {
 		const { workspace } = this.app;
 
 		let leaf: WorkspaceLeaf | undefined | null = undefined;
 		const leaves = workspace.getLeavesOfType(VIEW_TYPE_MINDMAPMD);
-		const view = workspace.getActiveViewOfType(MarkdownView);
-		if (view) {
-			this.currentMarkdownEditor = view.editor;
-			await view.leaf.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
 
-		}
+		// const view = getActiveViewOfType(workspace, MarkdownView);
 
-		if (leaves.length > 0) {
-			// A leaf with our view already exists, use that
-			leaf = leaves[0];
-		} else {
-			// Our view could not be found in the workspace, create a new leaf
-			// in the right sidebar for it
-			leaf = workspace.getRightLeaf(false);
-			await leaf?.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
-		}
+		// const openMindMapMdView = getActiveViewOfType(workspace, MarkdownView)
+		// 	.pipe(
+		// 		Effect.andThen(v => Effect.tryPromise(() => {
+		// 			this.currentMarkdownEditor = v.editor;
+		// 			this.currentMarkdownDoc = v.editor.getValue();
+		// 			console.log("View found, activating it in map");
+		// 			return v.leaf.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
+		// 		}))
+		// 	);
 
-		// "Reveal" the leaf in case it is in a collapsed sidebar
-		workspace.revealLeaf(leaf!);
+		Effect.runPromise(
+			Effect.orElse(this.turnOnMindMapMdView(), () => this.turnOnMarkdownView)
+		);
+
+		// const m =Option.map(view, v => {
+		// 	this.currentMarkdownEditor = v.editor;
+		// 	this.currentMarkdownDoc = v.editor.getValue();
+		// 	console.log("View found, activating it in map");
+		// 	return v.leaf.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
+		// });
+
+		// Effect.runPromise(view).then(v => {
+		// 	this.currentMarkdownEditor = v.editor;
+		// 	this.currentMarkdownDoc = v.editor.getValue();
+		// 	v.leaf.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
+		// });
+
+		// if (view) {
+		// 	this.currentMarkdownEditor = view.editor;
+		// 	this.currentMarkdownDoc = view.editor.getValue();
+		// 	await view.leaf.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
+
+		// }
+
+		// if (leaves.length > 0) {
+		// 	// A leaf with our view already exists, use that
+		// 	leaf = leaves[0];
+		// } else {
+		// 	// Our view could not be found in the workspace, create a new leaf
+		// 	// in the right sidebar for it
+		// 	leaf = workspace.getRightLeaf(false);
+		// 	await leaf?.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
+		// }
+
+		// // "Reveal" the leaf in case it is in a collapsed sidebar
+		// workspace.revealLeaf(leaf!);
 	}
+
+
 }
 
 class SampleModal extends Modal {
@@ -119,12 +179,12 @@ class SampleModal extends Modal {
 	}
 
 	onOpen() {
-		let {contentEl} = this;
+		let { contentEl } = this;
 		contentEl.setText('Woah!');
 	}
 
 	onClose() {
-		const {contentEl} = this;
+		const { contentEl } = this;
 		contentEl.empty();
 	}
 }
