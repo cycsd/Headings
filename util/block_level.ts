@@ -61,6 +61,7 @@ export type Content = {
 此份 markdown 文件的 metadata (yaml)
 */
 export type Root = {
+    id: string;
     fileName: string;
     yaml?: Content;
     //不需要了？因為只可能是 yaml?
@@ -72,6 +73,14 @@ export type MindMapNode = Root | Block;
 
 
 export type Block = {
+
+    id: string;
+
+    /*
+    obsidian 的 block id
+    ex: ^this_is_a_block
+    */
+    obsidianBlockId?: string;
     content: Content[];
     /*
     記錄 block 在 column 中的位置，讓我可以知道使用者選取的 block 在哪一個位置
@@ -87,6 +96,8 @@ export type Block = {
     將同個 parent 下的 block 做群組更新。
     */
     parent: MindMapNode;
+    parentId: string;
+
     /*
     記錄當前的 block 跟被選取的 block 的關係，方便在使用者操作後，將同個路徑下的 block 做群組更新。
     */
@@ -98,6 +109,7 @@ export type Block = {
     endOffset: number;
 }
 
+export type NonStateBlock = Omit<Block, 'state'>;
 export type CurrentSelect = {
     columnIndex: number;
     blockIndex: number;

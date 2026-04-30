@@ -1,7 +1,7 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type Content, type Root, type State } from "./block_level";
-import { Effect, Match } from "effect";
+import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State } from "./block_level";
+import { Effect, Match, Random } from "effect";
 
 export const blockquote = 'blockquote';
 export const callout = 'callout';
@@ -81,7 +81,9 @@ export function headingsCacheToMap(
     return new Map(headings.map(item => [getOffsetKey(item.position), item]));
 }
 
-export function parseContent2Blocks(content: Content[], root: Root): Block[][] {
+
+type BlockWithParent = Omit<NonStateBlock, 'parent'> & { parent: BlockWithParent | Root };
+export function parseContent2Blocks(content: Content[], root: Root): BlockWithParent[][] {
     if (content.length === 0) return [];
     let [first, ...rest] = content;
     if (first!.type === yaml) {
@@ -90,16 +92,17 @@ export function parseContent2Blocks(content: Content[], root: Root): Block[][] {
         [first, ...rest] = rest;
     }
 
-    const firstBlock: Block = {
+    const firstBlock: BlockWithParent = {
+        id: crypto.randomUUID(),
         content: [first!],
         index: 0,
         columnIndex: 0,
+        parentId: root.id,
         parent: root,
-        state: unselected,
         startOffset: first!.startOffset,
         endOffset: first!.endOffset,
     }
-    const columns: Block[][] = [[firstBlock]];
+    const columns: BlockWithParent[][] = [[firstBlock]];
     const seed = { blocks: columns, node: firstBlock };
 
     const result = rest.reduce((sd, current_content) => {
@@ -114,16 +117,16 @@ export function parseContent2Blocks(content: Content[], root: Root): Block[][] {
 }
 
 export function traceBackToOrigin(
-    blocks: Block[][],
-    node: Block,
-    currentContent: Content): Block {
+    blocks: BlockWithParent[][],
+    node: BlockWithParent,
+    currentContent: Content): BlockWithParent {
 
     const result = Match.value({
         nodeColumnIndex: node.columnIndex,
         nodeLevel: node.content.at(-1)!.level,
         currentLevel: currentContent.level,
     }).pipe(
-        Match.withReturnType<Block>(),
+        Match.withReturnType<BlockWithParent>(),
         Match.whenOr(({ nodeLevel, currentLevel }) => nodeLevel === currentLevel,
             // In first column, but current level priority still  higher then previous content, do split,not trace back
             ({ nodeColumnIndex, nodeLevel, currentLevel }) => nodeColumnIndex === 0 && nodeLevel > currentLevel,
@@ -132,7 +135,7 @@ export function traceBackToOrigin(
         Match.when(({ nodeLevel, currentLevel }) => nodeLevel < currentLevel,
             append_new_block),
         Match.when(({ nodeLevel, currentLevel }) => nodeLevel > currentLevel,
-            () => traceBackToOrigin(blocks, node.parent as Block, currentContent)
+            () => traceBackToOrigin(blocks, node.parent as BlockWithParent, currentContent)
         ),
         Match.orElseAbsurd
         // Match.orElse(create_split_block)
@@ -146,12 +149,13 @@ export function traceBackToOrigin(
         if (blocks.length <= current_column_index) {
             blocks.push([]);
         }
-        const block: Block = {
+        const block: BlockWithParent = {
+            id: crypto.randomUUID(),
             content: [currentContent],
             index: blocks[current_column_index]!.length,
             columnIndex: current_column_index,
             parent: node,
-            state: unselected,
+            parentId: node.id,
             startOffset: currentContent.startOffset,
             endOffset: currentContent.endOffset,
         };
@@ -160,12 +164,13 @@ export function traceBackToOrigin(
     }
 
     function create_split_block() {
-        const block: Block = {
+        const block: BlockWithParent = {
+            id: crypto.randomUUID(),
             content: [currentContent],
             index: node.index + 1,
             columnIndex: node.columnIndex,
             parent: node.parent,
-            state: unselected,
+            parentId: node.parent.id,
             startOffset: currentContent.startOffset,
             endOffset: currentContent.endOffset,
         };
