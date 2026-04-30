@@ -1,12 +1,12 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
-import { DEFAULT_SETTINGS, SampleSettingTab, type MyPluginSettings } from "./settings";
+import { DEFAULT_SETTINGS, MindMapMdSettingTab, type MyPluginSettings } from "./settings";
 import { MindMapMdView, VIEW_TYPE_MINDMAPMD } from "../view/MindMapMdView";
 import { getActiveViewOfType } from "../extension/workspace";
 import { Effect, Option, pipe } from "effect";
 
 // Remember to rename these classes and interfaces!
 
-export default class MyPlugin extends Plugin {
+export default class MindMapMdPlugin extends Plugin {
 	settings: MyPluginSettings = DEFAULT_SETTINGS;
 	currentMarkdownEditor: Editor | null = null;
 	currentMarkdownDoc: string | null = null;
@@ -66,7 +66,32 @@ export default class MyPlugin extends Plugin {
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new MindMapMdSettingTab(this.app, this));
+
+		//todo : open file with mind map md view from file explorer context menu
+		// 使用者有可能從左側 file explorer 開啟檔案的 context menu 來開啟 mind map md view，
+		// 所以需要新開一個 leaf 而不是從現有的 markdown view 來切換，以現在的做法會無法從 file explorer 開啟 mind map md view
+		this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
+			console.log("open editor menu fail", { menu, file, source });
+			menu.addItem((item) => {
+				item.setTitle('Mind Map MD View')
+					.setIcon('layout-template')
+					.onClick(async () => {
+						Effect.runPromise(this.turnOnMindMapMdView);
+					});
+			})
+		}));
+
+		// this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
+		// 	console.log("open editor menu", { menu, editor, view });
+		// 	menu.addItem((item) => {
+		// 		item.setTitle('Mind Map MD View')
+		// 			.setIcon('dice')
+		// 			.onClick(async () => {
+		// 				Effect.runPromise(this.turnOnMindMapMdView);
+		// 			});
+		// 	})
+		// }));
 
 		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// Using this function will automatically remove the event listener when this plugin is disabled.
@@ -90,25 +115,38 @@ export default class MyPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	turnOnMindMapMdView = () =>
-		pipe(
-			getActiveViewOfType(this.app.workspace, MarkdownView),
-			Effect.andThen(v => Effect.tryPromise(() => {
-				// console.log("this", this)
-				// console.log("view", v)
-				this.currentMarkdownEditor = v.editor;
-				this.currentMarkdownDoc = v.editor.getValue();
-				this.currentFile = v.file;
-				// console.log("View found, activating it in map", this.currentFile);
-				console.log("View found, activating it in map", v, this);
-				console.log("this", this)
-				return v.leaf.setViewState({ type: VIEW_TYPE_MINDMAPMD, active: true });
-			}))
-		);
+	turnOnMindMapMdView = pipe(
+		getActiveViewOfType(this.app.workspace, MarkdownView),
+		Effect.andThen(v => Effect.tryPromise(() => {
+			// console.log("this", this)
+			// console.log("view", v)
+			this.currentMarkdownEditor = v.editor;
+			this.currentMarkdownDoc = v.editor.getValue();
+			this.currentFile = v.file;
+	// console.log("View found, activating it in map", this.currentFile);
+			// console.log("View found, activating it in map", v, this);
+			// console.log("this", this)
+
+			//state 存入 workspace.json 中的內容
+			return v.leaf.setViewState(
+				{
+					type: VIEW_TYPE_MINDMAPMD,
+					active: true,
+					state: {
+						fileName: v.file?.name,
+					}
+				});
+		}))
+	);
 
 	turnOnMarkdownView = Effect.gen(this, function* () {
 		const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
-		const file = yield* Effect.fromNullable(view.file);
+
+		const file = yield* pipe(
+			Effect.fromNullable(view.file),
+			Effect.mapError(() => new Error(`No file associated with view: ${view}`))
+		);
+
 		yield* Effect.tryPromise(() => {
 			return view.leaf.openFile(file);
 		});
@@ -133,7 +171,11 @@ export default class MyPlugin extends Plugin {
 		// 	);
 
 		Effect.runPromise(
-			Effect.orElse(this.turnOnMindMapMdView(), () => this.turnOnMarkdownView)
+			this.turnOnMindMapMdView.pipe(
+				Effect.orElse(() => this.turnOnMarkdownView),
+				Effect.andThen(() => getActiveViewOfType(workspace, MarkdownView)),
+				Effect.andThen(v => console.log("editor", v.editor))
+			)
 		);
 
 		// const m =Option.map(view, v => {
