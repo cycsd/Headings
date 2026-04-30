@@ -11,6 +11,7 @@ obsidian metatdata-cache 有 sections 屬性，
 但實際上結束位置只會是實際 Heading 文字的結束位置。
 
 Heading 的層級，是 Heading1 還是 Heading2 需要看 metadata-cache 的 headings 屬性才知道，
+且 start offset 是從 # 字號開始，雖然在 headings 屬性中顯示的 text 是沒有包含 # 字號(且會 trim 前後空白)，但 offset 與 section 一樣，都是從 # 字號開始算，也就的包含 # 字號。
 
 如果 section 物件有 id 代表使用者有使用 block id 進行該段落的標註。
 
