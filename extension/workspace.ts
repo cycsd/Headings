@@ -9,7 +9,7 @@ export const getActiveViewOfType = <View extends ObsidianView>(
 
     return pipe(
         Option.fromNullable(activeView),
-        Effect.mapError((message) => new Error(`No active view of type: ${type.name}`)),
+        Effect.mapError((message) => new Error(`No active view of type: ${type.name}. ${message}`)),
     );
 });
 

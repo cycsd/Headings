@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, MindMapMdSettingTab, type MyPluginSettings } from "./
 import { MindMapMdView, VIEW_TYPE_MINDMAPMD } from "../view/MindMapMdView";
 import { getActiveViewOfType } from "../extension/workspace";
 import { Effect, Option, pipe } from "effect";
+import type { MindMapMdViewState } from '../view/MindMapMd';
 
 // Remember to rename these classes and interfaces!
 
@@ -120,30 +121,37 @@ export default class MindMapMdPlugin extends Plugin {
 		Effect.andThen(v => Effect.tryPromise(() => {
 			// console.log("this", this)
 			// console.log("view", v)
-			this.currentMarkdownEditor = v.editor;
-			this.currentMarkdownDoc = v.editor.getValue();
-			this.currentFile = v.file;
+			
+			// this.currentMarkdownEditor = v.editor;
+			// this.currentMarkdownDoc = v.editor.getValue();
+			// this.currentFile = v.file;
+
 	// console.log("View found, activating it in map", this.currentFile);
 			// console.log("View found, activating it in map", v, this);
 			// console.log("this", this)
 
 			//state 存入 workspace.json 中的內容
+			const mind_map_view_state: MindMapMdViewState = {
+				filePath: v.file?.path || "",
+				file: v.file,
+				doc: v.editor.getValue(),
+			};
+			
 			return v.leaf.setViewState(
 				{
 					type: VIEW_TYPE_MINDMAPMD,
 					active: true,
-					state: {
-						fileName: v.file?.name,
-					}
+					state: mind_map_view_state,
 				});
 		}))
 	);
+ 
 
 	turnOnMarkdownView = Effect.gen(this, function* () {
 		const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
 
 		const file = yield* pipe(
-			Effect.fromNullable(view.file),
+			Effect.fromNullable(view.state?.file),
 			Effect.mapError(() => new Error(`No file associated with view: ${view}`))
 		);
 

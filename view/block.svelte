@@ -11,14 +11,16 @@
         block: BlockWithParent;//todo Block 暫時;
         plugin: MindMapMdPlugin;
         view: MindMapMdView;
+        filePath: string;
     }
-    let { block, plugin, view }: Props = $props();
+    let { block, plugin, view, filePath }: Props = $props();
     function renderObsidianMarkdown(content: string): Attachment {
         
         return (element:HTMLElement)=>{
             //todo DI 不應該在這邊還在給 Plugin 和 View ，之後不好測試
             // onPreivewRender(element) or svelte snippet ;
-            MarkdownRenderer.render(plugin.app,content, element, plugin.currentFile!.path, view);
+            if(!filePath) return;
+            MarkdownRenderer.render(plugin.app,content, element, filePath, view);
         };
     }
 </script>
