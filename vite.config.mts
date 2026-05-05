@@ -1,7 +1,8 @@
 import { builtinModules } from "node:module";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { sveltePreprocess } from "svelte-preprocess";
 
@@ -27,12 +28,26 @@ const external = [
 	...builtinModules,
 ];
 
+async function writeIfChanged(filePath: string, content: string): Promise<void> {
+    try {
+        const current = await readFile(filePath, "utf8");
+        if (current === content) {
+            return;
+        }
+    } catch {
+        // File does not exist yet, proceed to write.
+    }
+
+    await writeFile(filePath, content);
+}
+
 export default defineConfig(({ mode }) => {
 	const production = mode === "production";
 	const outputDir = ".vite-build";
 
 	return {
 		plugins: [
+            tailwindcss(),
 			svelte({
 				compilerOptions: {
 					css: "injected",
@@ -43,19 +58,30 @@ export default defineConfig(({ mode }) => {
 				name: "copy-obsidian-bundle",
 				async writeBundle(_options, bundle) {
 					const entry = bundle["main.js"];
+                    const styles = bundle["styles.css"];
 
 					if (!entry || entry.type !== "chunk") {
 						return;
 					}
 
 					await mkdir(resolve("."), { recursive: true });
-					await writeFile(resolve("main.js"), entry.code);
+                    await writeIfChanged(resolve("main.js"), entry.code);
+
+                    if (styles && styles.type === "asset") {
+                        const css =
+                            typeof styles.source === "string"
+                                ? styles.source
+                                : Buffer.from(styles.source).toString("utf8");
+                        await writeIfChanged(resolve("styles.css"), css);
+                    }
 				},
 			},
 		],
 		build: {
+            cssCodeSplit: false,
 			emptyOutDir: true,
 			lib: {
+                cssFileName: "styles",
 				entry: "src/main.ts",
 				formats: ["cjs"],
 				fileName: () => "main.js",
@@ -63,18 +89,29 @@ export default defineConfig(({ mode }) => {
 			minify: production,
 			outDir: outputDir,
 			sourcemap: production ? false : "inline",
-			target: "es2018",
-			watch: production ? null : {},
+            target: "es2022",
+            watch: production
+                ? null
+                : {
+                    exclude: ["main.js", "styles.css", ".vite-build/**"],
+                },
+            assetsDir: ".",
 			rollupOptions: {
 				external,
 				output: {
 					banner,
-					entryFileNames: "main.js",
+                    entryFileNames: "main.js",
+                    assetFileNames: "styles.css",
 					exports: "default",
 					format: "cjs",
 					inlineDynamicImports: true,
 				},
 			},
 		},
+        resolve: {
+            alias: {
+                $lib: resolve("./src/lib"),
+            },
+        },
 	};
 });
