@@ -12,6 +12,7 @@
 		parseCacheMetadata2Content,
 		parseContent2Blocks,
 	} from "../util/parse";
+	import { mdc } from "../util/utils";
 	import {
 		type BlockView,
 		type Block as StateBlock,
@@ -82,59 +83,78 @@
 		return blockGroup;
 	});
 	let rootEdit = $derived(root);
-	let selectedPosition = $derived.by<Position>(()=>{
+	let selectedPosition = $derived.by<Position>(() => {
 		//todo recover selected position by selected with blocks
-		return selected.relativePos??{columnIndex:0,blockIndex:0};
+		return selected.relativePos ?? { columnIndex: 0, blockIndex: 0 };
 	});
 	// let blockView = $derived.by<BlockView>(() => {
 	let blockView = $derived.by<StateBlock[][]>(() => {
 		if (blocks.length === 0) return [];
-		const {columnIndex, blockIndex} = selectedPosition;
+		const { columnIndex, blockIndex } = selectedPosition;
 		const selectedBlock = blocks[columnIndex]?.[blockIndex];
 
-		const [r_before_columns] =range(0,columnIndex)
-		.reduceRight((acc,column_index)=>{
-			const [collect,{target,state}] = acc;
-			
-			const column = blocks[column_index]?.map(b=>{
-				const state_block: StateBlock = {
-					...b,
-					state: b.id === target ? state : unselected,
-				}
-				return state_block;
-			})??[];
-			collect.push(column);
-			const selected = column.find(b=>b.id === target);
-			return Data.tuple(collect,{target:selected?.parentId??'',state:road});
-		},Data.tuple([] as StateBlock[][],{target:selectedBlock?.id,state:fork} as {target:string,state:State}));
+		const [r_before_columns] = range(0, columnIndex).reduceRight(
+			(acc, column_index) => {
+				const [collect, { target, state }] = acc;
+
+				const column =
+					blocks[column_index]?.map((b) => {
+						const state_block: StateBlock = {
+							...b,
+							state: b.id === target ? state : unselected,
+						};
+						return state_block;
+					}) ?? [];
+				collect.push(column);
+				const selected = column.find((b) => b.id === target);
+				return Data.tuple(collect, {
+					target: selected?.parentId ?? "",
+					state: road,
+				});
+			},
+			Data.tuple(
+				[] as StateBlock[][],
+				{ target: selectedBlock?.id, state: fork } as {
+					target: string;
+					state: State;
+				},
+			),
+		);
 
 		const before_columns = r_before_columns.reverse();
 
-		const [after_columns] = range(columnIndex+1,blocks.length)
-		.reduce((acc,column_index)=>{
-			const [collect,{parents}] = acc;
+		const [after_columns] = range(columnIndex + 1, blocks.length).reduce(
+			(acc, column_index) => {
+				const [collect, { parents }] = acc;
 
-			const next_parents:string[] = [];
-			const column = blocks[column_index]?.map(b=>{
-				let s:State = unselected;
-				if (parents.includes(b.parentId)) {
-					next_parents.push(b.id);
-					s = path;
-				}
-				const state_block: StateBlock = {
-					...b,
-					state: s,
-				}
-				return state_block;
-			})??[];
-			collect.push(column);
-			
-			return Data.tuple(collect,{parents:next_parents,state:path});
-		},Data.tuple([] as StateBlock[][],{parents:[selectedBlock?.id??'']}));
+				const next_parents: string[] = [];
+				const column =
+					blocks[column_index]?.map((b) => {
+						let s: State = unselected;
+						if (parents.includes(b.parentId)) {
+							next_parents.push(b.id);
+							s = path;
+						}
+						const state_block: StateBlock = {
+							...b,
+							state: s,
+						};
+						return state_block;
+					}) ?? [];
+				collect.push(column);
 
-		const columns = [...before_columns,...after_columns]
+				return Data.tuple(collect, {
+					parents: next_parents,
+					state: path,
+				});
+			},
+			Data.tuple([] as StateBlock[][], {
+				parents: [selectedBlock?.id ?? ""],
+			}),
+		);
+
+		const columns = [...before_columns, ...after_columns];
 		return columns;
-	
 	});
 	let xAxis = $derived(() => {
 		const ci = selectedPosition.columnIndex;
@@ -209,44 +229,50 @@
 		htmlBlockExtension,
 	]}
 /> -->
-<div class="number">
-	<span>My number is {count}!</span>
-</div>
+<div class="mindmapmd-theme flex min-h-full flex-col gap-4 p-4 text-sm">
+	<!-- <div class="number rounded-md bg-muted px-3 py-2 text-muted-foreground">
+		<span>My number is {count}!</span>
+	</div> -->
 
-<button onclick={logEditor}>Decrement</button>
-<div style="display: flex; gap: 20px;">
-	{#each blockView as blockGroup, columnIndex}
-		<div style="display: flex; flex-direction: column;">
-			{#each blockGroup as block, blockIndex}
-				<!-- <div
+	<!-- <button class="inline-flex w-fit rounded-md bg-primary px-3 py-2 text-primary-foreground" onclick={logEditor}>Decrement</button> -->
+	<div class="flex gap-5 overflow-x-auto">
+		{#each blockView as blockGroup, columnIndex}
+			<div class="flex flex-col gap-3">
+				{#each blockGroup as block, blockIndex}
+					<!-- <div
 					style=" border: 1px solid black; margin: 10px; display: flex; align-items: center; justify-content: center;"
 				> -->
 					<Block {block} {plugin} {view} {filePath}>
 						{#snippet preview()}
-							<div
-							onclick={() => onBlockSelect(columnIndex, blockIndex)}
-								{@attach renderObsidianMarkdown(
-									block.content[0]!.text,
-								)}
-								style="min-width: 300px; "
-								class={block.state !== unselected ? "selected" : "unselected"}
-							></div>
+								<div
+								role="treeitem"
+								aria-selected={block.state !== fork}
+								tabindex="0"
+								onpointerdown={() => onBlockSelect(columnIndex, blockIndex)}
+									{@attach renderObsidianMarkdown(
+										block.content[0]!.text,
+									)}
+									class={`min-w-75 rounded-lg bg-card p-4 text-card-foreground shadow-sm ${mdc(block.state)}`}
+								></div>
 						{/snippet}
 					</Block>
-				<!-- </div> -->
-			{/each}
-		</div>
-	{/each}
+					<!-- </div> -->
+				{/each}
+			</div>
+		{/each}
+	</div>
+	<span>{plugin.currentMarkdownDoc}</span>
+	<h1 class="text-lg font-semibold">in plugin</h1>
+	<span>{plugin.currentMarkdownEditor?.getValue()}</span>
+	<pre class="overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(
+			cache,
+			null,
+			2,
+		)}</pre>
 </div>
-<span>{plugin.currentMarkdownDoc}</span>
-<h1>in plugin</h1>
-<span>{plugin.currentMarkdownEditor?.getValue()}</span>
-<pre>{JSON.stringify(cache, null, 2)}</pre>
 
 <style>
 	.number {
 		color: red;
 	}
-
-
 </style>

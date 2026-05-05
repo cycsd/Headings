@@ -87,11 +87,19 @@
 		cursor: pointer;
 	}
 
-	.mindmapmd-theme .mdselected {
+	.mindmapmd-theme .mmmd-path {
 		@apply border-2 border-s-amber-400;
 	}
 
-	.mindmapmd-theme .mdunselected {
+	.mindmapmd-theme .mmmd-road {
+		@apply border-2 border-e-amber-400;
+	}
+
+	.mindmapmd-theme .mmmd-fork {
+		@apply border-2 border-amber-400;
+	}
+
+	.mindmapmd-theme .mmmd-unselected {
 		@apply border-2 border-border;
 	}
 
