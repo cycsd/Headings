@@ -50,7 +50,7 @@ MindMapMd 預期提供以下能力：
 目前 repository 狀態如下：
 
 - 已建立 Obsidian plugin 的 TypeScript 開發環境。
-- 已配置 esbuild、TypeScript 與 ESLint。
+- 已配置 Vite、TypeScript 與 ESLint。
 - 功能實作仍未開始，`src/` 目前大致仍是 sample plugin 骨架。
 
 換句話說，這是一個正在成形中的產品原型，而不是已可安裝使用的正式插件。

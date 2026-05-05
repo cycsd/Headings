@@ -7,10 +7,10 @@ If your plugin does not need CSS, delete this file.
 
 */
 
-.selected{
+.mdselected{
 		border: 2px solid red;
 }
 
-.unselected{
+.mdunselected{
     border: 2px solid black;
 }
