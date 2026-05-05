@@ -17,3 +17,14 @@ export type ComponentState = {
 };
 
 
+export type Position = {
+    columnIndex: number;
+    blockIndex: number;
+}
+export type Selected = {
+    relativePos: Position | null,
+    offset: number | null;
+
+}
+
+

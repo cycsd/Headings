@@ -23,14 +23,14 @@ export const link = 'link';
 
 export const yaml_level = 0;
 export const paragraph_level = 7;
-export const ohter_level = 8;
+export const other_level = 8;
 
 
 export const sectionMatchLevel = Match.type<SectionCache>().pipe(
     Match.withReturnType<Pick<Content, 'level'>>(),
     Match.when({ type: yaml }, () => ({ level: yaml_level, })),
     Match.when({ type: paragraph }, () => ({ level: paragraph_level, })),
-    Match.orElse(() => ({ level: ohter_level, }))
+    Match.orElse(() => ({ level: other_level, }))
 )
 
 export function parseSection2Content(section: SectionCache, doc: string): Content {
@@ -130,8 +130,9 @@ export function traceBackToOrigin(
         Match.whenOr(({ nodeLevel, currentLevel }) => nodeLevel === currentLevel,
             // In first column, but current level priority still  higher then previous content, do split,not trace back
             ({ nodeColumnIndex, nodeLevel, currentLevel }) => nodeColumnIndex === 0 && nodeLevel > currentLevel,
+            //todo merge current level < 8
+            ({ nodeLevel, currentLevel }) => nodeLevel < currentLevel && currentLevel === other_level && nodeLevel >= paragraph_level,
             create_split_block),
-        //merge current level < 8
         Match.when(({ nodeLevel, currentLevel }) => nodeLevel < currentLevel,
             append_new_block),
         Match.when(({ nodeLevel, currentLevel }) => nodeLevel > currentLevel,
@@ -145,21 +146,21 @@ export function traceBackToOrigin(
 
 
     function append_new_block() {
-        const current_column_index = node.columnIndex + 1;
-        if (blocks.length <= current_column_index) {
+        const next_column_index = node.columnIndex + 1;
+        if (blocks.length <= next_column_index) {
             blocks.push([]);
         }
         const block: BlockWithParent = {
             id: crypto.randomUUID(),
             content: [currentContent],
-            index: blocks[current_column_index]!.length,
-            columnIndex: current_column_index,
+            index: blocks[next_column_index]!.length,
+            columnIndex: next_column_index,
             parent: node,
             parentId: node.id,
             startOffset: currentContent.startOffset,
             endOffset: currentContent.endOffset,
         };
-        blocks[current_column_index]!.push(block);
+        blocks[next_column_index]!.push(block);
         return block;
     }
 

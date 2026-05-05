@@ -6,3 +6,11 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+.selected{
+		border: 2px solid red;
+}
+
+.unselected{
+    border: 2px solid black;
+}

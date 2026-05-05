@@ -83,8 +83,9 @@ export type Block = {
     obsidianBlockId?: string;
     content: Content[];
     /*
-    記錄 block 在 column 中的位置，讓我可以知道使用者選取的 block 在哪一個位置
+    記錄 block 在 column 中的位置，讓我可以知道使用者選取的 block 在哪一個位置    
     但或許可以直接用 current select 取代？
+    需要記錄，可以在使用者垂直移動後知道那個 block 被移動過
     */
     index: number;
     /*
@@ -95,7 +96,7 @@ export type Block = {
     記錄 block 歸類在哪個 parent block 底下，方便在使用者操作後，
     將同個 parent 下的 block 做群組更新。
     */
-    parent: MindMapNode;
+    // parent: MindMapNode;
     parentId: string;
 
     /*
@@ -117,7 +118,4 @@ export type CurrentSelect = {
 }
 export type BlockView = ColumnLayout[];
 
-export type Position = {
-    columnIndex: number;
-    blockIndex: number;
-}
+
