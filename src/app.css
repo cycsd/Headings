@@ -87,6 +87,18 @@
 		cursor: pointer;
 	}
 
+	.mindmapmd-theme h1,
+	.mindmapmd-theme h2,
+	.mindmapmd-theme h3,
+	.mindmapmd-theme h4,
+	.mindmapmd-theme h5,
+	.mindmapmd-theme h6 {
+		font-size: inherit;
+		font-weight: inherit;
+	}
+	}
+
+@layer utilities {
 	.mindmapmd-theme .mmmd-path {
 		@apply border-2 border-s-amber-400;
 	}
@@ -100,16 +112,6 @@
 	}
 
 	.mindmapmd-theme .mmmd-unselected {
-		@apply border-2 border-border;
+		@apply border-2 border-border bg-accent-foreground/12;
 	}
-
-	.mindmapmd-theme h1,
-	.mindmapmd-theme h2,
-	.mindmapmd-theme h3,
-	.mindmapmd-theme h4,
-	.mindmapmd-theme h5,
-	.mindmapmd-theme h6 {
-		font-size: inherit;
-		font-weight: inherit;
-	}
-	}
+}
