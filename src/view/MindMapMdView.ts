@@ -1,5 +1,5 @@
 import { type CachedMetadata, ItemView, MarkdownRenderChild, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
-import type MindMapMdPlugin from "../src/main";
+import type MindMapMdPlugin from "../main";
 import MindMapEditorView from "./MindMapEditorView.svelte";
 import { mount, unmount } from "svelte";
 import type { ComponentState, MindMapMdViewState, MindMapMdViewStateSave } from "./MindMapMd"

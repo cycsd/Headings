@@ -1,13 +1,12 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import MindMapMdPlugin from "../src/main";
+	import MindMapMdPlugin from "../main";
 	import {
 		MarkdownRenderer,
 		type CachedMetadata,
 		type TFile,
 	} from "obsidian";
 	import { Console, Data, Effect, Logger } from "effect";
-	import { json } from "stream/consumers";
 	import {
 		parseCacheMetadata2Content,
 		parseContent2Blocks,
@@ -22,6 +21,7 @@
 		type State,
 		road,
 		path,
+		type ColumnLayout,
 	} from "../util/block_level";
 	import { range } from "effect/Array";
 	import CodeMirror from "svelte-codemirror-editor";
@@ -46,11 +46,18 @@
 		htmlBlockExtension,
 		renderHtmlMarkdownSyntaxExtensions,
 	} from "@prosemark/render-html";
-	import Block from "./block.svelte";
+	import BlockEditor from "./BlockEditor.svelte";
 
 	import type { MindMapMdView } from "./MindMapMdView";
 	import type { ComponentState, Position, Selected } from "./MindMapMd";
 	import type { Attachment } from "svelte/attachments";
+	import {
+		VList,
+		Virtualizer,
+		WindowVirtualizer,
+		type VirtualizerHandle,
+	} from "virtua/svelte";
+	import VirtualColumn from "./VirtualColumn.svelte";
 
 	interface Props {
 		startCount: number;
@@ -59,6 +66,7 @@
 	}
 
 	let { startCount, plugin, view }: Props = $props();
+
 
 	let count = $state(startCount);
 
@@ -88,7 +96,7 @@
 		return selected.relativePos ?? { columnIndex: 0, blockIndex: 0 };
 	});
 	// let blockView = $derived.by<BlockView>(() => {
-	let blockView = $derived.by<StateBlock[][]>(() => {
+	let blockView = $derived.by<ColumnLayout[]>(() => {
 		if (blocks.length === 0) return [];
 		const { columnIndex, blockIndex } = selectedPosition;
 		const selectedBlock = blocks[columnIndex]?.[blockIndex];
@@ -105,15 +113,24 @@
 						};
 						return state_block;
 					}) ?? [];
-				collect.push(column);
 				const selected = column.find((b) => b.id === target);
+
+				const column_layout: ColumnLayout = {
+					centerBlockIndex: selected?.index ?? 0,
+					blocks: column,
+				};
+
+				collect.push(column_layout);
 				return Data.tuple(collect, {
 					target: selected?.parentId ?? "",
 					state: road,
+				} as {
+					target: string;
+					state: State;
 				});
 			},
 			Data.tuple(
-				[] as StateBlock[][],
+				[] as BlockView,
 				{ target: selectedBlock?.id, state: fork } as {
 					target: string;
 					state: State;
@@ -141,14 +158,24 @@
 						};
 						return state_block;
 					}) ?? [];
-				collect.push(column);
+
+				// 應該讓中間的區塊在正中央，所以應該取中間的 block 當作 centerBlockIndex
+				// 這樣如果 block 一多，反而第一個元素有可能超出上邊界...
+				const selected_subblocks = column.filter((b) => b.state === path);
+				// const center_index = selected_subblocks.length > 0 ?selected_subblocks[Math.floor(selected_subblocks.length / 2)]!.index : -1;
+				const center_index = selected_subblocks.first()?.index ?? -1;
+				const column_layout: ColumnLayout = {
+					centerBlockIndex: center_index,
+					blocks: column,
+				};
+				collect.push(column_layout);
 
 				return Data.tuple(collect, {
 					parents: next_parents,
 					state: path,
 				});
 			},
-			Data.tuple([] as StateBlock[][], {
+			Data.tuple([] as BlockView, {
 				parents: [selectedBlock?.id ?? ""],
 			}),
 		);
@@ -177,22 +204,46 @@
 	}
 
 	function renderObsidianMarkdown(content: string): Attachment {
-		return (element: HTMLElement) => {
+		return (element: Element) => {
 			if (!filePath) return;
 			element.replaceChildren();
 			MarkdownRenderer.render(
 				plugin.app,
 				content,
-				element,
+				element as HTMLElement,
 				filePath,
 				view,
 			);
+			// .then(() => {
+			// 	// After rendering is complete, measure the width and update the column width
+			// 	console.log(
+			// 		"content:",
+			// 		content,
+			// 		"width:",
+			// 		element.getBoundingClientRect().width,
+			// 	);
+			// 	const width = element.getBoundingClientRect().width;
+			// 	updateColumnWidth(column, width);
+			// });
 		};
 	}
 
 	function onBlockSelect(columnIndex: number, blockIndex: number) {
 		selected.relativePos = { columnIndex, blockIndex };
 	}
+
+	let columnWidthMap = $state.raw<Record<number, number>>({});
+
+	function updateColumnWidth(columnIndex: number, width: number) {
+		const prev = columnWidthMap[columnIndex] ?? 0;
+		if (width > prev) {
+			columnWidthMap = {
+				...columnWidthMap,
+				[columnIndex]: Math.ceil(width),
+			};
+		}
+	}
+
 	onMount(() => {
 		// const metaDataCache = plugin.app.metadataCache.getFileCache(
 		// 	plugin.currentFile!,
@@ -229,50 +280,54 @@
 		htmlBlockExtension,
 	]}
 /> -->
-<div class="mindmapmd-theme flex min-h-full flex-col gap-4 p-4 text-sm">
-	<!-- <div class="number rounded-md bg-muted px-3 py-2 text-muted-foreground">
-		<span>My number is {count}!</span>
-	</div> -->
-
-	<!-- <button class="inline-flex w-fit rounded-md bg-primary px-3 py-2 text-primary-foreground" onclick={logEditor}>Decrement</button> -->
-	<div class="flex gap-5 overflow-x-auto">
+<div class="mindmapmd-theme">
+	<div class="grid grid-flow-col gap-10 overflow-auto">
 		{#each blockView as blockGroup, columnIndex}
-			<div class="flex flex-col gap-3">
-				{#each blockGroup as block, blockIndex}
-					<!-- <div
-					style=" border: 1px solid black; margin: 10px; display: flex; align-items: center; justify-content: center;"
-				> -->
-					<Block {block} {plugin} {view} {filePath}>
-						{#snippet preview()}
+			<div
+				class={`h-screen overflow-y-auto p-10 min-w-100 ${mdc("column")}`}
+				style="overflow-anchor: none;"
+			>
+				<VirtualColumn column={blockGroup}>
+					{#snippet children(block, i)}
+						<BlockEditor {block}>
+							{#snippet preview()}
 								<div
-								role="treeitem"
-								aria-selected={block.state !== fork}
-								tabindex="0"
-								onpointerdown={() => onBlockSelect(columnIndex, blockIndex)}
+									role="treeitem"
+									aria-selected={block.state !== fork}
+									tabindex="0"
+									onpointerup={() =>
+										onBlockSelect(columnIndex, i)}
 									{@attach renderObsidianMarkdown(
 										block.content[0]!.text,
 									)}
-									class={`min-w-75 rounded-lg bg-card p-4 text-card-foreground shadow-sm ${mdc(block.state)}`}
+									class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card`}
 								></div>
-						{/snippet}
-					</Block>
-					<!-- </div> -->
-				{/each}
+							{/snippet}
+						</BlockEditor>
+					{/snippet}
+				</VirtualColumn>
 			</div>
 		{/each}
 	</div>
-	<span>{plugin.currentMarkdownDoc}</span>
-	<h1 class="text-lg font-semibold">in plugin</h1>
-	<span>{plugin.currentMarkdownEditor?.getValue()}</span>
-	<pre class="overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(
-			cache,
-			null,
-			2,
-		)}</pre>
 </div>
 
-<style>
-	.number {
-		color: red;
-	}
-</style>
+<!-- <div class="flex flex-col gap-3">
+				<h1>select index: {blockGroup.centerBlockIndex}</h1>
+				{#each blockGroup.blocks as block, blockIndex}
+					<BlockEditor {block} {plugin} {view} {filePath}>
+						{#snippet preview()}
+							<div
+								role="treeitem"
+								aria-selected={block.state !== fork}
+								tabindex="0"
+								onpointerdown={() =>
+									onBlockSelect(columnIndex, blockIndex)}
+								{@attach renderObsidianMarkdown(
+									block.content[0]!.text,
+								)}
+								class={`min-w-75 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card`}
+							></div>
+						{/snippet}
+					</BlockEditor>
+				{/each}
+			</div> -->

@@ -114,4 +114,11 @@
 	.mindmapmd-theme .mmmd-unselected {
 		@apply border-2 border-border bg-accent-foreground/12;
 	}
+
+	.mindmapmd-theme .mmmd-column {
+		scrollbar-width:none;
+		&::-webkit-scrollbar {
+			display: none;
+		}
+	}
 }

@@ -1,10 +1,10 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import "./app.css";
 import { DEFAULT_SETTINGS, MindMapMdSettingTab, type MyPluginSettings } from "./settings";
-import { MindMapMdView, VIEW_TYPE_MINDMAPMD } from "../view/MindMapMdView";
-import { getActiveViewOfType } from "../extension/workspace";
+import { MindMapMdView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
+import { getActiveViewOfType } from "./extension/workspace";
 import { Effect, Option, pipe } from "effect";
-import type { MindMapMdViewState } from '../view/MindMapMd';
+import type { MindMapMdViewState } from './view/MindMapMd';
 
 // Remember to rename these classes and interfaces!
 
