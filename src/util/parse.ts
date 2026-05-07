@@ -101,6 +101,7 @@ export function parseContent2Blocks(content: Content[], root: Root): BlockWithPa
         parent: root,
         startOffset: first!.startOffset,
         endOffset: first!.endOffset,
+        isEdit: false,
     }
     const columns: BlockWithParent[][] = [[firstBlock]];
     const seed = { blocks: columns, node: firstBlock };
@@ -159,6 +160,7 @@ export function traceBackToOrigin(
             parentId: node.id,
             startOffset: currentContent.startOffset,
             endOffset: currentContent.endOffset,
+            isEdit: false,
         };
         blocks[next_column_index]!.push(block);
         return block;
@@ -174,6 +176,7 @@ export function traceBackToOrigin(
             parentId: node.parent.id,
             startOffset: currentContent.startOffset,
             endOffset: currentContent.endOffset,
+            isEdit: false,
         };
         blocks[block.columnIndex]!.push(block);
         return block;

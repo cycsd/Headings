@@ -108,6 +108,7 @@ export type Block = {
     */
     startOffset: number;
     endOffset: number;
+    isEdit: boolean;
 }
 
 export type NonStateBlock = Omit<Block, 'state'>;

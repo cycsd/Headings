@@ -95,5 +95,6 @@
 	bind:this={virtualizer}
 	{startMargin}
 	{onscrollend}
+	getKey={(block) => `${block.id}${block.isEdit}`}
 ></Virtualizer>
 <div style="height: {startMargin}px;"></div>

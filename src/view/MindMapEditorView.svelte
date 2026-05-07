@@ -58,6 +58,10 @@
 		type VirtualizerHandle,
 	} from "virtua/svelte";
 	import VirtualColumn from "./VirtualColumn.svelte";
+	import {
+		createEmbeddableMarkdownEditor,
+		resolveEditorPrototype,
+	} from "../extension/obsidian-markdown-editor";
 
 	interface Props {
 		startCount: number;
@@ -67,9 +71,10 @@
 
 	let { startCount, plugin, view }: Props = $props();
 
-
 	let count = $state(startCount);
 
+	//todo remove cache
+	//應該是不用 cache state, 直接從 updateState 傳入 cache 後更新 blocks sate 就好
 	let cache = $state<CachedMetadata | null>(null);
 	let doc = $state<string | null>(null);
 	let filePath = $state<string | null>(null);
@@ -96,6 +101,7 @@
 		return selected.relativePos ?? { columnIndex: 0, blockIndex: 0 };
 	});
 	// let blockView = $derived.by<BlockView>(() => {
+	// https://svelte.dev/docs/svelte/$derived#Deriveds-and-reactivity
 	let blockView = $derived.by<ColumnLayout[]>(() => {
 		if (blocks.length === 0) return [];
 		const { columnIndex, blockIndex } = selectedPosition;
@@ -110,6 +116,7 @@
 						const state_block: StateBlock = {
 							...b,
 							state: b.id === target ? state : unselected,
+							isEdit: false,
 						};
 						return state_block;
 					}) ?? [];
@@ -155,13 +162,16 @@
 						const state_block: StateBlock = {
 							...b,
 							state: s,
+							isEdit: false,
 						};
 						return state_block;
 					}) ?? [];
 
 				// 應該讓中間的區塊在正中央，所以應該取中間的 block 當作 centerBlockIndex
 				// 這樣如果 block 一多，反而第一個元素有可能超出上邊界...
-				const selected_subblocks = column.filter((b) => b.state === path);
+				const selected_subblocks = column.filter(
+					(b) => b.state === path,
+				);
 				// const center_index = selected_subblocks.length > 0 ?selected_subblocks[Math.floor(selected_subblocks.length / 2)]!.index : -1;
 				const center_index = selected_subblocks.first()?.index ?? -1;
 				const column_layout: ColumnLayout = {
@@ -203,17 +213,40 @@
 		console.log("editor text:", plugin.currentMarkdownEditor?.getValue());
 	}
 
-	function renderObsidianMarkdown(content: string): Attachment {
+	function renderObsidianMarkdown(b: StateBlock): Attachment {
+		let selectedEvent = () => onBlockSelect(b.columnIndex, b.index);
 		return (element: Element) => {
-			if (!filePath) return;
-			element.replaceChildren();
-			MarkdownRenderer.render(
-				plugin.app,
-				content,
-				element as HTMLElement,
-				filePath,
-				view,
-			);
+			const container = element as HTMLElement;
+			container.replaceChildren();
+			const text = b.content[0]!.text;
+			if (b.isEdit) {
+				container.removeEventListener("pointerup", selectedEvent);
+				const m = createEmbeddableMarkdownEditor(
+					plugin.app,
+					container,
+					{
+						value: text,
+						onEnter: (ed, mod, shift) => {
+							if (mod) {
+								console.log("in editor?");
+								b.isEdit = false;
+							}
+							return false;
+						},
+					},
+				);
+			} else {
+				if (!filePath) return;
+				// element.replaceChildren();
+				container.addEventListener("pointerup", selectedEvent);
+				MarkdownRenderer.render(
+					plugin.app,
+					text,
+					container,
+					filePath,
+					view,
+				);
+			}
 			// .then(() => {
 			// 	// After rendering is complete, measure the width and update the column width
 			// 	console.log(
@@ -228,6 +261,26 @@
 		};
 	}
 
+	function renderMarkdownEditor(b: StateBlock): Attachment {
+		return (container: Element) => {
+			container.replaceChildren();
+			const m = createEmbeddableMarkdownEditor(
+				plugin.app,
+				container as HTMLElement,
+				{
+					value: b.content[0]!.text,
+					onEnter: (ed, mod, shift) => {
+						if (mod) {
+							console.log("in editor?");
+							b.isEdit = false;
+						}
+						return false;
+					},
+				},
+			);
+			// return m.destroy;
+		};
+	}
 	function onBlockSelect(columnIndex: number, blockIndex: number) {
 		selected.relativePos = { columnIndex, blockIndex };
 	}
@@ -289,21 +342,34 @@
 			>
 				<VirtualColumn column={blockGroup}>
 					{#snippet children(block, i)}
-						<BlockEditor {block}>
-							{#snippet preview()}
-								<div
-									role="treeitem"
-									aria-selected={block.state !== fork}
-									tabindex="0"
-									onpointerup={() =>
-										onBlockSelect(columnIndex, i)}
-									{@attach renderObsidianMarkdown(
-										block.content[0]!.text,
-									)}
-									class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card`}
-								></div>
-							{/snippet}
-						</BlockEditor>
+						<!-- <BlockEditor {block}> -->
+						<!-- {#snippet preview()} -->
+						<!-- <div> -->
+						<!-- {#if !block.isEdit} -->
+						<div
+							role="treeitem"
+							aria-selected={block.state !== fork}
+							tabindex="0"
+							onkeypress={(e) => {
+								if (e.key === "Enter") {
+									console.log("on preview key press", e.key);
+									block.isEdit = true;
+								}
+							}}
+							// onpointerup={() => onBlockSelect(columnIndex, i)}
+							{@attach renderObsidianMarkdown(block)}
+							class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
+						></div>
+						<!-- {/snippet} -->
+						<!-- {:else} -->
+						<!-- {#snippet edit()} -->
+						<!-- <div
+									{@attach renderMarkdownEditor(block)}
+								></div> -->
+						<!-- {/snippet} -->
+						<!-- {/if} -->
+						<!-- </div> -->
+						<!-- </BlockEditor> -->
 					{/snippet}
 				</VirtualColumn>
 			</div>
