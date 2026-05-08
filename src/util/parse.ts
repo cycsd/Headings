@@ -1,7 +1,9 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State } from "./block_level";
-import { Effect, Match, Random } from "effect";
+import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path } from "./block_level";
+import { Data, Effect, Match, Option, Random } from "effect";
+import type { Position } from "../view/MindMapMd";
+import { range } from "effect/Array";
 
 export const blockquote = 'blockquote';
 export const callout = 'callout';
@@ -82,7 +84,20 @@ export function headingsCacheToMap(
 }
 
 
-type BlockWithParent = Omit<NonStateBlock, 'parent'> & { parent: BlockWithParent | Root };
+type BlockWithParent = Block & { parent: BlockWithParent | Root };
+export function parseCache2BlockView(cache: CachedMetadata, doc: string, root: Root): BlockView {
+    const contents = parseCacheMetadata2Content(cache, doc);
+    const blocks = parseContent2Blocks(contents, root);
+
+    const view = blocks.map(column => {
+        const column_layout: ColumnLayout = {
+            centerBlockIndex: 0,
+            blocks: column,
+        }
+        return column_layout;
+    })
+    return view;
+}
 export function parseContent2Blocks(content: Content[], root: Root): BlockWithParent[][] {
     if (content.length === 0) return [];
     let [first, ...rest] = content;
@@ -101,6 +116,7 @@ export function parseContent2Blocks(content: Content[], root: Root): BlockWithPa
         parent: root,
         startOffset: first!.startOffset,
         endOffset: first!.endOffset,
+        state: unselected,
         isEdit: false,
     }
     const columns: BlockWithParent[][] = [[firstBlock]];
@@ -160,6 +176,7 @@ export function traceBackToOrigin(
             parentId: node.id,
             startOffset: currentContent.startOffset,
             endOffset: currentContent.endOffset,
+            state: unselected,
             isEdit: false,
         };
         blocks[next_column_index]!.push(block);
@@ -176,9 +193,104 @@ export function traceBackToOrigin(
             parentId: node.parent.id,
             startOffset: currentContent.startOffset,
             endOffset: currentContent.endOffset,
+            state: unselected,
             isEdit: false,
         };
         blocks[block.columnIndex]!.push(block);
         return block;
     }
+}
+
+
+export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: Position) {
+    const { columnIndex, blockIndex } = seletedPosition;
+
+    const selectedBlock = view[columnIndex]?.blocks[blockIndex];
+
+    if (!selectedBlock) return;
+
+    const set_road = Effect.loop(
+        Option.fromNullable(selectedBlock).pipe(
+            Option.map(b => {
+                return {
+                    target: b.id,
+                    state: fork,
+                    columnIndex,
+                } as { target: string, state: State, columnIndex: number };
+            })
+        ),
+        {
+            while: (s) => s.pipe(
+                Option.map(({ columnIndex }) => columnIndex),
+                Option.flatMap(Option.liftPredicate(n => n >= 0)),
+                Option.isSome,
+            ),
+            step: (s) => {
+                const selected = Option.gen(function* () {
+                    const { target, columnIndex } = yield* s;
+                    const column_layout = yield* Option.fromNullable(view[columnIndex]);
+
+                    const selected_block = yield* Option.fromNullable(column_layout.blocks.find((b) => b.id === target));
+
+                    column_layout.centerBlockIndex = selected_block.index;
+
+                    return {
+                        target: selected_block.parentId,
+                        state: path,
+                        columnIndex: columnIndex - 1,
+                    } as { target: string, state: State, columnIndex: number };
+                })
+                return selected
+            },
+            body: (s) => {
+                const { target, state, columnIndex } = Option.getOrThrow(s);
+                const column_layout = view[columnIndex]!;
+                for (const b of column_layout.blocks) {
+                    b.state = b.id === target ? state : unselected;
+                }
+                return s
+            }
+        }
+    );
+
+    const r = await Effect.runSync(set_road);
+
+    const set_path = Effect.loop({
+        parents: [selectedBlock.id],
+        columnIndex: columnIndex + 1,
+    }, {
+        while: ({ parents, columnIndex }) => parents.length > 0 && columnIndex < view.length,
+        step: ({ columnIndex }) => {
+            const s = Option.gen(function* () {
+                const column_layout = yield* Option.fromNullable(view[columnIndex]);
+                const blocks = column_layout.blocks;
+
+                const next_parents = blocks.filter(b => b.state === path);
+
+                const center_block = yield* Option.fromNullable(next_parents.first());
+                column_layout.centerBlockIndex = center_block.index;
+                return {
+                    parents: next_parents.map(b => b.id),
+                    columnIndex: columnIndex + 1,
+                };
+            })
+            return s.pipe(Option.getOrElse(() => ({ parents: [], columnIndex: columnIndex + 1 })));
+        },
+        body: (s) => {
+            Option.gen(function* () {
+                const { parents, columnIndex } = s;
+                const column_layout = yield* Option.fromNullable(view[columnIndex]);
+                const blocks = column_layout.blocks;
+                for (const b of blocks) {
+                    b.state = parents.includes(b.parentId) ? path : unselected;
+                }
+            });
+            return Option.some(s);
+        }
+    }
+    );
+
+    const p = await Effect.runPromise(set_path);
+
+    return;
 }

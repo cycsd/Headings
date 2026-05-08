@@ -40,27 +40,19 @@ export class MindMapMdView extends ItemView {
         // Attach the Svelte component to the ItemViews content element and provide the needed props.
 
         // obsidian 一打開執行 onOpen 時 leaf.getViewState() 中的 state 是 undefined 的，所以在 onOpen 時無法取得之前存在 workspace.json 中的 state 資訊。
-        console.log("on obsidian open", this.leaf.getViewState(), this.contentEl);
+        // console.log("on obsidian open", this.leaf.getViewState(), this.contentEl);
 
-        // this.file = this.plugin.currentFile;
-        // this.state = {
-        //     filePath: this.file?.name || "",
-        // };
-
-
-        // if (this.file) {
         this.mindMapEditorView = mount(MindMapEditorView, {
             target: this.contentEl,
             props: {
-                startCount: 5,
+
                 plugin: this.plugin,
                 view: this,
             }
         });
 
-        console.log("on obsidain opened:", this.mindMapEditorView);
+        // console.log("on obsidain opened:", this.mindMapEditorView);
         // }
-        // console.log("Opening After Mount", this.plugin.currentMarkdownEditor);
 
         // Since the component instance is typed, the exported `increment` method is known to TypeScript.
         // this.mindMapEditorView?.increment();
@@ -81,19 +73,8 @@ export class MindMapMdView extends ItemView {
         // 會先執行 onOpen
         // 才會再來執行 setState ，將之前存在 workspace.json 中的 state 取出來，並 setState 給 view
         // 所以應該在這邊也要可以 mount view 元件，因為 onOpen 還沒有辦法取得之前的 state 資訊。
-        console.log("setState", state, result);
+        // console.log("setState", state, result);
 
-        // this.state = state;
-        // if (!this.mindMapEditorView) {
-        //     this.mindMapEditorView = mount(MindMapEditorView, {
-        //         target: this.contentEl,
-        //         props: {
-        //             startCount: 5,
-        //             plugin: this.plugin,
-        //             view: this,
-        //         }
-        //     });
-        // }
 
         const setComponentState = Effect.gen(this, function* () {
             const component = yield* Effect.fromNullable(this.mindMapEditorView)
