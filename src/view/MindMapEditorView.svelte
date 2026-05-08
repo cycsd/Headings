@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import MindMapMdPlugin from "../main";
+	import { MarkdownRenderer } from "obsidian";
 	import {
-		MarkdownRenderer,
-	} from "obsidian";
-	import {
-	parseCache2BlockView,
+		parseCache2BlockView,
 		setBlockViewBreadCrumbs,
+		text,
 	} from "../util/parse";
 	import { mdc } from "../util/utils";
 	import {
@@ -20,16 +19,14 @@
 	import type { ComponentState, Position, Selected } from "./MindMapMd";
 	import type { Attachment } from "svelte/attachments";
 	import VirtualColumn from "./VirtualColumn.svelte";
-	import {
-		createEmbeddableMarkdownEditor,
-	} from "../extension/obsidian-markdown-editor";
-	
+	import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
+
 	interface Props {
 		plugin: MindMapMdPlugin;
 		view: MindMapMdView;
 	}
 
-	let {  plugin, view }: Props = $props();
+	let { plugin, view }: Props = $props();
 
 	let filePath = $state<string | null>(null);
 	let root: Root = $state<Root>({
@@ -66,48 +63,30 @@
 		// const contents = parseCacheMetadata2Content(cache, doc);
 		// const blockGroup = parseContent2Blocks(contents, root);
 		blockView = parseCache2BlockView(cache, doc, root);
-		
-		setBlockViewBreadCrumbs(blockView,selectedPosition);
+
+		setBlockViewBreadCrumbs(blockView, selectedPosition);
 	}
 
 	function renderObsidianMarkdown(b: StateBlock): Attachment {
-		let selectedEvent = () => onBlockSelect(b.columnIndex, b.index);
+		// let selectedEvent = () => onBlockSelect(b.columnIndex, b.index);
 		return (element: Element) => {
 			const container = element as HTMLElement;
 			container.replaceChildren();
 			const text = b.content[0]!.text;
-			if (b.isEdit) {
-				container.removeEventListener("pointerup", selectedEvent);
-				const m = createEmbeddableMarkdownEditor(
-					plugin.app,
-					container,
-					{
-						value: text,
-						cursorLocation:{
-							anchor: text.length,
-							head: text.length,
-						},
-						onEnter: (ed, mod, shift) => {
-							if (mod) {
-								console.log("in editor?");
-								b.isEdit = false;
-							}
-							return mod;
-						},
-					},
-				);
-			} else {
-				if (!filePath) return;
-				// element.replaceChildren();
-				container.addEventListener("pointerup", selectedEvent);
-				MarkdownRenderer.render(
-					plugin.app,
-					text,
-					container,
-					filePath,
-					view,
-				);
+			if (!filePath) return;
+			if(b.state === fork){
+				container.focus();
 			}
+			// element.replaceChildren();
+			// container.addEventListener("pointerup", selectedEvent);
+			MarkdownRenderer.render(
+				plugin.app,
+				text,
+				container,
+				filePath,
+				view,
+			);
+			// }
 			// .then(() => {
 			// 	// After rendering is complete, measure the width and update the column width
 			// 	console.log(
@@ -125,26 +104,31 @@
 	function renderMarkdownEditor(b: StateBlock): Attachment {
 		return (container: Element) => {
 			container.replaceChildren();
+			const value = b.content[0]!.text;
 			const m = createEmbeddableMarkdownEditor(
 				plugin.app,
 				container as HTMLElement,
 				{
-					value: b.content[0]!.text,
+					value,
+					cursorLocation: {
+						head: value.length,
+						anchor: value.length,
+					},
 					onEnter: (ed, mod, shift) => {
 						if (mod) {
-							console.log("in editor?");
 							b.isEdit = false;
 						}
-						return false;
+						return mod;
 					},
 				},
 			);
+
 			// return m.destroy;
 		};
 	}
 	function onBlockSelect(columnIndex: number, blockIndex: number) {
 		selected.relativePos = { columnIndex, blockIndex };
-		setBlockViewBreadCrumbs(blockView,selectedPosition);
+		setBlockViewBreadCrumbs(blockView, selectedPosition);
 	}
 
 	let columnWidthMap = $state.raw<Record<number, number>>({});
@@ -159,8 +143,7 @@
 		}
 	}
 
-	onMount(() => {
-	});
+	onMount(() => {});
 </script>
 
 <div class="mindmapmd-theme">
@@ -175,29 +158,31 @@
 						<!-- <BlockEditor {block}> -->
 						<!-- {#snippet preview()} -->
 						<!-- <div> -->
-						<!-- {#if !block.isEdit} -->
-						<div
-							role="treeitem"
-							aria-selected={block.state !== fork}
-							tabindex="0"
-							onkeypress={(e) => {
-								if (e.key === "Enter") {
-									block.isEdit = true;
-								}
-							}}
-							ondblclick={() => (block.isEdit = true)}
-							// onpointerup={() => onBlockSelect(columnIndex, i)}
-							{@attach renderObsidianMarkdown(block)}
-							class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
-						></div>
-						<!-- {/snippet} -->
-						<!-- {:else} -->
-						<!-- {#snippet edit()} -->
-						<!-- <div
-									{@attach renderMarkdownEditor(block)}
-								></div> -->
-						<!-- {/snippet} -->
-						<!-- {/if} -->
+						{#if !block.isEdit}
+							<div
+								role="treeitem"
+								aria-selected={block.state === fork}
+								tabindex="0"
+								onkeydown={(e) => {
+									if (e.key === "Enter") {
+										block.isEdit = true;
+									}
+								}}
+								ondblclick={() => (block.isEdit = true)}
+								onclick={() => onBlockSelect(columnIndex, i)}
+								// onpointerup={() => onBlockSelect(columnIndex, i)}
+								{@attach renderObsidianMarkdown(block)}
+								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
+							></div>
+							<!-- {/snippet} -->
+						{:else}
+							<!-- {#snippet edit()} -->
+							<div
+								{@attach renderMarkdownEditor(block)}
+								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
+							></div>
+							<!-- {/snippet} -->
+						{/if}
 						<!-- </div> -->
 						<!-- </BlockEditor> -->
 					{/snippet}
@@ -206,5 +191,3 @@
 		{/each}
 	</div>
 </div>
-
-
