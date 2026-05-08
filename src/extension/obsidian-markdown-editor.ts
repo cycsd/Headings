@@ -298,6 +298,7 @@ export class EmbeddableMarkdownEditor {
 
         // Set cursor position if specified
         if (options.cursorLocation && this.editor.editor?.cm) {
+            this.editor.editor.cm.focus();
             this.editor.editor.cm.dispatch({
                 selection: EditorSelection.range(
                     options.cursorLocation.anchor,
