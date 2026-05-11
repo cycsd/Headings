@@ -45,7 +45,6 @@ export class MindMapMdView extends ItemView {
         this.mindMapEditorView = mount(MindMapEditorView, {
             target: this.contentEl,
             props: {
-
                 plugin: this.plugin,
                 view: this,
             }
@@ -99,8 +98,12 @@ export class MindMapMdView extends ItemView {
         await Effect.runPromiseExit(setComponentState);
 
         const savedState = this.stateMapping2Save(this.state);
-        console.log("Saving state to workspace.json", savedState);
+
         await super.setState(savedState, result);
+
+        // const workspace_leaf = this.containerEl.parentElement;
+        // if (workspace_leaf?.classList.contains("mod-active"))
+        //     this.mindMapEditorView?.focus();
         return
     }
 

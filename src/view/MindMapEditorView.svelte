@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import MindMapMdPlugin from "../main";
 	import { MarkdownRenderer } from "obsidian";
 	import {
@@ -13,13 +13,28 @@
 		type Block as StateBlock,
 		type Root,
 		fork,
-	} from "../util/block_level";
+	} from "../util/block-level";
 	import { range } from "effect/Array";
 	import type { MindMapMdView } from "./MindMapMdView";
 	import type { ComponentState, Position, Selected } from "./MindMapMd";
 	import type { Attachment } from "svelte/attachments";
 	import VirtualColumn from "./VirtualColumn.svelte";
 	import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
+	import {
+		MOVE_DOWN,
+		MOVE_LEFT,
+		MOVE_RIGHT,
+		MOVE_UP,
+		type ShortcutAction,
+	} from "../util/hot-key";
+	import { Effect, Option } from "effect";
+	import {
+		createHotkey,
+		createHotkeys,
+		createHotkeysAttachment,
+		NAVIGATION_KEYS,
+	} from "@tanstack/svelte-hotkeys";
+	import { clamp } from "effect/Number";
 
 	interface Props {
 		plugin: MindMapMdPlugin;
@@ -27,6 +42,46 @@
 	}
 
 	let { plugin, view }: Props = $props();
+
+	let self: HTMLElement;
+	let selected_element: HTMLElement;
+	const defaultKeyMaps: ShortcutAction = $state({
+		MOVE_UP: {
+			hotkey: MOVE_UP,
+			callback: () => {
+				next(-1);
+			},
+		},
+		MOVE_DOWN: {
+			hotkey: MOVE_DOWN,
+			callback: () => {
+				next(1);
+			},
+		},
+		MOVE_LEFT: {
+			hotkey: MOVE_LEFT,
+			callback: () => {
+				accross_column(-1);
+			},
+		},
+		MOVE_RIGHT: {
+			hotkey: MOVE_RIGHT,
+			callback: () => {
+				accross_column(1);
+			},
+		},
+	});
+
+	const hotkeysAttachment = createHotkeysAttachment(() =>
+		Object.keys(defaultKeyMaps).map((k) => {
+			const { hotkey, callback } =
+				defaultKeyMaps[k as keyof typeof defaultKeyMaps]!;
+			return {
+				hotkey,
+				callback,
+			};
+		}),
+	);
 
 	let filePath = $state<string | null>(null);
 	let root: Root = $state<Root>({
@@ -62,9 +117,65 @@
 		root.fileName = file.name;
 		// const contents = parseCacheMetadata2Content(cache, doc);
 		// const blockGroup = parseContent2Blocks(contents, root);
-		blockView = parseCache2BlockView(cache, doc, root);
 
-		setBlockViewBreadCrumbs(blockView, selectedPosition);
+		blockView = parseCache2BlockView(cache, doc, root);
+		// console.log("set state");
+
+		// setBlockViewBreadCrumbs(blockView, selectedPosition);
+	}
+
+	export function focus() {
+		selected_element?.focus();
+	}
+
+	function accross_column(offset: number) {
+		Option.gen(function* () {
+			const len = yield* blockView.length === 0
+				? Option.none()
+				: Option.some(blockView.length);
+			const { columnIndex } = selectedPosition;
+			const next_column_index = columnIndex + offset;
+			const x =
+				next_column_index >= len
+					? next_column_index - len
+					: next_column_index < 0
+						? len + next_column_index
+						: next_column_index;
+
+			const y = blockView.at(x)!.centerBlockIndex;
+
+			move_to(x, y);
+		});
+	}
+
+	// todo
+	// 尋找下一段落，基本上先以右邊的 center block 預設為下一段落（對 header 通常而言是如此）
+	// 如果已經是最右邊了，則先以同一 column 的下一個 block 預設為下一段落，
+	// 但需要先繼續往左邊找，只要可以找到 block 的 start offset 距離目前段落越小越好 （則該 block 才是下一段落） （對 paragraph 通常而言是如此）
+	// 如果是最底的段落則跳回最一開頭的段落
+	function find_next() {
+		const { columnIndex, blockIndex } = selectedPosition;
+
+		const next_column_index = columnIndex + 1;
+	}
+
+	function move_to(x: number, y: number) {
+		selected.relativePos = {
+			columnIndex: x,
+			blockIndex: y,
+		};
+	}
+
+	function next(offset: number) {
+		const { blockIndex, columnIndex } = selectedPosition;
+
+		const x = columnIndex;
+		const len = blockView.at(x)!.blocks.length;
+		const next_y = blockIndex + offset;
+		const y =
+			next_y >= len ? next_y - len : next_y < 0 ? len + next_y : next_y;
+
+		move_to(x, y);
 	}
 
 	function renderObsidianMarkdown(b: StateBlock): Attachment {
@@ -74,8 +185,16 @@
 			container.replaceChildren();
 			const text = b.content[0]!.text;
 			if (!filePath) return;
-			if(b.state === fork){
-				container.focus();
+			if (b.state === fork) {
+				selected_element = container;
+				// tick().then(()=>container.focus());
+				// todo focus
+				// 最一開始進畫面 focus 無反應，即使用 tick 也一樣
+				// 需要用 setTimeout 才能成功 focus，原因不明，需要確認
+				setTimeout(() => {
+					container.focus();
+				}, 0);
+				// console.log("focus element after", document.activeElement);
 			}
 			// element.replaceChildren();
 			// container.addEventListener("pointerup", selectedEvent);
@@ -128,9 +247,14 @@
 	}
 	function onBlockSelect(columnIndex: number, blockIndex: number) {
 		selected.relativePos = { columnIndex, blockIndex };
-		setBlockViewBreadCrumbs(blockView, selectedPosition);
+		// setBlockViewBreadCrumbs(blockView, selectedPosition);
+		console.log("select block", columnIndex, blockIndex);
 	}
 
+	$effect(() => {
+		// console.log("execute effect");
+		setBlockViewBreadCrumbs(blockView, selectedPosition);
+	});
 	let columnWidthMap = $state.raw<Record<number, number>>({});
 
 	function updateColumnWidth(columnIndex: number, width: number) {
@@ -143,10 +267,23 @@
 		}
 	}
 
-	onMount(() => {});
+	onMount(() => {
+		// workspace-leaf-content
+		// hotkeysAttachment(self.parentElement!.parentElement!.parentElement!);
+		// console.log(
+		// 	"mount parent element",
+		// 	self.parentElement!.parentElement!.parentElement!,
+		// );
+		// self.focus();
+	});
 </script>
 
-<div class="mindmapmd-theme">
+<div
+	class="mindmapmd-theme"
+	tabindex="-1"
+	{@attach hotkeysAttachment}
+	bind:this={self}
+>
 	<div class="grid grid-flow-col gap-10 overflow-auto">
 		{#each blockView as blockGroup, columnIndex}
 			<div

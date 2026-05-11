@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Virtualizer, type VirtualizerHandle } from "virtua/svelte";
-	import type { ColumnLayout } from "../util/block_level";
+	import type { ColumnLayout } from "../util/block-level";
 	import { onMount, tick, type Snippet } from "svelte";
 	interface Props {
 		column: ColumnLayout;
@@ -95,6 +95,5 @@
 	bind:this={virtualizer}
 	{startMargin}
 	{onscrollend}
-	getKey={(block) => `${block.id}${block.isEdit}`}
 ></Virtualizer>
 <div style="height: {startMargin}px;"></div>

@@ -1,6 +1,6 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path } from "./block_level";
+import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path } from "./block-level";
 import { Data, Effect, Match, Option, Random } from "effect";
 import type { Position } from "../view/MindMapMd";
 import { range } from "effect/Array";
@@ -259,7 +259,7 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
         parents: [selectedBlock.id],
         columnIndex: columnIndex + 1,
     }, {
-        while: ({ parents, columnIndex }) => parents.length > 0 && columnIndex < view.length,
+        while: ({ parents, columnIndex }) => columnIndex < view.length,
         step: ({ columnIndex }) => {
             const s = Option.gen(function* () {
                 const column_layout = yield* Option.fromNullable(view[columnIndex]);
@@ -267,6 +267,8 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
 
                 const next_parents = blocks.filter(b => b.state === path);
 
+                //todo find visual center block
+                //應找距離上一層範圍內的區塊，如果沒有則找被選取的區塊最近的區塊。
                 const center_block = yield* Option.fromNullable(next_parents.first());
                 column_layout.centerBlockIndex = center_block.index;
                 return {

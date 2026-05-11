@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { toggle } from "effect/HashSet";
-	import type { Block } from "../util/block_level";
+	import type { Block } from "../util/block-level";
 	import type { Snippet } from "svelte";
 
 	interface Props {
