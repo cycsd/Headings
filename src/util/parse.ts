@@ -1,7 +1,7 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
 import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path } from "./block-level";
-import { Data, Effect, Match, Option, Random } from "effect";
+import { Data, Effect, Match, Option, pipe, Random } from "effect";
 import type { Position } from "../view/MindMapMd";
 import { range } from "effect/Array";
 
@@ -204,11 +204,13 @@ export function traceBackToOrigin(
 
 export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: Position) {
     const { columnIndex, blockIndex } = seletedPosition;
-
-    const selectedBlock = view[columnIndex]?.blocks[blockIndex];
+    const curr_column = view.at(columnIndex);
+    const selectedBlock = curr_column?.blocks.at(blockIndex);
 
     if (!selectedBlock) return;
 
+    //todo fork
+    //與 fork 同層級需要顯示同一群組的group，這樣視覺上才好辨認
     const set_road = Effect.loop(
         Option.fromNullable(selectedBlock).pipe(
             Option.map(b => {
@@ -257,34 +259,48 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
 
     const set_path = Effect.loop({
         parents: [selectedBlock.id],
+        start: selectedBlock.endOffset,
+        end: pipe(Option.fromNullable(curr_column?.blocks.at(selectedBlock.index + 1)?.startOffset),
+            Option.getOrElse(() => Infinity),
+        ),
         columnIndex: columnIndex + 1,
     }, {
         while: ({ parents, columnIndex }) => columnIndex < view.length,
-        step: ({ columnIndex }) => {
+        step: ({ columnIndex, start, end }) => {
             const s = Option.gen(function* () {
                 const column_layout = yield* Option.fromNullable(view[columnIndex]);
                 const blocks = column_layout.blocks;
 
                 const next_parents = blocks.filter(b => b.state === path);
 
-                //todo find visual center block
+
                 //應找距離上一層範圍內的區塊，如果沒有則找被選取的區塊最近的區塊。
-                const center_block = yield* Option.fromNullable(next_parents.first());
-                column_layout.centerBlockIndex = center_block.index;
+                const center_block = yield* Option.fromNullable(next_parents.first())
+                    .pipe(Option.orElse(() => {
+                        const closest_block = blocks.find(b => b.startOffset >= start);
+                        return Option.some(closest_block ?? blocks.at(-1)!);
+                    }))
+
+                // 如果新的 centerBlockIndex 與舊的 centerBlockIndex 屬於同一個群組，則保持不變，這樣視覺效果比較好
+                const old_center_block = yield* Option.fromNullable(column_layout.blocks.at(column_layout.centerBlockIndex));
+                if (old_center_block.parentId !== center_block.parentId)
+                    column_layout.centerBlockIndex = center_block.index;
                 return {
                     parents: next_parents.map(b => b.id),
                     columnIndex: columnIndex + 1,
+                    start,
+                    end,
                 };
             })
-            return s.pipe(Option.getOrElse(() => ({ parents: [], columnIndex: columnIndex + 1 })));
+            return s.pipe(Option.getOrElse(() => ({ parents: [], columnIndex: columnIndex + 1, start, end })));
         },
         body: (s) => {
             Option.gen(function* () {
-                const { parents, columnIndex } = s;
+                const { parents, columnIndex, start, end } = s;
                 const column_layout = yield* Option.fromNullable(view[columnIndex]);
                 const blocks = column_layout.blocks;
                 for (const b of blocks) {
-                    b.state = parents.includes(b.parentId) ? path : unselected;
+                    b.state = start <= b.startOffset && b.startOffset < end ? path : unselected;
                 }
             });
             return Option.some(s);
