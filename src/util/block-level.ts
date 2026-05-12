@@ -3,11 +3,17 @@
 export const road = 'road';
 //代表當前被選擇的 Block
 export const fork = 'fork';
+//代表當前 fork 的 sibling (同一 parent 底下的 block)
+export const sibling = 'sibling';
 //代表當前被選擇的 Block (road) 的所有 descendant
 export const path = 'path';
+//比當前 fork 更前面的段落
+export const upper_path = 'upper-path';
+//比當前 fork 更後面的段落
+export const lower_path = 'lower-path';
 //代表跟當前被選擇的 Block 沒有關係的 Block （不在同一群組的 Block)
 export const unselected = 'unselected';
-const states = [road, fork, path, unselected] as const;
+const states = [road, fork, sibling, path, upper_path, lower_path, unselected] as const;
 export type State = typeof states[number];
 
 //todo

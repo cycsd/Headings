@@ -103,12 +103,24 @@
 		@apply border-2 border-s-amber-400;
 	}
 
+	.mindmapmd-theme .mmmd-upper-path {
+		@apply border-l-2 border-dashed border-s-blue-300;
+	}
+
+	.mindmapmd-theme .mmmd-lower-path {
+		@apply border-l-2 border-dashed border-s-green-300;
+	}
+
 	.mindmapmd-theme .mmmd-road {
 		@apply border-2 border-e-amber-400;
 	}
 
 	.mindmapmd-theme .mmmd-fork {
 		@apply border-2 border-amber-400;
+	}
+
+	.mindmapmd-theme .mmmd-sibling {
+		@apply border-x-2 border-dashed border-x-amber-400/50;
 	}
 
 	.mindmapmd-theme .mmmd-unselected {

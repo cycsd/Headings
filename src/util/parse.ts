@@ -1,6 +1,6 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path } from "./block-level";
+import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
 import { Data, Effect, Match, Option, pipe, Random } from "effect";
 import type { Position } from "../view/MindMapMd";
 import { range } from "effect/Array";
@@ -209,16 +209,25 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
 
     if (!selectedBlock) return;
 
-    //todo fork
+
     //與 fork 同層級需要顯示同一群組的group，這樣視覺上才好辨認
+    for (const b of curr_column!.blocks) {
+        b.state = b.id === selectedBlock.id
+            ? fork
+            : b.parentId === selectedBlock.parentId
+                ? sibling
+                : unselected;
+    }
+    curr_column!.centerBlockIndex = selectedBlock.index;
+
+
     const set_road = Effect.loop(
         Option.fromNullable(selectedBlock).pipe(
             Option.map(b => {
                 return {
-                    target: b.id,
-                    state: fork,
-                    columnIndex,
-                } as { target: string, state: State, columnIndex: number };
+                    target: b.parentId,
+                    columnIndex: columnIndex - 1,
+                };
             })
         ),
         {
@@ -238,19 +247,18 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
 
                     return {
                         target: selected_block.parentId,
-                        state: path,
                         columnIndex: columnIndex - 1,
-                    } as { target: string, state: State, columnIndex: number };
+                    };
                 })
                 return selected
             },
             body: (s) => {
-                const { target, state, columnIndex } = Option.getOrThrow(s);
-                const column_layout = view[columnIndex]!;
+                const { target, columnIndex } = Option.getOrThrow(s);
+                const column_layout = view.at(columnIndex)!;
                 for (const b of column_layout.blocks) {
-                    b.state = b.id === target ? state : unselected;
+                    b.state = b.id === target ? road : unselected;
                 }
-                return s
+                return s;
             }
         }
     );
@@ -295,15 +303,22 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
             return s.pipe(Option.getOrElse(() => ({ parents: [], columnIndex: columnIndex + 1, start, end })));
         },
         body: (s) => {
-            Option.gen(function* () {
+            const b = Option.gen(function* () {
                 const { parents, columnIndex, start, end } = s;
-                const column_layout = yield* Option.fromNullable(view[columnIndex]);
+                const column_layout = yield* Option.fromNullable(view.at(columnIndex));
                 const blocks = column_layout.blocks;
                 for (const b of blocks) {
-                    b.state = start <= b.startOffset && b.startOffset < end ? path : unselected;
+                    b.state = b.startOffset < start
+                        ? upper_path
+                        : b.endOffset > end
+                            ? lower_path
+                            : path;
+
+                    // start <= b.startOffset && b.startOffset < end ? path : unselected;
                 }
+                return blocks;
             });
-            return Option.some(s);
+            return b;
         }
     }
     );
