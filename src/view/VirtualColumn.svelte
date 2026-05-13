@@ -43,12 +43,15 @@
 			// smooth 如果是 true，用滑鼠點擊是沒問題，但如果用鍵盤控制不曉得為什麼只要該畫面有那個元素就不會滾動，
 			// tick (micro) 無法解決，一樣需要 setTimeout (marcro)。
 			// 推測 smooth 滾動需要畫面更新後重新計算才會正確，用鍵盤控制的話會在畫面更新前就觸發滾動，導致滾動位置不正確。
-			setTimeout(() => {
+			// 有知道問題了，我會在 block render 的時候 focus 該元素讓他監聽鍵盤事件用以進到 editor mode
+			// 但我沒有將 preventScroll 設為 true，導致每次 focus 都會觸發 scroll，
+			// 所以如果使用鍵盤會先觸發 scrollIntoView 後， focus 的 scrll 也再次觸發造成沒有動作。
+			// setTimeout(() => {
 				virtualizer?.scrollToIndex(index + 1, {
-					align: "center",
+					align: "center",//todo 如果沒有 subpath 且其他 block 都小於當前 block 是否 align 至 end 就好？(加上 header block 拉長)
 					smooth: smooth,
 				});
-			}, 0);
+			// }, 0);
 		}
 		// if (columni === 2) {
 		// 	console.log("cache?", virtualizer?.getCache());

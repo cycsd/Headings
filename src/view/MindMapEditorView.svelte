@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from "svelte";
 	import MindMapMdPlugin from "../main";
-	import { MarkdownRenderer } from "obsidian";
+	import { MarkdownRenderer, MarkdownView } from "obsidian";
 	import {
 		parseCache2BlockView,
 		setBlockViewBreadCrumbs,
@@ -21,6 +21,7 @@
 	import VirtualColumn from "./VirtualColumn.svelte";
 	import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
 	import {
+	LOCK_TO_CENTER,
 		MOVE_DOWN,
 		MOVE_LEFT,
 		MOVE_RIGHT,
@@ -45,6 +46,8 @@
 
 	let self: HTMLElement;
 	let selected_element: HTMLElement;
+	let lock_to_center = $state(true);
+	//todo detect conflict with obsidian default hotkeys and ask user to resolve conflict by changing hotkeys or disable default hotkeys
 	const defaultKeyMaps: ShortcutAction = $state({
 		MOVE_UP: {
 			hotkey: MOVE_UP,
@@ -70,6 +73,13 @@
 				accross_column(1);
 			},
 		},
+		LOCK_TO_CENTER:{
+			hotkey:LOCK_TO_CENTER,
+			callback:()=>{
+				console.log("toggle lock to center", lock_to_center);
+				lock_to_center = !lock_to_center;
+			}
+		}
 	});
 
 	const hotkeysAttachment = createHotkeysAttachment(() =>
@@ -149,7 +159,7 @@
 	}
 
 	// todo
-	// 尋找下一段落，基本上先以右邊的 center block 預設為下一段落（對 header 通常而言是如此）
+	// 尋找下一段落，基本上先以右邊的 center block 預設為下一段落（對 header 通常而言是如此）（可能也不是，因為為了視覺效果，center block 可能是該群組使用者上次點擊的，所以還是要重找該群組的第一個
 	// 如果已經是最右邊了，則先以同一 column 的下一個 block 預設為下一段落，
 	// 但需要先繼續往左邊找，只要可以找到 block 的 start offset 距離目前段落越小越好 （則該 block 才是下一段落） （對 paragraph 通常而言是如此）
 	// 如果是最底的段落則跳回最一開頭的段落
@@ -178,10 +188,10 @@
 		move_to(x, y);
 	}
 
-	function renderObsidianMarkdown(b: StateBlock): Attachment {
+	function renderObsidianMarkdown(b: StateBlock): Attachment<HTMLElement> {
 		// let selectedEvent = () => onBlockSelect(b.columnIndex, b.index);
-		return (element: Element) => {
-			const container = element as HTMLElement;
+		return (element: HTMLElement) => {
+			const container = element;
 			container.replaceChildren();
 			const text = b.content[0]!.text;
 			if (!filePath) return;
@@ -192,7 +202,7 @@
 				// 最一開始進畫面 focus 無反應，即使用 tick 也一樣
 				// 需要用 setTimeout 才能成功 focus，原因不明，需要確認
 				setTimeout(() => {
-					container.focus();
+					container.focus({preventScroll: true});
 				}, 0);
 				// console.log("focus element after", document.activeElement);
 			}
@@ -220,35 +230,46 @@
 		};
 	}
 
-	function renderMarkdownEditor(b: StateBlock): Attachment {
-		return (container: Element) => {
+	function renderMarkdownEditor(b: StateBlock): Attachment<HTMLElement> {
+		return (container: HTMLElement) => {
 			container.replaceChildren();
 			const value = b.content[0]!.text;
-			const m = createEmbeddableMarkdownEditor(
-				plugin.app,
-				container as HTMLElement,
-				{
-					value,
-					cursorLocation: {
-						head: value.length,
-						anchor: value.length,
-					},
-					onEnter: (ed, mod, shift) => {
-						if (mod) {
-							b.isEdit = false;
-						}
-						return mod;
-					},
+			const m = createEmbeddableMarkdownEditor(plugin.app, container, {
+				value,
+				cursorLocation: {
+					head: value.length,
+					anchor: value.length,
 				},
-			);
+				onEnter: (ed, mod, shift) => {
+					if (mod) {
+						b.isEdit = false;
+					}
+					return mod;
+				},
+			});
 
 			// return m.destroy;
 		};
 	}
+
+	function move_column_to_center(
+		columnIndex: number,
+	): Attachment<HTMLElement> {
+		return (col: HTMLElement) => {
+			if (columnIndex !== selectedPosition.columnIndex || !lock_to_center) return;
+			//console.log("move column to center", columnIndex);
+
+			col.scrollIntoView({
+				behavior: "smooth",
+				inline: "center",
+			});
+		};
+	}
+
 	function onBlockSelect(columnIndex: number, blockIndex: number) {
 		selected.relativePos = { columnIndex, blockIndex };
 		// setBlockViewBreadCrumbs(blockView, selectedPosition);
-		console.log("select block", columnIndex, blockIndex);
+		// console.log("select block", columnIndex, blockIndex);
 	}
 
 	$effect(() => {
@@ -289,6 +310,7 @@
 			<div
 				class={`h-screen overflow-y-auto p-10 min-w-100 ${mdc("column")}`}
 				style="overflow-anchor: none;"
+				{@attach move_column_to_center(columnIndex)}
 			>
 				<VirtualColumn column={blockGroup}>
 					{#snippet children(block, i)}
@@ -309,6 +331,7 @@
 								onclick={() => onBlockSelect(columnIndex, i)}
 								// onpointerup={() => onBlockSelect(columnIndex, i)}
 								{@attach renderObsidianMarkdown(block)}
+								//todo 使用者可以設定最大高度，超過的話就顯示 scroll
 								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
 							></div>
 							<!-- {/snippet} -->

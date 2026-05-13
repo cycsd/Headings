@@ -15,6 +15,7 @@ export const COMMON_KEY = {
     END: "End",
     PAGE_UP: "PageUp",
     PAGE_DOWN: "PageDown",
+    LOCK_TO_CENTER: "Control+Shift+K",
 } as const;
 
 export const {
@@ -31,6 +32,7 @@ export const {
     END,
     PAGE_UP,
     PAGE_DOWN,
+    LOCK_TO_CENTER,
 } = COMMON_KEY;
 
 export type KeyLogic = keyof typeof COMMON_KEY;
