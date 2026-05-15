@@ -263,6 +263,7 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
         }
     );
 
+    //todo return breadcrumbs
     const r = await Effect.runSync(set_road);
 
     const set_path = Effect.loop({

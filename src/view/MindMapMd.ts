@@ -6,7 +6,6 @@ export type MindMapMdViewState = {
     filePath: string|null;
     file: TFile|null;
     doc: string | null;
-    cached: CachedMetadata | null;
 }
 
 export type MindMapMdViewStateSave = Pick<MindMapMdViewState, "filePath">;

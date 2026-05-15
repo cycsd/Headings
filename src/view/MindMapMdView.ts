@@ -20,7 +20,6 @@ export class MindMapMdView extends ItemView {
         filePath: null,
         file: null,
         doc: null,
-        cached: null,
     };
 
     private cacheChagedEventRef: EventRef | null = null;
@@ -36,21 +35,14 @@ export class MindMapMdView extends ItemView {
     }
     constructor(leaf: WorkspaceLeaf, private plugin: MindMapMdPlugin) {
         super(leaf);
-        // if (this.plugin.currentFile) {
-        //     this.state = {
-        //         filePath: this.plugin.currentFile.name,
-        //     }
-        //     this.file = this.plugin.currentFile;
-        // }
     }
 
     async onOpen() {
         // Attach the Svelte component to the ItemViews content element and provide the needed props.
 
         // obsidian 一打開執行 onOpen 時 leaf.getViewState() 中的 state 是 undefined 的，所以在 onOpen 時無法取得之前存在 workspace.json 中的 state 資訊。
+
         // console.log("on obsidian open", this.leaf.getViewState(), this.contentEl);
-
-
         this.mindMapEditorView = mount(MindMapEditorView, {
             target: this.contentEl,
             props: {
@@ -58,12 +50,9 @@ export class MindMapMdView extends ItemView {
                 view: this,
                 docService: {
                     save: (doc: string) => {
-                        const date = new Date();
                         //todo vaul.process 效能
                         // 再確認 vault.process 是否也只是先寫進 cache,如果是的話這邊應該不用 debouce
                         return this.plugin.app.vault.process(this.state.file!, (data) => {
-                            console.log("Saving doc to vault, data === doc?", data === doc);
-                            console.log("use time:", new Date().getTime() - date.getTime());
                             return doc;
                         });
 
@@ -78,9 +67,7 @@ export class MindMapMdView extends ItemView {
                 const exist_file = yield* Option.fromNullable(this.state.file)
                     .pipe(Option.filter(f => f.path === file.path));
 
-                console.log("cache changed, exist file in state?", exist_file, doc);
                 const component = yield* Effect.fromNullable(this.mindMapEditorView);
-                // console.log("set state", cached);
                 component.setState({
                     file,
                     cached,
@@ -90,11 +77,6 @@ export class MindMapMdView extends ItemView {
             await Effect.runPromise(program);
         });
 
-        // console.log("on obsidain opened:", this.mindMapEditorView);
-        // }
-
-        // Since the component instance is typed, the exported `increment` method is known to TypeScript.
-        // this.mindMapEditorView?.increment();
     }
 
     async onClose() {
@@ -109,16 +91,9 @@ export class MindMapMdView extends ItemView {
 
     //如果想要 refresh 畫面可能可以藉由這個來控制
     async setState(state: MindMapMdViewState, result: ViewStateResult) {
-        // console.log("setState", state, result);
-        // this.fileName = state.fileName;
         // 如果是 obsidian 一開始開啟 vault 會找 workspace.json ，如果看到 view type 是這個 plugin
         // 會先執行 onOpen
         // 才會再來執行 setState ，將之前存在 workspace.json 中的 state 取出來，並 setState 給 view
-        // 所以應該在這邊也要可以 mount view 元件，因為 onOpen 還沒有辦法取得之前的 state 資訊。
-
-        console.log("setState in MindMd View", state, result);
-
-
 
         const setComponentState = Effect.gen(this, function* () {
             const component = yield* Effect.fromNullable(this.mindMapEditorView)
@@ -131,7 +106,6 @@ export class MindMapMdView extends ItemView {
                 doc,
             });
 
-            // console.log("Component state set with file and cache:", state, cache);
             this.state = {
                 ...state,
                 file,
@@ -146,8 +120,7 @@ export class MindMapMdView extends ItemView {
 
         await super.setState(savedState, result);
 
-        // const workspace_leaf = this.containerEl.parentElement;
-        // if (workspace_leaf?.classList.contains("mod-active"))
+        
         //     this.mindMapEditorView?.focus();
         return
     }
@@ -165,9 +138,7 @@ export class MindMapMdView extends ItemView {
                         .pipe(Effect.flatMap(path => getFileByPath(this.plugin.app.vault, path))),
                     ));
 
-            const cached = yield* Effect.fromNullable(state.cached)
-                .pipe(Effect.orElse(() => Effect.fromNullable(this.plugin.app.metadataCache.getFileCache(file))
-                ))
+            const cached = yield* Effect.fromNullable(this.plugin.app.metadataCache.getFileCache(file))
 
             const doc = yield* Effect.fromNullable(state.doc).pipe(
                 Effect.orElse(() => cachedRead(this.plugin.app.vault, file))

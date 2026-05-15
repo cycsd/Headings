@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
+	import { onMount } from "svelte";
 	import MindMapMdPlugin from "../main";
-	import { MarkdownRenderer, MarkdownView } from "obsidian";
+	import { MarkdownRenderer } from "obsidian";
 	import {
 		parseCache2BlockView,
 		setBlockViewBreadCrumbs,
-		text,
 	} from "../util/parse";
 	import { mdc } from "../util/utils";
 	import {
@@ -28,23 +27,12 @@
 		MOVE_UP,
 		type ShortcutAction,
 	} from "../util/hot-key";
-	import {
-		Annotation,
-		EditorState,
-		type TransactionSpec,
-	} from "@codemirror/state";
-	import { history, undo, redo } from "@codemirror/commands";
-	import { Effect, Option } from "effect";
-	import {
-		createHotkey,
-		createHotkeys,
-		createHotkeysAttachment,
-		NAVIGATION_KEYS,
-	} from "@tanstack/svelte-hotkeys";
-	import { clamp } from "effect/Number";
+	import { Annotation } from "@codemirror/state";
+	import { history } from "@codemirror/commands";
+	import { Option } from "effect";
+	import { createHotkeysAttachment } from "@tanstack/svelte-hotkeys";
 	import { EditorView } from "@codemirror/view";
 	import type { DocumentService } from "../service/document-service";
-	import { is } from "effect/ParseResult";
 
 	interface Props {
 		plugin: MindMapMdPlugin;
@@ -56,45 +44,18 @@
 
 	let self: HTMLElement;
 
-	let is_outer_refresh = false;
-	let prev_save_action: number | null = null; // let fake_dom = document.createElement("div");
-	let external_update_annotation = Annotation.define<true>();
-	// let file_state = EditorState.create({
-	// 	doc: "",
-	// 	extensions: [
-	// 		history(),
-	// 		EditorView.updateListener.of((update) => {
-	// 			if (
-	// 				!update.docChanged ||
-	// 				update.transactions.some((tr) =>
-	// 					tr.annotation(external_update_annotation),
-	// 				)
-	// 			) {
-	// 				console.log(
-	// 					"ignore update from external refresh",
-	// 					update.docChanged,
-	// 				);
-	// 				return;
-	// 			}
-	// 			if (prev_save_action !== null) {
-	// 				cancelAnimationFrame(prev_save_action);
-	// 			}
-	// 			prev_save_action = requestAnimationFrame(async () => {
-	// 				await docService.save(update.state.doc.toString());
-	// 			});
-	// 		}),
-	// 	],
-	// });
+	let prev_save_action: number | null = null;
+	let external_edit_annotation = Annotation.define<true>();
+
 	let editor_view: EditorView = new EditorView({
 		doc: "",
-		// state: file_state,
 		extensions: [
 			history(),
 			EditorView.updateListener.of((update) => {
 				if (
 					!update.docChanged ||
 					update.transactions.some((tr) =>
-						tr.annotation(external_update_annotation),
+						tr.annotation(external_edit_annotation),
 					)
 				) {
 					console.log(
@@ -112,19 +73,15 @@
 			}),
 		],
 	});
-	// {
-	// 	get state() {
-	// 		return file_state;
-	// 	},
-	// 	dispatch(...tr:readonly TransactionSpec[]) {
-	// 		file_state = file_state.update(...tr).state;
-	// 	},
-	// }
-	// undo(fake_view!);
-	let selected_element: HTMLElement;
+
 	//todo 思考 畫面 selected
 	// 看是否只要給 selected block 更好，
 	// 其他 selected position 都有 derived 就行？
+	let selected_element: HTMLElement;
+	export function focus() {
+		selected_element?.focus();
+	}
+
 	let isEditMode = $state(false);
 	let lock_x = $state(true);
 	//todo detect conflict with obsidian default hotkeys and ask user to resolve conflict by changing hotkeys or disable default hotkeys
@@ -197,54 +154,21 @@
 		const columnCount = blockView.length;
 		return range(0, columnCount).map((i) => i - ci);
 	});
-	export function increment() {
-		// count += 1;
-	}
+
 	export function setState(state: ComponentState) {
 		const { cached: cache, doc, file } = state;
 
-		console.log(
-			"editor is equal outside doc?",
-			doc === editor_view.state.doc.toString(),
-		);
-		if (doc && editor_view.state.doc.toString() !== doc) {
-			is_outer_refresh = true;
+		const external_edit = editor_view.state.doc.toString() !== doc;
+		if (doc && external_edit) {
 			const tr = editor_view.state.update({
 				changes: {
 					from: 0,
 					to: editor_view.state.doc.length,
 					insert: doc,
 				},
-				annotations: external_update_annotation.of(true),
+				annotations: external_edit_annotation.of(true),
 			});
 			editor_view.dispatch(tr);
-			// const tr = file_state.update({
-			// 	changes: {
-			// 		from: 0,
-			// 		to: file_state.doc.length,
-			// 		insert: doc,
-			// 	},
-			// });
-
-			// if (editor_view) {
-			// 	editor_view.dispatch({
-			// 		changes: {
-			// 			from: 0,
-			// 			to: file_state.doc.length,
-			// 			insert: doc,
-			// 		},
-			// 	});
-			// } else {
-			// 	file_state = file_state.update({
-			// 		changes: {
-			// 			from: 0,
-			// 			to: file_state.doc.length,
-			// 			insert: doc,
-			// 		},
-			// 	}).state;
-			// }
-			// console.log("origin state:", file_state);
-			// console.log("new state:", editor_view?.state);
 		}
 		//todo send state to channel
 		filePath = file.path;
@@ -253,13 +177,7 @@
 		// const blockGroup = parseContent2Blocks(contents, root);
 		if (isEditMode) return;
 		blockView = parseCache2BlockView(cache, doc, root);
-		// console.log("set state");
-
 		// setBlockViewBreadCrumbs(blockView, selectedPosition);
-	}
-
-	export function focus() {
-		selected_element?.focus();
 	}
 
 	function accross_column(offset: number) {
@@ -282,8 +200,8 @@
 		});
 	}
 
-	// todo
-	// 尋找下一段落，基本上先以右邊的 center block 預設為下一段落（對 header 通常而言是如此）（可能也不是，因為為了視覺效果，center block 可能是該群組使用者上次點擊的，所以還是要重找該群組的第一個
+	// todo 尋找下一段落
+	// 基本上先以右邊的 center block 預設為下一段落（對 header 通常而言是如此）（可能也不是，因為為了視覺效果，center block 可能是該群組使用者上次點擊的，所以還是要重找該群組的第一個
 	// 如果已經是最右邊了，則先以同一 column 的下一個 block 預設為下一段落，
 	// 但需要先繼續往左邊找，只要可以找到 block 的 start offset 距離目前段落越小越好 （則該 block 才是下一段落） （對 paragraph 通常而言是如此）
 	// 如果是最底的段落則跳回最一開頭的段落
@@ -328,10 +246,7 @@
 				setTimeout(() => {
 					container.focus({ preventScroll: true });
 				}, 0);
-				// console.log("focus element after", document.activeElement);
 			}
-			// element.replaceChildren();
-			// container.addEventListener("pointerup", selectedEvent);
 			MarkdownRenderer.render(
 				plugin.app,
 				text,
@@ -339,18 +254,6 @@
 				filePath,
 				view,
 			);
-			// }
-			// .then(() => {
-			// 	// After rendering is complete, measure the width and update the column width
-			// 	console.log(
-			// 		"content:",
-			// 		content,
-			// 		"width:",
-			// 		element.getBoundingClientRect().width,
-			// 	);
-			// 	const width = element.getBoundingClientRect().width;
-			// 	updateColumnWidth(column, width);
-			// });
 		};
 	}
 
@@ -401,8 +304,6 @@
 	): Attachment<HTMLElement> {
 		return (col: HTMLElement) => {
 			if (columnIndex !== selectedPosition.columnIndex || !lock_x) return;
-			//console.log("move column to center", columnIndex);
-
 			col.scrollIntoView({
 				behavior: "smooth",
 				inline: "center",
@@ -412,8 +313,6 @@
 
 	function onBlockSelect(columnIndex: number, blockIndex: number) {
 		selected.relativePos = { columnIndex, blockIndex };
-		// setBlockViewBreadCrumbs(blockView, selectedPosition);
-		// console.log("select block", columnIndex, blockIndex);
 	}
 
 	$effect(() => {
@@ -432,15 +331,7 @@
 		}
 	}
 
-	onMount(() => {
-		// workspace-leaf-content
-		// hotkeysAttachment(self.parentElement!.parentElement!.parentElement!);
-		// console.log(
-		// 	"mount parent element",
-		// 	self.parentElement!.parentElement!.parentElement!,
-		// );
-		// self.focus();
-	});
+	onMount(() => {});
 </script>
 
 <div
@@ -458,9 +349,6 @@
 			>
 				<VirtualColumn column={blockGroup}>
 					{#snippet children(block, i)}
-						<!-- <BlockEditor {block}> -->
-						<!-- {#snippet preview()} -->
-						<!-- <div> -->
 						{#if !block.isEdit}
 							<div
 								role="treeitem"
@@ -482,17 +370,12 @@
 								//todo 使用者可以設定最大高度，超過的話就顯示 scroll
 								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
 							></div>
-							<!-- {/snippet} -->
 						{:else}
-							<!-- {#snippet edit()} -->
 							<div
 								{@attach renderMarkdownEditor(block)}
 								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
 							></div>
-							<!-- {/snippet} -->
 						{/if}
-						<!-- </div> -->
-						<!-- </BlockEditor> -->
 					{/snippet}
 				</VirtualColumn>
 			</div>
