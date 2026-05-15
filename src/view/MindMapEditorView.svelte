@@ -21,13 +21,19 @@
 	import VirtualColumn from "./VirtualColumn.svelte";
 	import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
 	import {
-	LOCK_TO_CENTER,
+		LOCK_TO_CENTER,
 		MOVE_DOWN,
 		MOVE_LEFT,
 		MOVE_RIGHT,
 		MOVE_UP,
 		type ShortcutAction,
 	} from "../util/hot-key";
+	import {
+		Annotation,
+		EditorState,
+		type TransactionSpec,
+	} from "@codemirror/state";
+	import { history, undo, redo } from "@codemirror/commands";
 	import { Effect, Option } from "effect";
 	import {
 		createHotkey,
@@ -36,17 +42,91 @@
 		NAVIGATION_KEYS,
 	} from "@tanstack/svelte-hotkeys";
 	import { clamp } from "effect/Number";
+	import { EditorView } from "@codemirror/view";
+	import type { DocumentService } from "../service/document-service";
+	import { is } from "effect/ParseResult";
 
 	interface Props {
 		plugin: MindMapMdPlugin;
 		view: MindMapMdView;
+		docService: DocumentService;
 	}
 
-	let { plugin, view }: Props = $props();
+	let { plugin, view, docService }: Props = $props();
 
 	let self: HTMLElement;
+
+	let is_outer_refresh = false;
+	let prev_save_action: number | null = null; // let fake_dom = document.createElement("div");
+	let external_update_annotation = Annotation.define<true>();
+	// let file_state = EditorState.create({
+	// 	doc: "",
+	// 	extensions: [
+	// 		history(),
+	// 		EditorView.updateListener.of((update) => {
+	// 			if (
+	// 				!update.docChanged ||
+	// 				update.transactions.some((tr) =>
+	// 					tr.annotation(external_update_annotation),
+	// 				)
+	// 			) {
+	// 				console.log(
+	// 					"ignore update from external refresh",
+	// 					update.docChanged,
+	// 				);
+	// 				return;
+	// 			}
+	// 			if (prev_save_action !== null) {
+	// 				cancelAnimationFrame(prev_save_action);
+	// 			}
+	// 			prev_save_action = requestAnimationFrame(async () => {
+	// 				await docService.save(update.state.doc.toString());
+	// 			});
+	// 		}),
+	// 	],
+	// });
+	let editor_view: EditorView = new EditorView({
+		doc: "",
+		// state: file_state,
+		extensions: [
+			history(),
+			EditorView.updateListener.of((update) => {
+				if (
+					!update.docChanged ||
+					update.transactions.some((tr) =>
+						tr.annotation(external_update_annotation),
+					)
+				) {
+					console.log(
+						"ignore update from external refresh",
+						update.docChanged,
+					);
+					return;
+				}
+				if (prev_save_action !== null) {
+					cancelAnimationFrame(prev_save_action);
+				}
+				prev_save_action = requestAnimationFrame(async () => {
+					await docService.save(update.state.doc.toString());
+				});
+			}),
+		],
+	});
+	// {
+	// 	get state() {
+	// 		return file_state;
+	// 	},
+	// 	dispatch(...tr:readonly TransactionSpec[]) {
+	// 		file_state = file_state.update(...tr).state;
+	// 	},
+	// }
+	// undo(fake_view!);
 	let selected_element: HTMLElement;
-	let lock_to_center = $state(true);
+	//todo 思考 畫面 selected
+	// 看是否只要給 selected block 更好，
+	// 其他 selected position 都有 derived 就行？
+	let isEditMode = $state(false);
+	let lock_x = $state(true);
 	//todo detect conflict with obsidian default hotkeys and ask user to resolve conflict by changing hotkeys or disable default hotkeys
 	const defaultKeyMaps: ShortcutAction = $state({
 		MOVE_UP: {
@@ -73,13 +153,13 @@
 				accross_column(1);
 			},
 		},
-		LOCK_TO_CENTER:{
-			hotkey:LOCK_TO_CENTER,
-			callback:()=>{
-				console.log("toggle lock to center", lock_to_center);
-				lock_to_center = !lock_to_center;
-			}
-		}
+		LOCK_TO_CENTER: {
+			hotkey: LOCK_TO_CENTER,
+			callback: () => {
+				console.log("toggle lock to center", lock_x);
+				lock_x = !lock_x;
+			},
+		},
 	});
 
 	const hotkeysAttachment = createHotkeysAttachment(() =>
@@ -121,13 +201,57 @@
 		// count += 1;
 	}
 	export function setState(state: ComponentState) {
-		const { cache, doc, file } = state;
+		const { cached: cache, doc, file } = state;
+
+		console.log(
+			"editor is equal outside doc?",
+			doc === editor_view.state.doc.toString(),
+		);
+		if (doc && editor_view.state.doc.toString() !== doc) {
+			is_outer_refresh = true;
+			const tr = editor_view.state.update({
+				changes: {
+					from: 0,
+					to: editor_view.state.doc.length,
+					insert: doc,
+				},
+				annotations: external_update_annotation.of(true),
+			});
+			editor_view.dispatch(tr);
+			// const tr = file_state.update({
+			// 	changes: {
+			// 		from: 0,
+			// 		to: file_state.doc.length,
+			// 		insert: doc,
+			// 	},
+			// });
+
+			// if (editor_view) {
+			// 	editor_view.dispatch({
+			// 		changes: {
+			// 			from: 0,
+			// 			to: file_state.doc.length,
+			// 			insert: doc,
+			// 		},
+			// 	});
+			// } else {
+			// 	file_state = file_state.update({
+			// 		changes: {
+			// 			from: 0,
+			// 			to: file_state.doc.length,
+			// 			insert: doc,
+			// 		},
+			// 	}).state;
+			// }
+			// console.log("origin state:", file_state);
+			// console.log("new state:", editor_view?.state);
+		}
 		//todo send state to channel
 		filePath = file.path;
 		root.fileName = file.name;
 		// const contents = parseCacheMetadata2Content(cache, doc);
 		// const blockGroup = parseContent2Blocks(contents, root);
-
+		if (isEditMode) return;
 		blockView = parseCache2BlockView(cache, doc, root);
 		// console.log("set state");
 
@@ -202,7 +326,7 @@
 				// 最一開始進畫面 focus 無反應，即使用 tick 也一樣
 				// 需要用 setTimeout 才能成功 focus，原因不明，需要確認
 				setTimeout(() => {
-					container.focus({preventScroll: true});
+					container.focus({ preventScroll: true });
 				}, 0);
 				// console.log("focus element after", document.activeElement);
 			}
@@ -231,6 +355,7 @@
 	}
 
 	function renderMarkdownEditor(b: StateBlock): Attachment<HTMLElement> {
+		let start = b.startOffset;
 		return (container: HTMLElement) => {
 			container.replaceChildren();
 			const value = b.content[0]!.text;
@@ -243,8 +368,27 @@
 				onEnter: (ed, mod, shift) => {
 					if (mod) {
 						b.isEdit = false;
+						isEditMode = false;
 					}
 					return mod;
+				},
+				onChange: (update) => {
+					update.transactions.forEach((tr) => {
+						tr.changes.iterChanges(
+							(fromA, toA, fromB, toB, insert) => {
+								const t = editor_view?.state.update({
+									changes: {
+										from: start + fromA,
+										to: start + toA,
+										insert,
+									},
+								});
+								editor_view?.dispatch(t!);
+							},
+						);
+					});
+
+					console.log("editor content change", editor_view?.state);
 				},
 			});
 
@@ -256,7 +400,7 @@
 		columnIndex: number,
 	): Attachment<HTMLElement> {
 		return (col: HTMLElement) => {
-			if (columnIndex !== selectedPosition.columnIndex || !lock_to_center) return;
+			if (columnIndex !== selectedPosition.columnIndex || !lock_x) return;
 			//console.log("move column to center", columnIndex);
 
 			col.scrollIntoView({
@@ -325,9 +469,13 @@
 								onkeydown={(e) => {
 									if (e.key === "Enter") {
 										block.isEdit = true;
+										isEditMode = true;
 									}
 								}}
-								ondblclick={() => (block.isEdit = true)}
+								ondblclick={() => {
+									block.isEdit = true;
+									isEditMode = true;
+								}}
 								onclick={() => onBlockSelect(columnIndex, i)}
 								// onpointerup={() => onBlockSelect(columnIndex, i)}
 								{@attach renderObsidianMarkdown(block)}

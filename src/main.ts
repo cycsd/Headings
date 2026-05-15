@@ -1,7 +1,7 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import "./app.css";
 import { DEFAULT_SETTINGS, MindMapMdSettingTab, type MyPluginSettings } from "./settings";
-import { MindMapMdView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
+import { MindMapMdView, VIEW_ICON_MINDMAPMD, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
 import { getActiveViewOfType } from "./extension/workspace";
 import { Effect, Option, pipe } from "effect";
 import type { MindMapMdViewState } from './view/MindMapMd';
@@ -20,7 +20,7 @@ export default class MindMapMdPlugin extends Plugin {
 			VIEW_TYPE_MINDMAPMD,
 			(leaf: WorkspaceLeaf) => new MindMapMdView(leaf, this));
 		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
+		this.addRibbonIcon(VIEW_ICON_MINDMAPMD, 'Toggle Mind Map MD View', (evt: MouseEvent) => {
 			// Called when the user clicks the icon.
 			// new Notice('This is a notice! just kidding');
 			this.toggleMindMapMdView();
@@ -77,7 +77,7 @@ export default class MindMapMdPlugin extends Plugin {
 			console.log("open editor menu fail", { menu, file, source });
 			menu.addItem((item) => {
 				item.setTitle('Mind Map MD View')
-					.setIcon('layout-template')
+					.setIcon(VIEW_ICON_MINDMAPMD)
 					.onClick(async () => {
 						Effect.runPromise(this.turnOnMindMapMdView);
 					});
@@ -102,7 +102,7 @@ export default class MindMapMdPlugin extends Plugin {
 		});
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		// this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
 
 	}
 
@@ -118,6 +118,10 @@ export default class MindMapMdPlugin extends Plugin {
 	}
 
 	turnOnMindMapMdView = pipe(
+		//todo orElese get markdown view
+		//obsidian active view 可以是左右 2 側的功能欄位，
+		// 但使用者即使點選了左右 2 側的功能欄位，依然會覺得畫面正中央顯示的文件才是目前 active 的 view，
+		// 所以如果 active view 沒有找到，可能需要查看一下所有 leaf 中，是否有 active 的 markdown view。
 		getActiveViewOfType(this.app.workspace, MarkdownView),
 		Effect.andThen(v => Effect.tryPromise(() => {
 			// console.log("this", this)

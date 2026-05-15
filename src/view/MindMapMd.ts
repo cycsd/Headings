@@ -5,13 +5,14 @@ import { type CachedMetadata, ItemView, MarkdownRenderChild, TFile, type ViewSta
 export type MindMapMdViewState = {
     filePath: string|null;
     file: TFile|null;
-    doc: string|null;
+    doc: string | null;
+    cached: CachedMetadata | null;
 }
 
-export type MindMapMdViewStateSave = Omit<MindMapMdViewState, "file" | "doc">;
+export type MindMapMdViewStateSave = Pick<MindMapMdViewState, "filePath">;
 
 export type ComponentState = {
-    cache: CachedMetadata;
+    cached: CachedMetadata;
     doc: string;
     file: TFile;
 };
