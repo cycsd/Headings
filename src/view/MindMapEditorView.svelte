@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import MindMapMdPlugin from "../main";
-	import { MarkdownRenderer } from "obsidian";
+	import { MarkdownRenderer, TFile, type CachedMetadata } from "obsidian";
 	import {
 		parseCache2BlockView,
 		setBlockViewBreadCrumbs,
@@ -29,22 +29,69 @@
 	} from "../util/hot-key";
 	import { Annotation } from "@codemirror/state";
 	import { history } from "@codemirror/commands";
-	import { Option } from "effect";
+	import { Effect, Option } from "effect";
 	import { createHotkeysAttachment } from "@tanstack/svelte-hotkeys";
 	import { EditorView } from "@codemirror/view";
 	import type { DocumentService } from "../service/document-service";
+	import { set } from "effect/HashMap";
+	import { is } from "effect/ParseResult";
 
+
+	//todo open current block on new markdown editor 
 	interface Props {
 		plugin: MindMapMdPlugin;
 		view: MindMapMdView;
 		docService: DocumentService;
+		isActive: () => boolean;
 	}
 
-	let { plugin, view, docService }: Props = $props();
+	let { plugin, view, docService, isActive }: Props = $props();
 
 	let self: HTMLElement;
 
+	let is_edit_mode = $state(false);
+	docService.subscribe((file, doc, cached) => {
+		// console.log("is edit mode", is_edit_mode);
+		if (is_edit_mode) {
+			return false;
+		}
+		setDocument(file, doc, cached);
+		return true;
+	});
+
+	let getfile: () => TFile | null = () => null;
+	let last_set_doc: {
+		memory_cached: CachedMetadata;
+		memory_doc: string;
+	} = {
+		memory_cached: {},
+		memory_doc: "",
+	};
+
+	function setDocument(file: TFile, doc: string, cached: CachedMetadata) {
+		const external_edit = editor_view.state.doc.toString() !== doc;
+		if (doc && external_edit) {
+			const tr = editor_view.state.update({
+				changes: {
+					from: 0,
+					to: editor_view.state.doc.length,
+					insert: doc,
+				},
+				annotations: external_edit_annotation.of(true),
+			});
+			editor_view.dispatch(tr);
+		}
+		getfile = () => file;
+
+		last_set_doc = {
+			memory_cached: cached,
+			memory_doc: doc,
+		};
+		root.fileName = file.name;
+		blockView = parseCache2BlockView(cached, doc, root);
+	}
 	let prev_save_action: number | null = null;
+
 	let external_edit_annotation = Annotation.define<true>();
 
 	let editor_view: EditorView = new EditorView({
@@ -58,17 +105,16 @@
 						tr.annotation(external_edit_annotation),
 					)
 				) {
-					console.log(
-						"ignore update from external refresh",
-						update.docChanged,
-					);
 					return;
 				}
 				if (prev_save_action !== null) {
 					cancelAnimationFrame(prev_save_action);
 				}
 				prev_save_action = requestAnimationFrame(async () => {
-					await docService.save(update.state.doc.toString());
+					await docService.save(
+						getfile()!,
+						update.state.doc.toString(),
+					);
 				});
 			}),
 		],
@@ -82,7 +128,6 @@
 		selected_element?.focus();
 	}
 
-	let isEditMode = $state(false);
 	let lock_x = $state(true);
 	//todo detect conflict with obsidian default hotkeys and ask user to resolve conflict by changing hotkeys or disable default hotkeys
 	const defaultKeyMaps: ShortcutAction = $state({
@@ -130,7 +175,6 @@
 		}),
 	);
 
-	let filePath = $state<string | null>(null);
 	let root: Root = $state<Root>({
 		id: "root",
 		fileName: "",
@@ -171,11 +215,11 @@
 			editor_view.dispatch(tr);
 		}
 		//todo send state to channel
-		filePath = file.path;
+		// filePath = file.path;
 		root.fileName = file.name;
 		// const contents = parseCacheMetadata2Content(cache, doc);
 		// const blockGroup = parseContent2Blocks(contents, root);
-		if (isEditMode) return;
+		if (is_edit_mode) return;
 		blockView = parseCache2BlockView(cache, doc, root);
 		// setBlockViewBreadCrumbs(blockView, selectedPosition);
 	}
@@ -236,13 +280,18 @@
 			const container = element;
 			container.replaceChildren();
 			const text = b.content[0]!.text;
+			const filePath = getfile()?.path;
 			if (!filePath) return;
-			if (b.state === fork) {
+			if (b.state === fork && isActive()) {
 				selected_element = container;
 				// tick().then(()=>container.focus());
 				// todo focus
 				// 最一開始進畫面 focus 無反應，即使用 tick 也一樣
 				// 需要用 setTimeout 才能成功 focus，原因不明，需要確認
+				// todo bug 搶同個文件 markdown editor 的 focus
+				// 因為同步更新，造成其他 editor 改動同一份文件，這個畫面也在重新渲染
+				// 執行到這就把整個畫面的 focus 搶過來了。
+
 				setTimeout(() => {
 					container.focus({ preventScroll: true });
 				}, 0);
@@ -271,7 +320,7 @@
 				onEnter: (ed, mod, shift) => {
 					if (mod) {
 						b.isEdit = false;
-						isEditMode = false;
+						is_edit_mode = false;
 					}
 					return mod;
 				},
@@ -290,8 +339,6 @@
 							},
 						);
 					});
-
-					console.log("editor content change", editor_view?.state);
 				},
 			});
 
@@ -318,6 +365,21 @@
 	$effect(() => {
 		// console.log("execute effect");
 		setBlockViewBreadCrumbs(blockView, selectedPosition);
+	});
+
+	$effect(() => {
+		const file = getfile();
+		if (is_edit_mode || !file) return;
+		const { memory_cached, memory_doc } = last_set_doc;
+		if (docService.isStale(memory_doc, memory_cached)) {
+			const new_cached = docService.getCache(file);
+			const update = new_cached.pipe(
+				Effect.andThen((c) => {
+					setDocument(file, c.doc, c.cached);
+				}),
+			);
+			Effect.runPromise(update);
+		}
 	});
 	let columnWidthMap = $state.raw<Record<number, number>>({});
 
@@ -357,12 +419,12 @@
 								onkeydown={(e) => {
 									if (e.key === "Enter") {
 										block.isEdit = true;
-										isEditMode = true;
+										is_edit_mode = true;
 									}
 								}}
 								ondblclick={() => {
 									block.isEdit = true;
-									isEditMode = true;
+									is_edit_mode = true;
 								}}
 								onclick={() => onBlockSelect(columnIndex, i)}
 								// onpointerup={() => onBlockSelect(columnIndex, i)}

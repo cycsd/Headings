@@ -6,6 +6,9 @@ import type { ComponentState, MindMapMdViewState, MindMapMdViewStateSave } from 
 import { Effect, Option } from "effect";
 import type { NoSuchElementException } from "effect/Cause";
 import { cachedRead, getFileByPath } from "../extension/vault";
+import { PluginDocumentService } from "../service/document-service";
+import { getFileCached } from "../extension/app";
+import type { isActive } from "effect/RuntimeFlagsPatch";
 
 export const VIEW_TYPE_MINDMAPMD = "mindmap-md-view";
 
@@ -22,6 +25,8 @@ export class MindMapMdView extends ItemView {
         doc: null,
     };
 
+    private docServeice: PluginDocumentService = PluginDocumentService.create(this.plugin);
+
     private cacheChagedEventRef: EventRef | null = null;
 
     getViewType(): string {
@@ -36,6 +41,10 @@ export class MindMapMdView extends ItemView {
     constructor(leaf: WorkspaceLeaf, private plugin: MindMapMdPlugin) {
         super(leaf);
     }
+    isActive(): boolean {
+        const workspace_tab = this.containerEl?.closest('.workspace-tabs');
+        return workspace_tab?.classList.contains("mod-active") ?? false;
+    }
 
     async onOpen() {
         // Attach the Svelte component to the ItemViews content element and provide the needed props.
@@ -48,16 +57,8 @@ export class MindMapMdView extends ItemView {
             props: {
                 plugin: this.plugin,
                 view: this,
-                docService: {
-                    save: (doc: string) => {
-                        //todo vaul.process 效能
-                        // 再確認 vault.process 是否也只是先寫進 cache,如果是的話這邊應該不用 debouce
-                        return this.plugin.app.vault.process(this.state.file!, (data) => {
-                            return doc;
-                        });
-
-                    }
-                }
+                docService: this.docServeice,
+                isActive: () => this.isActive(),
             }
         }
         );
@@ -68,11 +69,12 @@ export class MindMapMdView extends ItemView {
                     .pipe(Option.filter(f => f.path === file.path));
 
                 const component = yield* Effect.fromNullable(this.mindMapEditorView);
-                component.setState({
-                    file,
-                    cached,
-                    doc,
-                })
+                this.docServeice.send(file, doc, cached);
+                // component.setState({
+                //     file,
+                //     cached,
+                //     doc,
+                // })
             });
             await Effect.runPromise(program);
         });
@@ -100,11 +102,12 @@ export class MindMapMdView extends ItemView {
 
             const { file, cached, doc } = yield* this.getComponentState(state);
 
-            component.setState({
-                file,
-                cached,
-                doc,
-            });
+            this.docServeice.send(file, doc, cached);
+            // component.setState({
+            //     file,
+            //     cached,
+            //     doc,
+            // });
 
             this.state = {
                 ...state,
@@ -120,7 +123,7 @@ export class MindMapMdView extends ItemView {
 
         await super.setState(savedState, result);
 
-        
+
         //     this.mindMapEditorView?.focus();
         return
     }
@@ -138,13 +141,9 @@ export class MindMapMdView extends ItemView {
                         .pipe(Effect.flatMap(path => getFileByPath(this.plugin.app.vault, path))),
                     ));
 
-            const cached = yield* Effect.fromNullable(this.plugin.app.metadataCache.getFileCache(file))
+            const cached = yield* getFileCached(this.plugin.app, file);
 
-            const doc = yield* Effect.fromNullable(state.doc).pipe(
-                Effect.orElse(() => cachedRead(this.plugin.app.vault, file))
-            );
-
-            return { file, cached, doc };
+            return { file, ...cached };
         });
     }
 

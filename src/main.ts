@@ -31,7 +31,7 @@ export default class MindMapMdPlugin extends Plugin {
 		// 使用者有可能從左側 file explorer 開啟檔案的 context menu 來開啟 mind map md view，
 		// 所以需要新開一個 leaf 而不是從現有的 markdown view 來切換，以現在的做法會無法從 file explorer 開啟 mind map md view
 		this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
-			console.log("open editor menu fail", { menu, file, source });
+
 			menu.addItem((item) => {
 				item.setTitle('Mind Map MD View')
 					.setIcon(VIEW_ICON_MINDMAPMD)
@@ -166,7 +166,6 @@ export default class MindMapMdPlugin extends Plugin {
 			this.turnOnMindMapMdView.pipe(
 				Effect.orElse(() => this.turnOnMarkdownView),
 				Effect.andThen(() => getActiveViewOfType(workspace, MarkdownView)),
-				Effect.andThen(v => console.log("editor", v.editor))
 			)
 		);
 	}
