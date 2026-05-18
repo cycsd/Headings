@@ -17,6 +17,10 @@ export const VIEW_ICON_MINDMAPMD: IconName = "layout-panel-left";
 
 export class MindMapMdView extends ItemView {
     private mindMapEditorView: ReturnType<typeof MindMapEditorView> | undefined;
+
+    public get component() {
+        return this.mindMapEditorView;
+    }
     public file: TFile | undefined | null;
     // public fileCache: CachedMetadata | null | undefined;
     public state: MindMapMdViewState = {

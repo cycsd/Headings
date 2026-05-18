@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import MindMapMdPlugin from "../main";
-	import { MarkdownRenderer, TFile, type CachedMetadata } from "obsidian";
+	import {
+		MarkdownRenderer,
+		Menu,
+		TFile,
+		type CachedMetadata,
+	} from "obsidian";
 	import {
 		parseCache2BlockView,
 		setBlockViewBreadCrumbs,
@@ -36,8 +41,6 @@
 	import { set } from "effect/HashMap";
 	import { is } from "effect/ParseResult";
 
-
-	//todo open current block on new markdown editor 
 	interface Props {
 		plugin: MindMapMdPlugin;
 		view: MindMapMdView;
@@ -262,7 +265,7 @@
 		};
 	}
 
-	function next(offset: number) {
+	export function next(offset: number) {
 		const { blockIndex, columnIndex } = selectedPosition;
 
 		const x = columnIndex;
@@ -272,6 +275,17 @@
 			next_y >= len ? next_y - len : next_y < 0 ? len + next_y : next_y;
 
 		move_to(x, y);
+	}
+	export function edit_block() {
+		Option.gen(function* () {
+			const block = yield* Option.fromNullable(
+				blockView
+					.at(selectedPosition.columnIndex)
+					?.blocks.at(selectedPosition.blockIndex),
+			);
+			block.isEdit = true;
+			is_edit_mode = true;
+		});
 	}
 
 	function renderObsidianMarkdown(b: StateBlock): Attachment<HTMLElement> {
@@ -288,9 +302,6 @@
 				// todo focus
 				// 最一開始進畫面 focus 無反應，即使用 tick 也一樣
 				// 需要用 setTimeout 才能成功 focus，原因不明，需要確認
-				// todo bug 搶同個文件 markdown editor 的 focus
-				// 因為同步更新，造成其他 editor 改動同一份文件，這個畫面也在重新渲染
-				// 執行到這就把整個畫面的 focus 搶過來了。
 
 				setTimeout(() => {
 					container.focus({ preventScroll: true });
@@ -361,6 +372,90 @@
 	function onBlockSelect(columnIndex: number, blockIndex: number) {
 		selected.relativePos = { columnIndex, blockIndex };
 	}
+	function show_context_menu(block: StateBlock) {
+		return (e: MouseEvent) => {
+			//todo context menu
+			const block_action_menu = new Menu();
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Edit Block")
+					.setIcon("pencil")
+					.onClick((e) => {
+						selectedPosition = {
+							columnIndex: block.columnIndex,
+							blockIndex: block.index,
+						};
+						edit_block();
+						//防止意圖被偵測成使用者點擊 block 以外的地方而關閉編輯模式
+						e.stopPropagation();
+					}),
+			);
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Locate in File")
+					.setIcon("locate")
+					.onClick(async () => {
+						// myCustomFunction();
+						await docService.reveal(
+							getfile()!,
+							block.startOffset,
+							block.endOffset,
+						);
+					}),
+			);
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Add Block")
+					.setIcon("plus")
+					.onClick(() => {
+						// myCustomFunction();
+						console.log("add sibling block");
+						//todo add sibling block
+						// onBlockSelect(columnIndex, i);
+					}),
+			);
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Add Child Block")
+					.setIcon("plus-with-circle")
+					.onClick(() => {
+						// myCustomFunction();
+						console.log("add child block");
+						//todo add child block
+						// onBlockSelect(columnIndex, i);
+					}),
+			);
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Open File")
+					.setIcon("file-text")
+					.onClick(async () => {
+						await docService.openFile(
+							getfile()!,
+							block.startOffset,
+							block.endOffset,
+						);
+					}),
+			);
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Delete Block")
+					.setIcon("trash")
+					.onClick(() => {
+						// myCustomFunction();
+						console.log("delete block");
+						//todo delete block
+						// onBlockSelect(columnIndex, i);
+					}),
+			);
+			block_action_menu.showAtPosition(e);
+		};
+	}
 
 	$effect(() => {
 		// console.log("execute effect");
@@ -394,6 +489,23 @@
 	}
 
 	onMount(() => {});
+
+	function close_editor_on_click_outside(
+		block: StateBlock,
+	): Attachment<HTMLDivElement> {
+		return (editor_container) => {
+			const onClick = (e: MouseEvent) => {
+				if (editor_container.contains(e.target as Node)) {
+					return;
+				}
+
+				block.isEdit = false;
+				is_edit_mode = false;
+			};
+			document.addEventListener("click", onClick);
+			return () => document.removeEventListener("click", onClick);
+		};
+	}
 </script>
 
 <div
@@ -416,16 +528,20 @@
 								role="treeitem"
 								aria-selected={block.state === fork}
 								tabindex="0"
+								oncontextmenu={show_context_menu(block)}
 								onkeydown={(e) => {
-									if (e.key === "Enter") {
-										block.isEdit = true;
-										is_edit_mode = true;
+									if (e.key === "Delete") {
+										// block.isEdit = true;
+										// is_edit_mode = true;
+										console.log("delete keydown");
+										//todo delete block
+										// onBlockSelect(columnIndex, i);
 									}
 								}}
-								ondblclick={() => {
-									block.isEdit = true;
-									is_edit_mode = true;
-								}}
+								// ondblclick={() => {
+								// 	block.isEdit = true;
+								// 	is_edit_mode = true;
+								// }}
 								onclick={() => onBlockSelect(columnIndex, i)}
 								// onpointerup={() => onBlockSelect(columnIndex, i)}
 								{@attach renderObsidianMarkdown(block)}
@@ -435,6 +551,7 @@
 						{:else}
 							<div
 								{@attach renderMarkdownEditor(block)}
+								{@attach close_editor_on_click_outside(block)}
 								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
 							></div>
 						{/if}

@@ -3,8 +3,9 @@ import "./app.css";
 import { DEFAULT_SETTINGS, MindMapMdSettingTab, type MyPluginSettings } from "./settings";
 import { MindMapMdView, VIEW_ICON_MINDMAPMD, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
 import { getActiveViewOfType } from "./extension/workspace";
-import { Effect, Option, pipe } from "effect";
+import { Effect, Fiber, Option, pipe } from "effect";
 import type { MindMapMdViewState } from './view/MindMapMd';
+import { get } from 'svelte/store';
 
 // Remember to rename these classes and interfaces!
 
@@ -40,6 +41,10 @@ export default class MindMapMdPlugin extends Plugin {
 					});
 			})
 		}));
+
+		this.addCommands();
+
+
 
 		// this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
 		// 	console.log("open editor menu", { menu, editor, view });
@@ -106,6 +111,31 @@ export default class MindMapMdPlugin extends Plugin {
 
 	}
 
+
+	createCheckCallback(action: (view: MindMapMdView) => void) {
+		return (checking: boolean) => {
+			//checking 為 true, 代表使用者正在使用 Ctrl + P 開啟 obsidian command palette ，
+			//回傳值為 true or false 決定是否顯示這個 command (true-顯示, false-不顯示)。
+			if (checking) {
+				const is_view_esist = getActiveViewOfType(this.app.workspace, MindMapMdView)
+					.pipe(Effect.map(v => {
+						return true;
+					}),
+						Effect.orElseFail(() => false),
+					);
+				return Effect.runSync(is_view_esist);
+			}
+			//使用者選取這個 command 或直接按下 hotkey，checking 為 false。
+			else {
+				const program = Effect.gen(this, function* () {
+					const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
+					action(view);
+					return true;
+				})
+				return Effect.runSync(program);
+			}
+		}
+	}
 	onunload() {
 	}
 
@@ -168,6 +198,61 @@ export default class MindMapMdPlugin extends Plugin {
 				Effect.andThen(() => getActiveViewOfType(workspace, MarkdownView)),
 			)
 		);
+	}
+
+	/**
+ * ```markdwon
+ * hotkey 優先度：
+ * obsidian command > editor command = 自行在 component 中設定的 hotkey
+ * 由於 obsidian command 會覆蓋 editor command
+ * 所以如果你有些 hotkey 與 editor command 一樣，例如 ArrowUp、ArrowDown，
+ * 就不應該在這裡設定，而應該自行在 component 中設定，不然由於 obsidian 會先執行 obsidian command，所以 ArrowUp、ArrowDown 在 editor 內就沒有作用，你就無法在 editor 內上下移動遊標位置。
+ * 一樣的，如果你有些 hotkey 與 obsidian command 一樣，例如 F2 (obsidian 預設為更改檔案名稱)，
+ * 你需要在這邊設定 obsidian command，不應該在 component 中設定，
+ * 不然會被預設的 obsidian command 覆蓋，造成你的 component key event 動作沒有反應。
+ * ```
+ */
+	addCommands() {
+		// todo export hotkey
+		this.addCommand({
+			id: 'edit-block',
+			name: 'Edit Block',
+			hotkeys: [{ key: "F2", modifiers: [] }],
+			checkCallback: this.createCheckCallback((view) => {
+				view.component?.edit_block();
+			})
+			// (checking) => {
+			// const program = Effect.gen(this, function* () {
+			// 	const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
+			// 	if (!checking) {
+			// 		console.log("move down command");
+			// 		view.component?.edit_block();
+			// 	}
+			// 	return true;
+			// }).pipe(
+			// 	Effect.orElse(() => Effect.succeed(false)),
+			// );
+
+			// return Effect.runSync(program);
+			// }
+		})
+		// this.addCommand({
+		// 	id: 'move-down',
+		// 	name: 'Move down',
+		// 	hotkeys: [{ key: "ArrowDown", modifiers: [] }],
+		// 	checkCallback: (checking) => {
+		// 		const program = Effect.gen(this, function* () {
+		// 			const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
+		// 			console.log("move down command");
+		// 			view.component?.next(1);
+		// 			return true;
+		// 		}).pipe(
+		// 			Effect.orElse(() => Effect.succeed(false)),
+		// 		);
+
+		// 		return Effect.runSync(program);
+		// 	}
+		// })
 	}
 
 
