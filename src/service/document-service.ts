@@ -1,8 +1,11 @@
-import type { CachedMetadata, TFile } from "obsidian";
+import { MarkdownEditView, MarkdownView, type CachedMetadata, type TFile } from "obsidian";
 import type MindMapMdPlugin from "../main";
 import { Effect, Option } from "effect";
 import { getFileCached } from "../extension/app";
 import type { NoSuchElementException, UnknownException } from "effect/Cause";
+import { getActiveViewOfType } from "../extension/workspace";
+import { EditorSelection } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
 
 
@@ -17,6 +20,9 @@ export interface DocumentService {
     send: (file: TFile, doc: string, cached: CachedMetadata) => Promiseable<boolean>;
     save: (file: TFile, doc: string) => Promise<string>;
     isStale: (doc: string, cached: CachedMetadata) => boolean;
+    openFile: (file: TFile, anchor: number, head: number) => Promise<void>;
+    reveal: (file: TFile, anchor: number, head: number) => Promise<void>;
+
 }
 
 
@@ -24,6 +30,44 @@ export class PluginDocumentService implements DocumentService {
     private constructor(private plugin: MindMapMdPlugin) {
 
     }
+    private markdown_view: MarkdownView | null = null;
+    async reveal(file: TFile, anchor: number, head: number) {
+        const program = Effect.gen(this, function* () {
+            const view = yield* Option.fromNullable(this.markdown_view)
+                .pipe(
+                    Option.flatMap(Option.liftPredicate(v => v.file?.path === file.path)),
+                );
+
+            const range = EditorSelection.range(anchor, head);
+            view.editor.focus();
+            view.editor.cm.dispatch({
+                selection: range,
+                effects: EditorView.scrollIntoView(range, { y: "center" }),
+            })
+        });
+
+        return Effect.runPromise(program.pipe(
+            Effect.orElseFail(() => this.openFile(file, anchor, head)),
+        ));
+    }
+    async openFile(file: TFile, anchor: number, head?: number) {
+        const program = Effect.gen(this, function* () {
+            yield* Effect.tryPromise(() => {
+                return this.plugin.app.workspace.getLeaf('split').openFile(file);
+            });
+
+            this.markdown_view = yield* getActiveViewOfType(this.plugin.app.workspace, MarkdownView);
+
+            const range = EditorSelection.range(anchor, head ?? anchor);
+            this.markdown_view.editor.cm.dispatch({
+                selection: range,
+                effects: EditorView.scrollIntoView(range, { y: "center" }),
+            })
+        });
+
+        return Effect.runPromise(program);
+
+    };
     getCache(file: TFile) {
         return Effect.fromNullable(this.cachedData)
             .pipe(Effect.orElse(() => getFileCached(this.plugin.app, file)))
