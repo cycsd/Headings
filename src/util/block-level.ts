@@ -55,8 +55,9 @@ export type ColumnLayout = {
     centerBlockIndex: number;
 }
 
-export type Content = {
-    text: string,
+export type LevelSection = {
+    id?: string;
+    // text: string,
     type: string;
     level: number;
     startOffset: number;
@@ -69,7 +70,8 @@ export type Content = {
 export type Root = {
     id: string;
     fileName: string;
-    yaml?: Content;
+    yaml?: LevelSection;
+    text: string;
     //不需要了？因為只可能是 yaml?
     //  content: Content;
 }
@@ -81,22 +83,23 @@ export type MindMapNode = Root | Block;
 export type Block = {
 
     id: string;
-
+    hash: number;
+    text: string;
     /*
     obsidian 的 block id
     ex: ^this_is_a_block
     */
-    obsidianBlockId?: string;
-    content: Content[];
-    /*
-    記錄 block 在 column 中的位置，讓我可以知道使用者選取的 block 在哪一個位置    
-    但或許可以直接用 current select 取代？
-    需要記錄，可以在使用者垂直移動後知道那個 block 被移動過
-    */
+    // obsidianBlockId?: string;
+    sections: LevelSection[];
+    /**
+     * 記錄 block 在 column 中的位置，讓我可以知道使用者選取的 block 在哪一個位置    
+     * 但或許可以直接用 current select 取代？
+     * 需要記錄，可以在使用者垂直移動後知道那個 block 被移動過
+     */
     index: number;
-    /*
-    記錄歸屬於哪個 column group，方便在使用者操作後，確認哪個 Block 是被使用者操作過的 Block。
-    */
+    /**
+     * 記錄歸屬於哪個 column group，方便在使用者操作後，確認哪個 Block 是被使用者操作過的 Block。
+     */
     columnIndex: number;
     /*
     記錄 block 歸類在哪個 parent block 底下，方便在使用者操作後，
@@ -105,13 +108,13 @@ export type Block = {
     // parent: MindMapNode;
     parentId: string;
 
-    /*
-    記錄當前的 block 跟被選取的 block 的關係，方便在使用者操作後，將同個路徑下的 block 做群組更新。
-    */
+    /**
+     * 記錄當前的 block 跟被選取的 block 的關係，方便在使用者操作後，將同個路徑下的 block 做群組更新。
+     */
     state: State;
-    /*
-    重新轉發需要知道原本從哪裡開始，此值應要隨時 update ？
-    */
+    /**
+     * 重新轉發需要知道原本從哪裡開始，此值應要隨時 update ？
+     */
     startOffset: number;
     endOffset: number;
     isEdit: boolean;

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Virtualizer, type VirtualizerHandle } from "virtua/svelte";
-	import type { ColumnLayout } from "../util/block-level";
+	import type { Block, ColumnLayout } from "../util/block-level";
 	import { onMount, tick, type Snippet } from "svelte";
 	interface Props {
 		column: ColumnLayout;
@@ -47,6 +47,9 @@
 
 	let startMargin = $derived(Math.floor((innerHeight * 2) / 12));
 	let endMargin = $derived(Math.ceil(innerHeight - startMargin));
+	function getKey(block: Block, index: number) {
+		return `${block.hash}-${index}`;
+	}
 	onMount(() => {
 		tick().then(() => {
 			// 初始滾動如果是 smooth ，會滑到未知的位置，且造成上方元素一開始不會無法被滾動到，
@@ -65,5 +68,6 @@
 	bind:this={virtualizer}
 	{startMargin}
 	{onscrollend}
+	{getKey}
 ></Virtualizer>
 <div style="height: {endMargin}px;"></div>

@@ -8,7 +8,7 @@
 		type CachedMetadata,
 	} from "obsidian";
 	import {
-		parseCache2BlockView,
+		parse_cache_2_block_view,
 		setBlockViewBreadCrumbs,
 	} from "../util/parse";
 	import { mdc } from "../util/utils";
@@ -91,7 +91,11 @@
 			memory_doc: doc,
 		};
 		root.fileName = file.name;
-		blockView = parseCache2BlockView(cached, doc, root);
+		blockView = parse_cache_2_block_view(
+			cached,
+			(s, e) => editor_view.state.sliceDoc(s, e),
+			root,
+		);
 	}
 	let prev_save_action: number | null = null;
 
@@ -181,6 +185,7 @@
 	let root: Root = $state<Root>({
 		id: "root",
 		fileName: "",
+		text: "",
 	});
 	let selected = $state<Selected>({
 		relativePos: {
@@ -223,7 +228,11 @@
 		// const contents = parseCacheMetadata2Content(cache, doc);
 		// const blockGroup = parseContent2Blocks(contents, root);
 		if (is_edit_mode) return;
-		blockView = parseCache2BlockView(cache, doc, root);
+		blockView = parse_cache_2_block_view(
+			cache,
+			(start, end) => editor_view.state.sliceDoc(start, end),
+			root,
+		);
 		// setBlockViewBreadCrumbs(blockView, selectedPosition);
 	}
 
@@ -293,7 +302,6 @@
 		return (element: HTMLElement) => {
 			const container = element;
 			container.replaceChildren();
-			const text = b.content[0]!.text;
 			const filePath = getfile()?.path;
 			if (!filePath) return;
 			if (b.state === fork && isActive()) {
@@ -309,7 +317,7 @@
 			}
 			MarkdownRenderer.render(
 				plugin.app,
-				text,
+				b.text,
 				container,
 				filePath,
 				view,
@@ -321,7 +329,7 @@
 		let start = b.startOffset;
 		return (container: HTMLElement) => {
 			container.replaceChildren();
-			const value = b.content[0]!.text;
+			const value = b.text;
 			const m = createEmbeddableMarkdownEditor(plugin.app, container, {
 				value,
 				cursorLocation: {
@@ -352,6 +360,11 @@
 					});
 				},
 			});
+
+			m.owner.file = getfile()!;//for obsidian renaming heading command to work
+			return () => {
+				m.destroy();
+			};
 
 			// return m.destroy;
 		};
@@ -391,20 +404,8 @@
 						e.stopPropagation();
 					}),
 			);
-
-			block_action_menu.addItem((item) =>
-				item
-					.setTitle("Locate in File")
-					.setIcon("locate")
-					.onClick(async () => {
-						// myCustomFunction();
-						await docService.reveal(
-							getfile()!,
-							block.startOffset,
-							block.endOffset,
-						);
-					}),
-			);
+			
+			block_action_menu.addSeparator();
 
 			block_action_menu.addItem((item) =>
 				item
@@ -429,6 +430,21 @@
 					}),
 			);
 
+			block_action_menu.addSeparator();
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Locate in File")
+					.setIcon("locate")
+					.onClick(async () => {
+						// myCustomFunction();
+						await docService.reveal(
+							getfile()!,
+							block.startOffset,
+							block.endOffset,
+						);
+					}),
+			);
 			block_action_menu.addItem((item) =>
 				item
 					.setTitle("Open File")
@@ -441,6 +457,8 @@
 						);
 					}),
 			);
+
+			block_action_menu.addSeparator();
 
 			block_action_menu.addItem((item) =>
 				item
@@ -495,7 +513,11 @@
 	): Attachment<HTMLDivElement> {
 		return (editor_container) => {
 			const onClick = (e: MouseEvent) => {
-				if (editor_container.contains(e.target as Node)) {
+				const target = e.target as HTMLElement;
+				if (
+					editor_container.contains(target) ||
+					target.closest(".menu") //防止點擊 editor context menu 時關閉編輯模式
+				) {
 					return;
 				}
 

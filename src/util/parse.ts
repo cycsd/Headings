@@ -1,9 +1,11 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type Content, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
+import { unselected, type Block, type BlockView, type LevelSection, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
 import { Data, Effect, Match, Option, pipe, Random } from "effect";
 import type { Position } from "../view/MindMapMd";
 import { range } from "effect/Array";
+import { hash } from "effect/Hash";
+import { get } from "svelte/store";
 
 export const blockquote = 'blockquote';
 export const callout = 'callout';
@@ -29,37 +31,35 @@ export const other_level = 8;
 
 
 export const sectionMatchLevel = Match.type<SectionCache>().pipe(
-    Match.withReturnType<Pick<Content, 'level'>>(),
+    Match.withReturnType<Pick<LevelSection, 'level'>>(),
     Match.when({ type: yaml }, () => ({ level: yaml_level, })),
     Match.when({ type: paragraph }, () => ({ level: paragraph_level, })),
     Match.orElse(() => ({ level: other_level, }))
 )
 
-export function parseSection2Content(section: SectionCache, doc: string): Content {
+export function parseSection2Content(section: SectionCache): LevelSection {
     const level = sectionMatchLevel(section);
     return {
         ...level,
-        text: sliceDocument(section.position, doc),
         type: section.type,
         startOffset: section.position.start.offset,
         endOffset: section.position.end.offset,
     }
 }
-export function parseCacheMetadata2Content(metadataCache: CachedMetadata, doc: string): Content[] {
+export function parse_cache_metadat_2_sections(metadataCache: CachedMetadata): LevelSection[] {
     const headingCache = headingsCacheToMap(metadataCache.headings);
     const match = Match.type<SectionCache>().pipe(
-        Match.withReturnType<Content>(),
+        Match.withReturnType<LevelSection>(),
         Match.when({ type: heading, position: (p) => headingCache.has(getOffsetKey(p)) }, (section) => {
             const head = headingCache.get(getOffsetKey(section.position))!;
             return {
-                text: sliceDocument(section.position, doc),
                 type: heading,
                 level: head.level,
                 startOffset: section.position.start.offset,
                 endOffset: section.position.end.offset,
             }
         }),
-        Match.orElse((section) => parseSection2Content(section, doc)),
+        Match.orElse((section) => parseSection2Content(section)),
     )
     if (metadataCache.sections) {
         return metadataCache.sections.map(section => match(section));
@@ -84,23 +84,31 @@ export function headingsCacheToMap(
 }
 
 
-type BlockWithParent = Block & { parent: BlockWithParent | Root };
-export function parseCache2BlockView(cache: CachedMetadata, doc: string, root: Root): BlockView {
-    const contents = parseCacheMetadata2Content(cache, doc);
-    const blocks = parseContent2Blocks(contents, root);
+type BlockWithParent = Omit<Block, 'hash' | 'text'> & { parent: BlockWithParent | Root };
+export function parse_cache_2_block_view(cache: CachedMetadata, get_doc: (start: number, end: number) => string, root: Root): BlockView {
+    const sections = parse_cache_metadat_2_sections(cache);
+    const blocks = parse_sections_2_blocks(sections, root);
 
     const view = blocks.map(column => {
         const column_layout: ColumnLayout = {
             centerBlockIndex: 0,
-            blocks: column,
+            blocks: column.map(b => {
+                const text = get_doc(b.startOffset, b.endOffset);
+                const t_hash = hash(text);
+                return {
+                    ...b,
+                    hash: t_hash,
+                    text,
+                }
+            }),
         }
         return column_layout;
     })
     return view;
 }
-export function parseContent2Blocks(content: Content[], root: Root): BlockWithParent[][] {
-    if (content.length === 0) return [];
-    let [first, ...rest] = content;
+export function parse_sections_2_blocks(sections: LevelSection[], root: Root): BlockWithParent[][] {
+    if (sections.length === 0) return [];
+    let [first, ...rest] = sections;
     if (first!.type === yaml) {
         // root.content = [first];
         root.yaml = first!;
@@ -109,7 +117,7 @@ export function parseContent2Blocks(content: Content[], root: Root): BlockWithPa
 
     const firstBlock: BlockWithParent = {
         id: crypto.randomUUID(),
-        content: [first!],
+        sections: [first!],
         index: 0,
         columnIndex: 0,
         parentId: root.id,
@@ -122,9 +130,9 @@ export function parseContent2Blocks(content: Content[], root: Root): BlockWithPa
     const columns: BlockWithParent[][] = [[firstBlock]];
     const seed = { blocks: columns, node: firstBlock };
 
-    const result = rest.reduce((sd, current_content) => {
+    const result = rest.reduce((sd, current_section) => {
         const { blocks, node } = sd;
-        const new_block = traceBackToOrigin(blocks, node, current_content);
+        const new_block = traceBackToOrigin(blocks, node, current_section);
         return { blocks, node: new_block };
 
     }, seed)
@@ -136,12 +144,12 @@ export function parseContent2Blocks(content: Content[], root: Root): BlockWithPa
 export function traceBackToOrigin(
     blocks: BlockWithParent[][],
     node: BlockWithParent,
-    currentContent: Content): BlockWithParent {
+    currentSection: LevelSection): BlockWithParent {
 
     const result = Match.value({
         nodeColumnIndex: node.columnIndex,
-        nodeLevel: node.content.at(-1)!.level,
-        currentLevel: currentContent.level,
+        nodeLevel: node.sections.at(-1)!.level,
+        currentLevel: currentSection.level,
     }).pipe(
         Match.withReturnType<BlockWithParent>(),
         Match.whenOr(({ nodeLevel, currentLevel }) => nodeLevel === currentLevel,
@@ -153,7 +161,7 @@ export function traceBackToOrigin(
         Match.when(({ nodeLevel, currentLevel }) => nodeLevel < currentLevel,
             append_new_block),
         Match.when(({ nodeLevel, currentLevel }) => nodeLevel > currentLevel,
-            () => traceBackToOrigin(blocks, node.parent as BlockWithParent, currentContent)
+            () => traceBackToOrigin(blocks, node.parent as BlockWithParent, currentSection)
         ),
         Match.orElseAbsurd
         // Match.orElse(create_split_block)
@@ -169,13 +177,13 @@ export function traceBackToOrigin(
         }
         const block: BlockWithParent = {
             id: crypto.randomUUID(),
-            content: [currentContent],
+            sections: [currentSection],
             index: blocks[next_column_index]!.length,
             columnIndex: next_column_index,
             parent: node,
             parentId: node.id,
-            startOffset: currentContent.startOffset,
-            endOffset: currentContent.endOffset,
+            startOffset: currentSection.startOffset,
+            endOffset: currentSection.endOffset,
             state: unselected,
             isEdit: false,
         };
@@ -186,13 +194,13 @@ export function traceBackToOrigin(
     function create_split_block() {
         const block: BlockWithParent = {
             id: crypto.randomUUID(),
-            content: [currentContent],
+            sections: [currentSection],
             index: node.index + 1,
             columnIndex: node.columnIndex,
             parent: node.parent,
             parentId: node.parent.id,
-            startOffset: currentContent.startOffset,
-            endOffset: currentContent.endOffset,
+            startOffset: currentSection.startOffset,
+            endOffset: currentSection.endOffset,
             state: unselected,
             isEdit: false,
         };
