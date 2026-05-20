@@ -39,6 +39,7 @@ export class MindMapMdView extends ItemView {
     getDisplayText(): string {
         return this.state.file?.basename ?? "Mind Map MD";
     }
+
     getIcon(): IconName {
         return VIEW_ICON_MINDMAPMD;
     }

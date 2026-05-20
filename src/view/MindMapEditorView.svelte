@@ -15,8 +15,10 @@
 	import {
 		type BlockView,
 		type Block as StateBlock,
-		type Root,
+		type BaseBlock,
 		fork,
+		type State,
+		type RootBlock,
 	} from "../util/block-level";
 	import { range } from "effect/Array";
 	import type { MindMapMdView } from "./MindMapMdView";
@@ -33,13 +35,12 @@
 		type ShortcutAction,
 	} from "../util/hot-key";
 	import { Annotation } from "@codemirror/state";
-	import { history } from "@codemirror/commands";
+	import { history, redo, undo } from "@codemirror/commands";
 	import { Effect, Option } from "effect";
 	import { createHotkeysAttachment } from "@tanstack/svelte-hotkeys";
 	import { EditorView } from "@codemirror/view";
 	import type { DocumentService } from "../service/document-service";
-	import { set } from "effect/HashMap";
-	import { is } from "effect/ParseResult";
+	import { hash } from "effect/Hash";
 
 	interface Props {
 		plugin: MindMapMdPlugin;
@@ -91,12 +92,13 @@
 			memory_doc: doc,
 		};
 		root.fileName = file.name;
-		blockView = parse_cache_2_block_view(
+		block_view = parse_cache_2_block_view(
 			cached,
 			(s, e) => editor_view.state.sliceDoc(s, e),
 			root,
 		);
 	}
+
 	let prev_save_action: number | null = null;
 
 	let external_edit_annotation = Annotation.define<true>();
@@ -169,9 +171,27 @@
 				lock_x = !lock_x;
 			},
 		},
+		Undo:{
+			hotkey: "Mod+Z",
+			callback: () => {
+				undo(editor_view);
+			},
+		},
+		Redo:{
+			hotkey: "Mod+Y",
+			callback: () => {
+				redo(editor_view);
+			},
+		},
+		RedoMac:{
+			hotkey: "Mod+Shift+Z",
+			callback: () => {
+				redo(editor_view);
+			},
+		}
 	});
 
-	const hotkeysAttachment = createHotkeysAttachment(() =>
+	const main_hotkeys_attachment = createHotkeysAttachment(() =>
 		Object.keys(defaultKeyMaps).map((k) => {
 			const { hotkey, callback } =
 				defaultKeyMaps[k as keyof typeof defaultKeyMaps]!;
@@ -182,10 +202,76 @@
 		}),
 	);
 
-	let root: Root = $state<Root>({
+	function block_hotkeys_attachment(
+		block: StateBlock,
+	): Attachment<HTMLElement> {
+		return createHotkeysAttachment([
+			{
+				hotkey: "Enter",
+				callback: () => {
+					//create new block
+					// edit_block();
+				},
+			},
+			{
+				hotkey: "Backspace",
+				callback: () => {
+					console.log("backspace keydown");
+					fold_block(block);
+				},
+			},
+		]);
+	}
+
+	function fold_block(block: BaseBlock) {
+		Option.gen(function* () {
+			console.log("fold block",block.index,block.columnIndex);
+			const pre_block = yield* Option.some(block.index - 1).pipe(
+				Option.andThen(Option.liftPredicate((prev) => prev >= 0)),
+				Option.flatMap((prev_index) =>
+					Option.fromNullable(
+						block_view.at(block.columnIndex)?.blocks.at(prev_index),
+					),
+				),
+			);
+
+			//todo match block type
+
+			//for paragraph under same parent block
+			selected.relativePos = {
+				columnIndex: block.columnIndex,
+				blockIndex: pre_block.index,
+			};
+			const from = pre_block.endOffset;
+			const to = block.startOffset;
+			const tr = editor_view.state.update({
+				changes: {
+					from,
+					to,
+					insert: "\n",
+				},
+			});
+			editor_view.dispatch(tr);
+
+			//todo for paragraph under different parent block
+			// merge current paragraph block to upper block,delete current block.
+
+			//todo for heading
+			//hide sub-blocks
+		});
+	}
+
+	let root: RootBlock = $state<RootBlock>({
 		id: "root",
 		fileName: "",
 		text: "",
+		hash: hash(""),
+		columnIndex: -1,
+		index: -1,
+		startOffset: 0,
+		endOffset: 0,
+		isEdit: false,
+		sections: [],
 	});
 	let selected = $state<Selected>({
 		relativePos: {
@@ -200,47 +286,66 @@
 		return selected.relativePos ?? { columnIndex: 0, blockIndex: 0 };
 	});
 
-	let blockView = $state<BlockView>([]);
+	const default_block_view = $state<BlockView>([
+		{
+			centerBlockIndex: 0,
+			blocks: [
+				{
+					id: crypto.randomUUID(),
+					hash: hash(""),
+					text: "",
+					parentId: root.id,
+					columnIndex: 0,
+					index: 0,
+					startOffset: 0,
+					endOffset: 0,
+					isEdit: false,
+					sections: [],
+					state: fork as State,
+				},
+			],
+		},
+	]);
+	let block_view = $state<BlockView>([]);
+
 	let xAxis = $derived(() => {
 		const ci = selectedPosition.columnIndex;
-		const columnCount = blockView.length;
+		const columnCount = block_view.length;
 		return range(0, columnCount).map((i) => i - ci);
 	});
 
-	export function setState(state: ComponentState) {
-		const { cached: cache, doc, file } = state;
+	// export function setState(state: ComponentState) {
+	// 	const { cached: cache, doc, file } = state;
 
-		const external_edit = editor_view.state.doc.toString() !== doc;
-		if (doc && external_edit) {
-			const tr = editor_view.state.update({
-				changes: {
-					from: 0,
-					to: editor_view.state.doc.length,
-					insert: doc,
-				},
-				annotations: external_edit_annotation.of(true),
-			});
-			editor_view.dispatch(tr);
-		}
-		//todo send state to channel
-		// filePath = file.path;
-		root.fileName = file.name;
-		// const contents = parseCacheMetadata2Content(cache, doc);
-		// const blockGroup = parseContent2Blocks(contents, root);
-		if (is_edit_mode) return;
-		blockView = parse_cache_2_block_view(
-			cache,
-			(start, end) => editor_view.state.sliceDoc(start, end),
-			root,
-		);
-		// setBlockViewBreadCrumbs(blockView, selectedPosition);
-	}
+	// 	const external_edit = editor_view.state.doc.toString() !== doc;
+	// 	if (doc && external_edit) {
+	// 		const tr = editor_view.state.update({
+	// 			changes: {
+	// 				from: 0,
+	// 				to: editor_view.state.doc.length,
+	// 				insert: doc,
+	// 			},
+	// 			annotations: external_edit_annotation.of(true),
+	// 		});
+	// 		editor_view.dispatch(tr);
+	// 	}
+	// 	root.fileName = file.name;
+	// 	// const contents = parseCacheMetadata2Content(cache, doc);
+	// 	// const blockGroup = parseContent2Blocks(contents, root);
+	// 	if (is_edit_mode) return;
+	// 	blockView = parse_cache_2_block_view(
+	// 		cache,
+	// 		(start, end) => editor_view.state.sliceDoc(start, end),
+	// 		root,
+	// 	);
+	// 	// setBlockViewBreadCrumbs(blockView, selectedPosition);
+	// }
 
 	function accross_column(offset: number) {
 		Option.gen(function* () {
-			const len = yield* blockView.length === 0
+			const len = yield* block_view.length === 0
 				? Option.none()
-				: Option.some(blockView.length);
+				: Option.some(block_view.length);
 			const { columnIndex } = selectedPosition;
 			const next_column_index = columnIndex + offset;
 			const x =
@@ -250,7 +355,7 @@
 						? len + next_column_index
 						: next_column_index;
 
-			const y = blockView.at(x)!.centerBlockIndex;
+			const y = block_view.at(x)!.centerBlockIndex;
 
 			move_to(x, y);
 		});
@@ -278,7 +383,7 @@
 		const { blockIndex, columnIndex } = selectedPosition;
 
 		const x = columnIndex;
-		const len = blockView.at(x)!.blocks.length;
+		const len = block_view.at(x)!.blocks.length;
 		const next_y = blockIndex + offset;
 		const y =
 			next_y >= len ? next_y - len : next_y < 0 ? len + next_y : next_y;
@@ -288,7 +393,7 @@
 	export function edit_block() {
 		Option.gen(function* () {
 			const block = yield* Option.fromNullable(
-				blockView
+				block_view
 					.at(selectedPosition.columnIndex)
 					?.blocks.at(selectedPosition.blockIndex),
 			);
@@ -304,7 +409,10 @@
 			container.replaceChildren();
 			const filePath = getfile()?.path;
 			if (!filePath) return;
-			if (b.state === fork && isActive()) {
+			if (
+				b.state === fork &&
+				isActive() //避免其他 editor 更新時，這個 view 重新渲染，又因為 fork 的 focus 把，focus 搶到這個 view 上
+			) {
 				selected_element = container;
 				// tick().then(()=>container.focus());
 				// todo focus
@@ -325,7 +433,7 @@
 		};
 	}
 
-	function renderMarkdownEditor(b: StateBlock): Attachment<HTMLElement> {
+	function render_markdown_editor(b: StateBlock): Attachment<HTMLElement> {
 		let start = b.startOffset;
 		return (container: HTMLElement) => {
 			container.replaceChildren();
@@ -361,7 +469,7 @@
 				},
 			});
 
-			m.owner.file = getfile()!;//for obsidian renaming heading command to work
+			m.owner.file = getfile()!; //for obsidian renaming heading command to work
 			return () => {
 				m.destroy();
 			};
@@ -404,7 +512,7 @@
 						e.stopPropagation();
 					}),
 			);
-			
+
 			block_action_menu.addSeparator();
 
 			block_action_menu.addItem((item) =>
@@ -427,6 +535,27 @@
 						console.log("add child block");
 						//todo add child block
 						// onBlockSelect(columnIndex, i);
+					}),
+			);
+
+			block_action_menu.addSeparator();
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Fold Block")
+					.setIcon("collapse")
+					.onClick(() => {
+						//todo fold block
+						//不顯示其 sub-blocks
+					}),
+			);
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Expand Block")
+					.setIcon("expand")
+					.onClick(() => {
+						//todo expand block
 					}),
 			);
 
@@ -462,6 +591,51 @@
 
 			block_action_menu.addItem((item) =>
 				item
+					.setTitle("Merge Up")
+					.setIcon("arrow-up")
+					.onClick(() => {
+						// myCustomFunction();
+						//todo merge up
+						console.log("merge up");
+						const pre_block = block_view
+							.at(block.columnIndex)!
+							.blocks.at(block.index - 1)!;
+
+						const from = pre_block.endOffset;
+						const to = block.startOffset;
+						const tr = editor_view.state.update({
+							changes: {
+								from,
+								to,
+								insert: "\n",
+							},
+						});
+						editor_view.dispatch(tr);
+						//主要目的是想要把 2 個 paragraph block 的內容合併成一個 block，讓我好編輯
+						//但要思考如果 2 個 block 是不同層級或是處在不同 parent block 底下的話，要怎麼處理比較好?
+						//或者將此功能限定給 paragraph 且 parent block 相同的時候才顯示。
+						//step1 add current to upper block's parent (move position)
+						//step2 downgrade current block's level
+						// onBlockSelect(columnIndex, i);
+					}),
+			);
+
+			block_action_menu.addItem((item) =>
+				item
+					.setTitle("Merge Down")
+					.setIcon("arrow-down")
+					.onClick(() => {
+						// myCustomFunction();
+						console.log("merge down");
+						//todo merge down
+						// onBlockSelect(columnIndex, i);
+					}),
+			);
+
+			block_action_menu.addSeparator();
+
+			block_action_menu.addItem((item) =>
+				item
 					.setTitle("Delete Block")
 					.setIcon("trash")
 					.onClick(() => {
@@ -477,9 +651,10 @@
 
 	$effect(() => {
 		// console.log("execute effect");
-		setBlockViewBreadCrumbs(blockView, selectedPosition);
+		setBlockViewBreadCrumbs(block_view, selectedPosition);
 	});
 
+	//update stale cache when user is not in edit mode
 	$effect(() => {
 		const file = getfile();
 		if (is_edit_mode || !file) return;
@@ -494,6 +669,7 @@
 			Effect.runPromise(update);
 		}
 	});
+
 	let columnWidthMap = $state.raw<Record<number, number>>({});
 
 	function updateColumnWidth(columnIndex: number, width: number) {
@@ -533,17 +709,20 @@
 <div
 	class="mindmapmd-theme"
 	tabindex="-1"
-	{@attach hotkeysAttachment}
+	{@attach main_hotkeys_attachment}
 	bind:this={self}
 >
 	<div class="grid grid-flow-col gap-10 overflow-auto">
-		{#each blockView as blockGroup, columnIndex}
+		<div>
+			<div></div>
+		</div>
+		{#each block_view as column, columnIndex}
 			<div
 				class={`h-screen overflow-y-auto p-10 min-w-100 ${mdc("column")}`}
 				style="overflow-anchor: none;"
 				{@attach move_column_to_center(columnIndex)}
 			>
-				<VirtualColumn column={blockGroup}>
+				<VirtualColumn {column}>
 					{#snippet children(block, i)}
 						{#if !block.isEdit}
 							<div
@@ -555,8 +734,8 @@
 									if (e.key === "Delete") {
 										// block.isEdit = true;
 										// is_edit_mode = true;
-										console.log("delete keydown");
 										//todo delete block
+										console.log("delete keydown");
 										// onBlockSelect(columnIndex, i);
 									}
 								}}
@@ -567,12 +746,13 @@
 								onclick={() => onBlockSelect(columnIndex, i)}
 								// onpointerup={() => onBlockSelect(columnIndex, i)}
 								{@attach renderObsidianMarkdown(block)}
+								{@attach block_hotkeys_attachment(block)}
 								//todo 使用者可以設定最大高度，超過的話就顯示 scroll
 								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
 							></div>
 						{:else}
 							<div
-								{@attach renderMarkdownEditor(block)}
+								{@attach render_markdown_editor(block)}
 								{@attach close_editor_on_click_outside(block)}
 								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
 							></div>
