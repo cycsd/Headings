@@ -1,6 +1,6 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type LevelSection, type NonStateBlock, type Root, type State, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
+import { unselected, type Block, type BlockView, type LevelSection, type NonStateBlock, type BaseBlock, type State, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
 import { Data, Effect, Match, Option, pipe, Random } from "effect";
 import type { Position } from "../view/MindMapMd";
 import { range } from "effect/Array";
@@ -84,8 +84,8 @@ export function headingsCacheToMap(
 }
 
 
-type BlockWithParent = Omit<Block, 'hash' | 'text'> & { parent: BlockWithParent | Root };
-export function parse_cache_2_block_view(cache: CachedMetadata, get_doc: (start: number, end: number) => string, root: Root): BlockView {
+type BlockWithParent = Omit<Block, 'hash' | 'text'> & { parent: BlockWithParent | BaseBlock };
+export function parse_cache_2_block_view(cache: CachedMetadata, get_doc: (start: number, end: number) => string, root: BaseBlock): BlockView {
     const sections = parse_cache_metadat_2_sections(cache);
     const blocks = parse_sections_2_blocks(sections, root);
 
@@ -106,12 +106,12 @@ export function parse_cache_2_block_view(cache: CachedMetadata, get_doc: (start:
     })
     return view;
 }
-export function parse_sections_2_blocks(sections: LevelSection[], root: Root): BlockWithParent[][] {
+export function parse_sections_2_blocks(sections: LevelSection[], root: BaseBlock): BlockWithParent[][] {
     if (sections.length === 0) return [];
     let [first, ...rest] = sections;
     if (first!.type === yaml) {
         // root.content = [first];
-        root.yaml = first!;
+        root.sections = [first!];
         [first, ...rest] = rest;
     }
 
