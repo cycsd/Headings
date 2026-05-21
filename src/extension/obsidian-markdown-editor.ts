@@ -6,7 +6,7 @@ https://github.com/taskgenius/taskgenius-plugin
 https://github.com/taskgenius/taskgenius-plugin/blob/ee821b0625de383a0ed0b4bfe155afd6e9ce4f33/src/editor-extensions/core/markdown-editor.ts#L31
 */
 
-import { App, TFile,Scope } from "obsidian";
+import { App, TFile, Scope } from "obsidian";
 import type { MarkdownScrollableEditView, WidgetEditorView, WorkspaceLeaf } from "obsidian";
 import { EditorSelection, Prec } from "@codemirror/state";
 import { EditorView, keymap, placeholder, ViewUpdate } from "@codemirror/view";
@@ -298,7 +298,6 @@ export class EmbeddableMarkdownEditor {
 
         // Set cursor position if specified
         if (options.cursorLocation && this.editor.editor?.cm) {
-            this.editor.editor.cm.focus();
             this.editor.editor.cm.dispatch({
                 selection: EditorSelection.range(
                     options.cursorLocation.anchor,

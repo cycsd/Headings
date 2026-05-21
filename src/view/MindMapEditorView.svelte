@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import MindMapMdPlugin from "../main";
 	import {
 		MarkdownRenderer,
@@ -8,10 +8,11 @@
 		type CachedMetadata,
 	} from "obsidian";
 	import {
+		heading,
 		parse_cache_2_block_view,
 		setBlockViewBreadCrumbs,
 	} from "../util/parse";
-	import { mdc } from "../util/utils";
+	import { lineSeparator, mdc } from "../util/utils";
 	import {
 		type BlockView,
 		type Block as StateBlock,
@@ -36,12 +37,20 @@
 	} from "../util/hot-key";
 	import { Annotation } from "@codemirror/state";
 	import { history, redo, undo } from "@codemirror/commands";
-	import { Effect, Option } from "effect";
+	import { Effect, Option, Schema } from "effect";
 	import { createHotkeysAttachment } from "@tanstack/svelte-hotkeys";
 	import { EditorView } from "@codemirror/view";
 	import type { DocumentService } from "../service/document-service";
 	import { hash } from "effect/Hash";
+	import { linesWithSeparators } from "effect/String";
+	import { find } from "effect/Stream";
+	import { find_next_section } from "../util/block-utils";
+	import { last } from "effect/Chunk";
 
+	//todo view function
+	//show section type 方便在編輯的時候查看父子 block 是什麼階層
+	//zoom in/out
+	//search/find ?
 	interface Props {
 		plugin: MindMapMdPlugin;
 		view: MindMapMdView;
@@ -171,24 +180,24 @@
 				lock_x = !lock_x;
 			},
 		},
-		Undo:{
+		Undo: {
 			hotkey: "Mod+Z",
 			callback: () => {
 				undo(editor_view);
 			},
 		},
-		Redo:{
+		Redo: {
 			hotkey: "Mod+Y",
 			callback: () => {
 				redo(editor_view);
 			},
 		},
-		RedoMac:{
+		RedoMac: {
 			hotkey: "Mod+Shift+Z",
 			callback: () => {
 				redo(editor_view);
 			},
-		}
+		},
 	});
 
 	const main_hotkeys_attachment = createHotkeysAttachment(() =>
@@ -211,6 +220,12 @@
 				callback: () => {
 					//create new block
 					// edit_block();
+					add_next(
+						block_view,
+						block_view
+							.at(block.columnIndex)!
+							.blocks.at(block.index)!,
+					);
 				},
 			},
 			{
@@ -225,30 +240,25 @@
 
 	function fold_block(block: BaseBlock) {
 		Option.gen(function* () {
-			console.log("fold block",block.index,block.columnIndex);
-			const pre_block = yield* Option.some(block.index - 1).pipe(
-				Option.andThen(Option.liftPredicate((prev) => prev >= 0)),
-				Option.flatMap((prev_index) =>
-					Option.fromNullable(
-						block_view.at(block.columnIndex)?.blocks.at(prev_index),
-					),
-				),
+			const prev_index = yield* Schema.decodeOption(Schema.NonNegative)(
+				block.index - 1,
+			);
+
+			const pre_block = yield* Option.fromNullable(
+				block_view.at(block.columnIndex)?.blocks.at(prev_index),
 			);
 
 			//todo match block type
 
 			//for paragraph under same parent block
-			selected.relativePos = {
-				columnIndex: block.columnIndex,
-				blockIndex: pre_block.index,
-			};
+			onBlockSelect(block.columnIndex, pre_block.index);
 			const from = pre_block.endOffset;
 			const to = block.startOffset;
 			const tr = editor_view.state.update({
 				changes: {
 					from,
 					to,
-					insert: "\n",
+					insert: lineSeparator,
 				},
 			});
 			editor_view.dispatch(tr);
@@ -314,32 +324,97 @@
 		return range(0, columnCount).map((i) => i - ci);
 	});
 
-	// export function setState(state: ComponentState) {
-	// 	const { cached: cache, doc, file } = state;
+	function add_sub_child(view:BlockView,curr_block:StateBlock){
+		//find sub,if empty downgrade this current block level
+		//empty condition : no block in next column or no block in next column has parent id same as current block id
+		//add next
+	}
+	function add_next(view: BlockView, curr_block: StateBlock) {
+		Option.gen(function* () {
+			const { insert_from, start_linebreaks, end_linebreaks } = yield* find_next_section(
+				view,
+				curr_block.columnIndex,
+				curr_block.index,
+			).pipe(
+				Option.map((next_section) => ({
+					insert_from: next_section.startOffset,
+					start_linebreaks: 0, //有 next_section 代表前面原本就有換行了，所以不需要再額外加換行了
+					end_linebreaks: 2,// 與 next_section 隔開
+				})),
+				Option.orElse(() => {
+					return Option.fromNullable(
+						last_set_doc.memory_cached.sections?.at(-1)?.position
+							.end.offset,
+					).pipe(
+						Option.map((i) => ({
+							insert_from: i,
+							start_linebreaks: 2,
+							end_linebreaks: 0,//避免文件越來越長
+						})),
+					);
+				}),
+			);
 
-	// 	const external_edit = editor_view.state.doc.toString() !== doc;
-	// 	if (doc && external_edit) {
-	// 		const tr = editor_view.state.update({
-	// 			changes: {
-	// 				from: 0,
-	// 				to: editor_view.state.doc.length,
-	// 				insert: doc,
-	// 			},
-	// 			annotations: external_edit_annotation.of(true),
-	// 		});
-	// 		editor_view.dispatch(tr);
-	// 	}
-	// 	root.fileName = file.name;
-	// 	// const contents = parseCacheMetadata2Content(cache, doc);
-	// 	// const blockGroup = parseContent2Blocks(contents, root);
-	// 	if (is_edit_mode) return;
-	// 	blockView = parse_cache_2_block_view(
-	// 		cache,
-	// 		(start, end) => editor_view.state.sliceDoc(start, end),
-	// 		root,
-	// 	);
-	// 	// setBlockViewBreadCrumbs(blockView, selectedPosition);
-	// }
+			is_edit_mode = true; //進入 edit mode ,避免 cache 更新把畫面重置
+			const curr_section = curr_block.sections.at(0)!;
+			const text =
+				curr_section.type === heading
+					? "#".repeat(curr_section.level) + " "
+					: "";
+
+			const insert =
+				lineSeparator.repeat(start_linebreaks) +
+				text +
+				lineSeparator.repeat(end_linebreaks); //換行+在隔一個段落間距，所以總共要 2 個換行符號
+			const tr = editor_view.state.update({
+				changes: {
+					from: insert_from,
+					insert: insert,
+				},
+			});
+
+			editor_view.dispatch(tr);
+
+			// 手動模擬更新 cache 後的 block
+			const next_index = curr_block.index + 1;
+
+			const start = insert_from + start_linebreaks;
+			const end = start + text.length;
+			const mock_block = {
+				id: crypto.randomUUID(),
+				hash: hash(text),
+				text: text,
+				parentId: curr_block.parentId,
+				columnIndex: curr_block.columnIndex,
+				index: next_index,
+				startOffset: start,
+				endOffset: end,
+				isEdit: true,
+				sections: [
+					{
+						type: curr_section.type,
+						level: curr_section.level,
+						startOffset: start,
+						endOffset: end,
+					},
+				],
+				state: fork as State,
+			};
+			const column = yield* Option.fromNullable(
+				view.at(curr_block.columnIndex),
+			);
+
+			column.blocks.splice(next_index, 0, mock_block);
+			// console.log(
+			// 	"afater splice",
+			// 	"alter bblocks",
+			// 	$state.snapshot(column.blocks),
+			// 	"view blocks",
+			// 	$state.snapshot(view.at(curr_block.columnIndex)?.blocks),
+			// );
+			onBlockSelect(curr_block.columnIndex, next_index);
+		});
+	}
 
 	function accross_column(offset: number) {
 		Option.gen(function* () {
@@ -368,8 +443,6 @@
 	// 如果是最底的段落則跳回最一開頭的段落
 	function find_next() {
 		const { columnIndex, blockIndex } = selectedPosition;
-
-		const next_column_index = columnIndex + 1;
 	}
 
 	function move_to(x: number, y: number) {
@@ -402,7 +475,7 @@
 		});
 	}
 
-	function renderObsidianMarkdown(b: StateBlock): Attachment<HTMLElement> {
+	function render_obsidian_markdown(b: StateBlock): Attachment<HTMLElement> {
 		// let selectedEvent = () => onBlockSelect(b.columnIndex, b.index);
 		return (element: HTMLElement) => {
 			const container = element;
@@ -421,6 +494,7 @@
 
 				setTimeout(() => {
 					container.focus({ preventScroll: true });
+					// console.log("rub focus", container, document.activeElement);
 				}, 0);
 			}
 			MarkdownRenderer.render(
@@ -448,6 +522,9 @@
 					if (mod) {
 						b.isEdit = false;
 						is_edit_mode = false;
+						//todo 偵測如果使用者最後輸入內容為空
+						//看上一個 block 是否在同個 parent 底下，如果是刪除中間留白，不論中間原本有多少 separator，變成 2 個 separator
+						//todo hash block text for re-locate
 					}
 					return mod;
 				},
@@ -470,6 +547,8 @@
 			});
 
 			m.owner.file = getfile()!; //for obsidian renaming heading command to work
+			//需要 focus 才能讓遊標顯示，如果不使用 setTimeout，對每欄最後一個 block 做新增 block，會無法成功 focus 新的 block，原因不明，需要確認
+			setTimeout(() => m.editor.cm.focus());
 			return () => {
 				m.destroy();
 			};
@@ -543,7 +622,7 @@
 			block_action_menu.addItem((item) =>
 				item
 					.setTitle("Fold Block")
-					.setIcon("collapse")
+					.setIcon("list-chevrons-down-up")
 					.onClick(() => {
 						//todo fold block
 						//不顯示其 sub-blocks
@@ -553,7 +632,7 @@
 			block_action_menu.addItem((item) =>
 				item
 					.setTitle("Expand Block")
-					.setIcon("expand")
+					.setIcon("list-chevrons-up-down")
 					.onClick(() => {
 						//todo expand block
 					}),
@@ -650,8 +729,11 @@
 	}
 
 	$effect(() => {
-		// console.log("execute effect");
+		// console.log("execute set block view effect");
 		setBlockViewBreadCrumbs(block_view, selectedPosition);
+		// console.log(
+		// 	$state.snapshot(block_view.at(selectedPosition.columnIndex)),
+		// );
 	});
 
 	//update stale cache when user is not in edit mode
@@ -712,13 +794,13 @@
 	{@attach main_hotkeys_attachment}
 	bind:this={self}
 >
-	<div class="grid grid-flow-col gap-10 overflow-auto">
+	<div class="grid grid-flow-col gap-7 overflow-auto">
 		<div>
 			<div></div>
 		</div>
 		{#each block_view as column, columnIndex}
 			<div
-				class={`h-screen overflow-y-auto p-10 min-w-100 ${mdc("column")}`}
+				class={`h-screen overflow-y-auto min-w-100 ${mdc("column")}`}
 				style="overflow-anchor: none;"
 				{@attach move_column_to_center(columnIndex)}
 			>
@@ -745,7 +827,7 @@
 								// }}
 								onclick={() => onBlockSelect(columnIndex, i)}
 								// onpointerup={() => onBlockSelect(columnIndex, i)}
-								{@attach renderObsidianMarkdown(block)}
+								{@attach render_obsidian_markdown(block)}
 								{@attach block_hotkeys_attachment(block)}
 								//todo 使用者可以設定最大高度，超過的話就顯示 scroll
 								class={`min-w-80 rounded-lg p-4 text-card-foreground shadow-sm ${mdc(block.state)} bg-card my-3`}
