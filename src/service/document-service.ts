@@ -22,7 +22,7 @@ export interface DocumentService {
     isStale: (doc: string, cached: CachedMetadata) => boolean;
     openFile: (file: TFile, anchor: number, head: number) => Promise<void>;
     reveal: (file: TFile, anchor: number, head: number) => Promise<void>;
-
+    locate: (file: TFile, anchor: number, head: number) => Promise<MarkdownView>;
 }
 
 
@@ -33,36 +33,47 @@ export class PluginDocumentService implements DocumentService {
     private markdown_view: MarkdownView | null = null;
     async reveal(file: TFile, anchor: number, head: number) {
         const program = Effect.gen(this, function* () {
-            const view = yield* Option.fromNullable(this.markdown_view)
-                .pipe(
-                    Option.flatMap(Option.liftPredicate(v => v.file?.path === file.path)),
-                );
-
-            const range = EditorSelection.range(anchor, head);
+            const view = yield* Effect.promise(() => this.locate(file, anchor, head));
             view.editor.focus();
-            view.editor.cm.dispatch({
-                selection: range,
-                effects: EditorView.scrollIntoView(range, { y: "center" }),
-            })
         });
 
-        return Effect.runPromise(program.pipe(
-            Effect.orElseFail(() => this.openFile(file, anchor, head)),
-        ));
+        return Effect.runPromise(program);
     }
-    async openFile(file: TFile, anchor: number, head?: number) {
+
+    async locate(file: TFile, anchor: number, head: number) {
+        const program = Effect.gen(this, function* () {
+            const view = yield* Option.fromNullable(this.markdown_view)
+                .pipe(Option.filter(v => v.file?.path === file.path), Effect.orElse(() => this.open_file(file)));
+
+            this.locate_view(view, anchor, head);
+            return view;
+        });
+        return Effect.runPromise(program);
+    }
+    open_file(file: TFile) {
         const program = Effect.gen(this, function* () {
             yield* Effect.tryPromise(() => {
                 return this.plugin.app.workspace.getLeaf('split').openFile(file);
             });
-
             this.markdown_view = yield* getActiveViewOfType(this.plugin.app.workspace, MarkdownView);
+            return this.markdown_view;
+        });
 
-            const range = EditorSelection.range(anchor, head ?? anchor);
-            this.markdown_view.editor.cm.dispatch({
-                selection: range,
-                effects: EditorView.scrollIntoView(range, { y: "center" }),
-            })
+        return program;
+    }
+    locate_view(view: MarkdownView, anchor: number, head: number) {
+        const range = EditorSelection.range(anchor, head);
+        view.editor.cm.dispatch({
+            selection: range,
+            effects: EditorView.scrollIntoView(range, { y: "center" }),
+        });
+    }
+
+    async openFile(file: TFile, anchor: number, head?: number) {
+        const program = Effect.gen(this, function* () {
+            const view = yield* this.open_file(file);
+
+            this.locate_view(view, anchor, head ?? anchor);
         });
 
         return Effect.runPromise(program);

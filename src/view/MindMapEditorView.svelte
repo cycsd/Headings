@@ -9,6 +9,8 @@
 	} from "obsidian";
 	import {
 		heading,
+		leaf_level,
+		level_down,
 		parse_cache_2_block_view,
 		setBlockViewBreadCrumbs,
 	} from "../util/parse";
@@ -229,6 +231,19 @@
 				},
 			},
 			{
+				hotkey: "Tab",
+				callback: () => {
+					//create sub block
+					console.log("tab keydown");
+					add_sub_child(
+						block_view,
+						block_view
+							.at(block.columnIndex)!
+							.blocks.at(block.index)!,
+					);
+				},
+			},
+			{
 				hotkey: "Backspace",
 				callback: () => {
 					console.log("backspace keydown");
@@ -324,48 +339,118 @@
 		return range(0, columnCount).map((i) => i - ci);
 	});
 
-	function add_sub_child(view:BlockView,curr_block:StateBlock){
+	function add_sub_child(view: BlockView, curr_block: BaseBlock) {
 		//find sub,if empty downgrade this current block level
 		//empty condition : no block in next column or no block in next column has parent id same as current block id
 		//add next
+
+		//if level is leaf level, add next sibling block
+		//if next column has block with parent id same as current block id -> add_next
+		//else check next column, if colum is empty? do...
+		//if not add to endoffset and how to mock block?
+
+		const next_column_index = curr_block.columnIndex + 1;
+
+		const maybe_child_block =
+			curr_block.sections.at(0)!.level >= leaf_level
+				? Effect.succeed(curr_block)
+				: Effect.gen(function* () {
+						const next_blocks = yield* get_next_coloumn_blocks();
+						const sub_block = yield* Option.fromNullable(
+							next_blocks.findLast(
+								(b) => b.parentId === curr_block.id,
+							),
+						);
+						return sub_block;
+					});
+
+		const add_sub = Effect.match(maybe_child_block, {
+			onSuccess: (b) =>
+				add_before_next_section(view, b as StateBlock, (_) => {
+					const child_section = b.sections.at(0)!;
+					const section = curr_block.sections.at(0)!;
+					const { level, type } =
+						child_section.type === heading
+							? child_section
+							: level_down(section);
+					const text =
+						type === heading ? "#".repeat(level) + " " : "";
+					return { text, type, level };
+				}),
+			onFailure: () => {
+				//add_after_section
+			},
+		});
+
+		Effect.runPromise(add_sub);
+
+		function get_next_coloumn_blocks() {
+			if (next_column_index < view.length) {
+				return Effect.succeed(view.at(next_column_index)!.blocks);
+			} else {
+				//mock empty column
+				return Effect.sync(() => {
+					view.push({
+						centerBlockIndex: 0,
+						blocks: [],
+					});
+					return view.at(next_column_index)!.blocks;
+				});
+			}
+		}
 	}
+
 	function add_next(view: BlockView, curr_block: StateBlock) {
+		add_before_next_section(view, curr_block, (_) => {
+			const section = curr_block.sections.at(0)!;
+			const text =
+				section.type === heading ? "#".repeat(section.level) + " " : "";
+			return { text, type: section.type, level: section.level };
+		});
+	}
+
+	function add_before_next_section(
+		view: BlockView,
+		curr_block: StateBlock,
+		get_text: (
+			next_block: Option.Option<StateBlock>,
+		) => { text: string; type: string; level: number },
+	) {
 		Option.gen(function* () {
-			const { insert_from, start_linebreaks, end_linebreaks } = yield* find_next_section(
+			const next_section = find_next_section(
 				view,
 				curr_block.columnIndex,
 				curr_block.index,
-			).pipe(
-				Option.map((next_section) => ({
-					insert_from: next_section.startOffset,
-					start_linebreaks: 0, //有 next_section 代表前面原本就有換行了，所以不需要再額外加換行了
-					end_linebreaks: 2,// 與 next_section 隔開
-				})),
-				Option.orElse(() => {
-					return Option.fromNullable(
-						last_set_doc.memory_cached.sections?.at(-1)?.position
-							.end.offset,
-					).pipe(
-						Option.map((i) => ({
-							insert_from: i,
-							start_linebreaks: 2,
-							end_linebreaks: 0,//避免文件越來越長
-						})),
-					);
-				}),
 			);
+			const { insert_from, start_linebreaks, end_linebreaks } =
+				yield* next_section.pipe(
+					Option.map((next_section) => ({
+						insert_from: next_section.startOffset,
+						start_linebreaks: 0, //有 next_section 代表前面原本就有換行了，所以不需要再額外加換行了
+						end_linebreaks: 2, // 與 next_section 隔開，換行+在隔一個段落間距，所以總共要 2 個換行符號
+					})),
+					Option.orElse(() => {
+						return Option.fromNullable(
+							last_set_doc.memory_cached.sections?.at(-1)
+								?.position.end.offset,
+						).pipe(
+							Option.map((i) => ({
+								insert_from: i,
+								start_linebreaks: 2,
+								end_linebreaks: 0, //避免文件越來越長
+							})),
+						);
+					}),
+				);
 
 			is_edit_mode = true; //進入 edit mode ,避免 cache 更新把畫面重置
 			const curr_section = curr_block.sections.at(0)!;
-			const text =
-				curr_section.type === heading
-					? "#".repeat(curr_section.level) + " "
-					: "";
+			const { text, type, level } = get_text(next_section);
 
 			const insert =
 				lineSeparator.repeat(start_linebreaks) +
 				text +
-				lineSeparator.repeat(end_linebreaks); //換行+在隔一個段落間距，所以總共要 2 個換行符號
+				lineSeparator.repeat(end_linebreaks);
 			const tr = editor_view.state.update({
 				changes: {
 					from: insert_from,
@@ -392,8 +477,8 @@
 				isEdit: true,
 				sections: [
 					{
-						type: curr_section.type,
-						level: curr_section.level,
+						type: type,
+						level: level,
 						startOffset: start,
 						endOffset: end,
 					},
@@ -405,13 +490,7 @@
 			);
 
 			column.blocks.splice(next_index, 0, mock_block);
-			// console.log(
-			// 	"afater splice",
-			// 	"alter bblocks",
-			// 	$state.snapshot(column.blocks),
-			// 	"view blocks",
-			// 	$state.snapshot(view.at(curr_block.columnIndex)?.blocks),
-			// );
+
 			onBlockSelect(curr_block.columnIndex, next_index);
 		});
 	}
@@ -582,10 +661,7 @@
 					.setTitle("Edit Block")
 					.setIcon("pencil")
 					.onClick((e) => {
-						selectedPosition = {
-							columnIndex: block.columnIndex,
-							blockIndex: block.index,
-						};
+						onBlockSelect(block.columnIndex, block.index);
 						edit_block();
 						//防止意圖被偵測成使用者點擊 block 以外的地方而關閉編輯模式
 						e.stopPropagation();
@@ -786,6 +862,11 @@
 			return () => document.removeEventListener("click", onClick);
 		};
 	}
+
+
+	async function reveal_block(block: StateBlock) {
+		await docService.reveal(getfile()!, block.startOffset, block.endOffset);
+	}
 </script>
 
 <div
@@ -825,7 +906,11 @@
 								// 	block.isEdit = true;
 								// 	is_edit_mode = true;
 								// }}
-								onclick={() => onBlockSelect(columnIndex, i)}
+								onclick={async (e) => {
+									onBlockSelect(columnIndex, i);
+									await reveal_block(block);
+									(e.currentTarget as HTMLElement).focus();
+								}}
 								// onpointerup={() => onBlockSelect(columnIndex, i)}
 								{@attach render_obsidian_markdown(block)}
 								{@attach block_hotkeys_attachment(block)}

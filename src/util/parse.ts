@@ -28,7 +28,17 @@ export const link = 'link';
 export const yaml_level = 0;
 export const paragraph_level = 7;
 export const other_level = 8;
+export const leaf_level = paragraph_level;
 
+export const level_down = Match.type<LevelSection>().pipe(
+    Match.withReturnType<Pick<LevelSection, 'level' | 'type'>>(),
+    Match.when({ type: yaml }, () => ({ level: 1, type: heading })),
+    Match.whenOr(
+        { type: paragraph },
+        { type: heading, level: 6 }, () => ({ level: paragraph_level, type: paragraph })),
+    Match.when({ type: heading }, (h) => ({ level: h.level + 1, type: heading })),
+    Match.orElse(({ type: other }) => ({ level: other_level, type: other })),
+)
 
 export const sectionMatchLevel = Match.type<SectionCache>().pipe(
     Match.withReturnType<Pick<LevelSection, 'level'>>(),
