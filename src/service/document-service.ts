@@ -1,18 +1,18 @@
 import { MarkdownEditView, MarkdownView, type CachedMetadata, type TFile } from "obsidian";
-import type MindMapMdPlugin from "../main";
+import type HeadingsPlugin from "../main";
 import { Effect, Option } from "effect";
 import { getFileCached } from "../extension/app";
-import type { NoSuchElementException, UnknownException } from "effect/Cause";
 import { getActiveViewOfType } from "../extension/workspace";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import type { NoSuchElementError, UnknownError } from "effect/Cause";
 
 
 
 export type Promiseable<T> = T | Promise<T>;
 
 export interface DocumentService {
-    getCache(file: TFile): Effect.Effect<{ doc: string, cached: CachedMetadata }, NoSuchElementException | UnknownException, never>;
+    getCache(file: TFile): Effect.Effect<{ doc: string, cached: CachedMetadata }, NoSuchElementError | UnknownError, never>;
     subscribe: (callback: (file: TFile, doc: string, cached: CachedMetadata) => Promiseable<boolean>) => void;
     /**
      * return boolean 代表是否有成功送出訊息給訂閱者，成功的定義是訂閱者有收到訊息並且成功處理。
@@ -27,12 +27,12 @@ export interface DocumentService {
 
 
 export class PluginDocumentService implements DocumentService {
-    private constructor(private plugin: MindMapMdPlugin) {
+    private constructor(private plugin: HeadingsPlugin) {
 
     }
     private markdown_view: MarkdownView | null = null;
     async reveal(file: TFile, anchor: number, head: number) {
-        const program = Effect.gen(this, function* () {
+        const program = Effect.gen({ self: this }, function* () {
             const view = yield* Effect.promise(() => this.locate(file, anchor, head));
             view.editor.focus();
         });
@@ -41,9 +41,11 @@ export class PluginDocumentService implements DocumentService {
     }
 
     async locate(file: TFile, anchor: number, head: number) {
-        const program = Effect.gen(this, function* () {
-            const view = yield* Option.fromNullable(this.markdown_view)
-                .pipe(Option.filter(v => v.file?.path === file.path), Effect.orElse(() => this.open_file(file)));
+        const program = Effect.gen({ self: this }, function* () {
+            const view = yield* Option.fromNullishOr(this.markdown_view)
+                .pipe(Option.filter(v => v.file?.path === file.path),
+                    Effect.fromOption,
+                    Effect.catchCause(() => this.open_file(file)));
 
             this.locate_view(view, anchor, head);
             return view;
@@ -51,7 +53,7 @@ export class PluginDocumentService implements DocumentService {
         return Effect.runPromise(program);
     }
     open_file(file: TFile) {
-        const program = Effect.gen(this, function* () {
+        const program = Effect.gen({ self: this }, function* () {
             yield* Effect.tryPromise(() => {
                 return this.plugin.app.workspace.getLeaf('split').openFile(file);
             });
@@ -70,7 +72,7 @@ export class PluginDocumentService implements DocumentService {
     }
 
     async openFile(file: TFile, anchor: number, head?: number) {
-        const program = Effect.gen(this, function* () {
+        const program = Effect.gen({ self: this }, function* () {
             const view = yield* this.open_file(file);
 
             this.locate_view(view, anchor, head ?? anchor);
@@ -80,11 +82,11 @@ export class PluginDocumentService implements DocumentService {
 
     };
     getCache(file: TFile) {
-        return Effect.fromNullable(this.cachedData)
-            .pipe(Effect.orElse(() => getFileCached(this.plugin.app, file)))
+        return Effect.fromNullishOr(this.cachedData)
+            .pipe(Effect.catchCause(() => getFileCached(this.plugin.app, file)))
     }
 
-    static create(plugin: MindMapMdPlugin): PluginDocumentService {
+    static create(plugin: HeadingsPlugin): PluginDocumentService {
         return new PluginDocumentService(plugin);
     }
     private subscribers: Set<(file: TFile, doc: string, cached: CachedMetadata) => Promiseable<boolean>> = new Set();

@@ -239,8 +239,8 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
     curr_column!.centerBlockIndex = selectedBlock.index;
 
 
-    const set_road = Effect.loop(
-        Option.fromNullable(selectedBlock).pipe(
+    const set_road = Effect.whileLoop(
+        Option.fromNullishOr(selectedBlock).pipe(
             Option.map(b => {
                 return {
                     target: b.parentId,
@@ -257,9 +257,9 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
             step: (s) => {
                 const selected = Option.gen(function* () {
                     const { target, columnIndex } = yield* s;
-                    const column_layout = yield* Option.fromNullable(view[columnIndex]);
+                    const column_layout = yield* Option.fromNullishOr(view[columnIndex]);
 
-                    const selected_block = yield* Option.fromNullable(column_layout.blocks.find((b) => b.id === target));
+                    const selected_block = yield* Option.fromNullishOr(column_layout.blocks.find((b) => b.id === target));
 
                     column_layout.centerBlockIndex = selected_block.index;
 

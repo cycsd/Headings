@@ -1,21 +1,19 @@
-import { type CachedMetadata, type EventRef, type IconName, ItemView, MarkdownRenderChild, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
-import type MindMapMdPlugin from "../main";
+import { type EventRef, type IconName, ItemView, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
+import type HeadingsPlugin from "../main";
 import MindMapEditorView from "./MindMapEditorView.svelte";
 import { mount, unmount } from "svelte";
-import type { ComponentState, MindMapMdViewState, MindMapMdViewStateSave } from "./MindMapMd"
+import type { MindMapMdViewState, MindMapMdViewStateSave } from "./MindMapMd"
 import { Effect, Option } from "effect";
-import type { NoSuchElementException } from "effect/Cause";
-import { cachedRead, getFileByPath } from "../extension/vault";
+import { getFileByPath } from "../extension/vault";
 import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
-import type { isActive } from "effect/RuntimeFlagsPatch";
 
 export const VIEW_TYPE_MINDMAPMD = "mindmap-md-view";
 
 //obsidian base 使用 layout-list 當作 icon
 export const VIEW_ICON_MINDMAPMD: IconName = "layout-panel-left";
 
-export class MindMapMdView extends ItemView {
+export class HeadingsView extends ItemView {
     private mindMapEditorView: ReturnType<typeof MindMapEditorView> | undefined;
 
     public get component() {
@@ -43,7 +41,7 @@ export class MindMapMdView extends ItemView {
     getIcon(): IconName {
         return VIEW_ICON_MINDMAPMD;
     }
-    constructor(leaf: WorkspaceLeaf, private plugin: MindMapMdPlugin) {
+    constructor(leaf: WorkspaceLeaf, private plugin: HeadingsPlugin) {
         super(leaf);
     }
     isActive(): boolean {
@@ -69,11 +67,11 @@ export class MindMapMdView extends ItemView {
         );
 
         this.cacheChagedEventRef = this.plugin.app.metadataCache.on("changed", async (file, doc, cached) => {
-            const program = Effect.gen(this, function* () {
-                const exist_file = yield* Option.fromNullable(this.state.file)
-                    .pipe(Option.filter(f => f.path === file.path));
+            const program = Effect.gen({ self: this }, function* () {
+                const exist_file = yield* Option.fromNullishOr(this.state.file)
+                    .pipe(Option.filter(f => f.path === file.path), Effect.fromOption);
 
-                const component = yield* Effect.fromNullable(this.mindMapEditorView);
+                const component = yield* Effect.fromNullishOr(this.mindMapEditorView);
                 this.docServeice.send(file, doc, cached);
                 // component.setState({
                 //     file,
@@ -102,8 +100,8 @@ export class MindMapMdView extends ItemView {
         // 會先執行 onOpen
         // 才會再來執行 setState ，將之前存在 workspace.json 中的 state 取出來，並 setState 給 view
 
-        const setComponentState = Effect.gen(this, function* () {
-            const component = yield* Effect.fromNullable(this.mindMapEditorView)
+        const setComponentState = Effect.gen({ self: this }, function* () {
+            const component = yield* Effect.fromNullishOr(this.mindMapEditorView)
 
             const { file, cached, doc } = yield* this.getComponentState(state);
 
@@ -139,10 +137,10 @@ export class MindMapMdView extends ItemView {
     }
 
     getComponentState(state: MindMapMdViewState) {
-        return Effect.gen(this, function* () {
-            const file = yield* Effect.fromNullable(state.file)
+        return Effect.gen({ self: this }, function* () {
+            const file = yield* Effect.fromNullishOr(state.file)
                 .pipe(
-                    Effect.orElse(() => Effect.fromNullable(state.filePath)
+                    Effect.catchCause(() => Effect.fromNullishOr(state.filePath)
                         .pipe(Effect.flatMap(path => getFileByPath(this.plugin.app.vault, path))),
                     ));
 

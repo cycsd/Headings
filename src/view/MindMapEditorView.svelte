@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from "svelte";
-	import MindMapMdPlugin from "../main";
+	import { onMount } from "svelte";
+	import HeadingsPlugin from "../main";
 	import {
 		MarkdownRenderer,
 		Menu,
@@ -24,8 +24,8 @@
 		type RootBlock,
 	} from "../util/block-level";
 	import { range } from "effect/Array";
-	import type { MindMapMdView } from "./MindMapMdView";
-	import type { ComponentState, Position, Selected } from "./MindMapMd";
+	import type { HeadingsView } from "./MindMapMdView";
+	import type { Position, Selected } from "./MindMapMd";
 	import type { Attachment } from "svelte/attachments";
 	import VirtualColumn from "./VirtualColumn.svelte";
 	import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
@@ -44,18 +44,15 @@
 	import { EditorView } from "@codemirror/view";
 	import type { DocumentService } from "../service/document-service";
 	import { hash } from "effect/Hash";
-	import { linesWithSeparators } from "effect/String";
-	import { find } from "effect/Stream";
 	import { find_next_section } from "../util/block-utils";
-	import { last } from "effect/Chunk";
-
+	
 	//todo view function
 	//show section type 方便在編輯的時候查看父子 block 是什麼階層
 	//zoom in/out
 	//search/find ?
 	interface Props {
-		plugin: MindMapMdPlugin;
-		view: MindMapMdView;
+		plugin: HeadingsPlugin;
+		view: HeadingsView;
 		docService: DocumentService;
 		isActive: () => boolean;
 	}
@@ -255,11 +252,11 @@
 
 	function fold_block(block: BaseBlock) {
 		Option.gen(function* () {
-			const prev_index = yield* Schema.decodeOption(Schema.NonNegative)(
+			const prev_index = yield* Schema.decodeOption(Schema.Natural)(
 				block.index - 1,
 			);
 
-			const pre_block = yield* Option.fromNullable(
+			const pre_block = yield* Option.fromNullishOr(
 				block_view.at(block.columnIndex)?.blocks.at(prev_index),
 			);
 
@@ -356,11 +353,11 @@
 				? Effect.succeed(curr_block)
 				: Effect.gen(function* () {
 						const next_blocks = yield* get_next_coloumn_blocks();
-						const sub_block = yield* Option.fromNullable(
+						const sub_block = yield* Option.fromNullishOr(
 							next_blocks.findLast(
 								(b) => b.parentId === curr_block.id,
 							),
-						);
+						).pipe(Effect.fromOption);
 						return sub_block;
 					});
 
@@ -430,7 +427,7 @@
 						end_linebreaks: 2, // 與 next_section 隔開，換行+在隔一個段落間距，所以總共要 2 個換行符號
 					})),
 					Option.orElse(() => {
-						return Option.fromNullable(
+						return Option.fromNullishOr(
 							last_set_doc.memory_cached.sections?.at(-1)
 								?.position.end.offset,
 						).pipe(
@@ -485,7 +482,7 @@
 				],
 				state: fork as State,
 			};
-			const column = yield* Option.fromNullable(
+			const column = yield* Option.fromNullishOr(
 				view.at(curr_block.columnIndex),
 			);
 
@@ -544,7 +541,7 @@
 	}
 	export function edit_block() {
 		Option.gen(function* () {
-			const block = yield* Option.fromNullable(
+			const block = yield* Option.fromNullishOr(
 				block_view
 					.at(selectedPosition.columnIndex)
 					?.blocks.at(selectedPosition.blockIndex),
@@ -820,7 +817,7 @@
 		if (docService.isStale(memory_doc, memory_cached)) {
 			const new_cached = docService.getCache(file);
 			const update = new_cached.pipe(
-				Effect.andThen((c) => {
+				Effect.map((c) => {
 					setDocument(file, c.doc, c.cached);
 				}),
 			);
