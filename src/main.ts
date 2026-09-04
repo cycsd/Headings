@@ -1,47 +1,53 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, TFile, View, WorkspaceLeaf, type Constructor, FuzzySuggestModal, type MarkdownFileInfo } from 'obsidian';
 import "./app.css";
-import { DEFAULT_SETTINGS, MindMapMdSettingTab, type MyPluginSettings } from "./settings";
-import { MindMapMdView, VIEW_ICON_MINDMAPMD, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
+import { DEFAULT_SETTINGS, MindMapMdSettingTab, type MyPluginSettings as HeadingsSettings } from "./settings";
+import { HeadingsView, VIEW_ICON_MINDMAPMD, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
 import { getActiveViewOfType } from "./extension/workspace";
-import { Effect, Fiber, Option, pipe } from "effect";
+import { Context, Effect, Fiber, Layer, Option, pipe } from "effect";
 import type { MindMapMdViewState } from './view/MindMapMd';
 import { get } from 'svelte/store';
 import { cachedRead } from './extension/vault';
-import { FuzzySuggester } from './handlers/HeadingSuggester';
+import { HeadingSuggester, HeadingSuggesterService, type Heading } from './handlers/HeadingSuggester';
+import { HeadingHandlers, HeadingHandlersLive, } from './handlers/HeadingHandlers';
+import { EditorService } from './service/editor-service';
+import { getFileCached } from './extension/app';
+import { AppService } from './service/app-service';
+import { find_heading_block } from './extension/cached-metadata';
 
 // Remember to rename these classes and interfaces!
 
-export default class MindMapMdPlugin extends Plugin {
-	settings: MyPluginSettings = DEFAULT_SETTINGS;
+export default class HeadingsPlugin extends Plugin {
+	settings: HeadingsSettings = DEFAULT_SETTINGS;
 
 	async onload() {
 		await this.loadSettings();
 
-		this.registerView(
-			VIEW_TYPE_MINDMAPMD,
-			(leaf: WorkspaceLeaf) => new MindMapMdView(leaf, this));
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon(VIEW_ICON_MINDMAPMD, 'Toggle Mind Map MD View', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			// new Notice('This is a notice! just kidding');
-			this.toggleMindMapMdView();
-		});
+		// todo 暫時不提供 heading view 功能
+		// this.registerView(
+		// 	VIEW_TYPE_MINDMAPMD,
+		// 	(leaf: WorkspaceLeaf) => new MindMapMdView(leaf, this));
+		// // This creates an icon in the left ribbon.
+		// this.addRibbonIcon(VIEW_ICON_MINDMAPMD, 'Toggle Mind Map MD View', (evt: MouseEvent) => {
+		// 	// Called when the user clicks the icon.
+		// 	// new Notice('This is a notice! just kidding');
+		// 	this.toggleMindMapMdView();
+		// });
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new MindMapMdSettingTab(this.app, this));
+		// this.addSettingTab(new MindMapMdSettingTab(this.app, this));
 
 		//todo : open file with mind map md view from file explorer context menu
 		// 使用者有可能從左側 file explorer 開啟檔案的 context menu 來開啟 mind map md view，
 		// 所以需要新開一個 leaf 而不是從現有的 markdown view 來切換，以現在的做法會無法從 file explorer 開啟 mind map md view
-		this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
-			menu.addItem((item) => {
-				item.setTitle('Mind Map MD View')
-					.setIcon(VIEW_ICON_MINDMAPMD)
-					.onClick(async () => {
-						Effect.runPromise(this.turnOnMindMapMdView);
-					});
-			})
-		}));
+		// this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
+		// 	menu.addItem((item) => {
+		// 		item.setTitle('Mind Map MD View')
+		// 			.setIcon(VIEW_ICON_MINDMAPMD)
+		// 			.onClick(async () => {
+		// 				Effect.runPromise(this.turnOnMindMapMdView);
+		// 			});
+		// 	})
+		// }));
 
 		this.addCommands();
 
@@ -57,52 +63,26 @@ export default class MindMapMdPlugin extends Plugin {
 		// 	})
 		// });
 
-		// this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor, view) => {
-		// 	console.log("open editor menu", { menu, editor, view });
-		// 	menu.addItem((item) => {
-		// 		item.setTitle('Mind Map MD View')
-		// 			.setIcon('dice')
-		// 			.onClick(async () => {
-		// 				Effect.runPromise(this.turnOnMindMapMdView);
-		// 			});
-		// 	})
-		// }));
-
-		// // This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		// const statusBarItemEl = this.addStatusBarItem();
-		// statusBarItemEl.setText('Status bar text');
-
-
-
-		// // If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// // Using this function will automatically remove the event listener when this plugin is disabled.
-		// this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-		// 	new Notice("Click");
-		// });
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		// this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
 	}
 
 
-	createMindMapViewCheckCallback(action: (view: MindMapMdView) => void) {
+	createMindMapViewCheckCallback(action: (view: HeadingsView) => void) {
 		return (checking: boolean) => {
 			//checking 為 true, 代表使用者正在使用 Ctrl + P 開啟 obsidian command palette ，
 			//回傳值為 true or false 決定是否顯示這個 command (true-顯示, false-不顯示)。
 			if (checking) {
-				const is_view_esist = getActiveViewOfType(this.app.workspace, MindMapMdView)
+				const is_view_esist = getActiveViewOfType(this.app.workspace, HeadingsView)
 					.pipe(Effect.map(v => {
 						return true;
 					}),
-						Effect.orElse(() => Effect.succeed(false)),
+						Effect.orElseSucceed(() => false),
 					);
-				return Effect.runSync(is_view_esist);
+				return Effect.runSyncExit(is_view_esist);
 			}
 			//使用者選取這個 command 或直接按下 hotkey，checking 為 false。
 			else {
-				const program = Effect.gen(this, function* () {
-					const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
+				const program = Effect.gen({ self: this }, function* () {
+					const view = yield* getActiveViewOfType(this.app.workspace, HeadingsView);
 					action(view);
 					return true;
 				})
@@ -120,13 +100,13 @@ export default class MindMapMdPlugin extends Plugin {
 					.pipe(Effect.map(v => {
 						return true;
 					}),
-						Effect.orElseFail(() => false),
+						Effect.orElseSucceed(() => false),
 					);
 				return Effect.runSync(is_view_esist);
 			}
 			//使用者選取這個 command 或直接按下 hotkey，checking 為 false。
 			else {
-				const program = Effect.gen(this, function* () {
+				const program = Effect.gen({ self: this }, function* () {
 					const view = yield* getActiveViewOfType(this.app.workspace, viewType);
 					action(view);
 					return true;
@@ -140,7 +120,7 @@ export default class MindMapMdPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<HeadingsSettings>);
 	}
 
 	async saveSettings() {
@@ -176,11 +156,11 @@ export default class MindMapMdPlugin extends Plugin {
 	);
 
 
-	turnOnMarkdownView = Effect.gen(this, function* () {
-		const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
+	turnOnMarkdownView = Effect.gen({ self: this }, function* () {
+		const view = yield* getActiveViewOfType(this.app.workspace, HeadingsView);
 
 		const file = yield* pipe(
-			Effect.fromNullable(view.state?.file),
+			Effect.fromNullishOr(view.state?.file),
 			Effect.mapError(() => new Error(`No file associated with view: ${view}`))
 		);
 
@@ -194,15 +174,15 @@ export default class MindMapMdPlugin extends Plugin {
 
 		Effect.runPromise(
 			this.turnOnMindMapMdView.pipe(
-				Effect.orElse(() => this.turnOnMarkdownView),
-				Effect.andThen(() => getActiveViewOfType(workspace, MarkdownView)),
+				Effect.catchCause(() => this.turnOnMarkdownView),
+				Effect.andThen((_) => getActiveViewOfType(workspace, MarkdownView)),
 			)
 		);
 	}
 
 	/**
- * ```markdwon
- * hotkey 優先度：
+ * ```markdown
+ * ## hotkey 優先度：
  * obsidian command > editor command = 自行在 component 中設定的 hotkey
  * 由於 obsidian command 會覆蓋 editor command
  * 所以如果你有些 hotkey 與 editor command 一樣，例如 ArrowUp、ArrowDown，
@@ -213,6 +193,138 @@ export default class MindMapMdPlugin extends Plugin {
  * ```
  */
 	addCommands() {
+
+		const app = this.app;
+
+		function openHeadingChanger(action: (handler: Context.Service.Shape<typeof HeadingHandlers>)
+			=> (source: Heading, target: Heading, sourceEvt: MouseEvent | KeyboardEvent, targetEvt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>) {
+			return openHeadingSuggester((handler, suggesterService) =>
+				(heading, evt) =>
+					Effect.gen(function* () {
+						const method = action(handler);
+						const modal = yield* suggesterService.getSuggesterModal((target, targetEvt) => method(heading, target, evt, targetEvt));
+						modal.setPlaceholder(`選擇要移動到的標題位置`);
+						modal.start();
+					})
+				, sourceModal => {
+					sourceModal.setPlaceholder('選擇想要移動的標題');
+				});
+		}
+		function openHeadingSuggester(
+			action: (
+				handler: Context.Service.Shape<typeof HeadingHandlers>,
+				suggesterService: Context.Service.Shape<typeof HeadingSuggesterService>,
+				editorService: Context.Service.Shape<typeof EditorService>,
+			) => (heading: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>,
+			modalSetter?: (modal: HeadingSuggester) => void) {
+			return (editor: Editor, view: MarkdownView | MarkdownFileInfo) => {
+				const program = Effect.gen(function* () {
+					const handler = yield* HeadingHandlers;
+					const suggesterService = yield* HeadingSuggesterService;
+					const editorService = yield* EditorService;
+					const modal = yield* suggesterService.getSuggesterModal(action(handler, suggesterService, editorService));
+					modalSetter?.(modal);
+					modal.start();
+				});
+
+				const mainLive = Layer.merge(
+					HeadingSuggesterService.layerWithoutDependencies,
+					HeadingHandlersLive,
+					//	HeadingSuggesterServiceLive,
+				);
+
+				Effect.runFork(
+					Effect.provide(program, mainLive).pipe(
+						Effect.provideService(EditorService, {
+							getEditor: () => Effect.succeed(editor),
+							getFile: () => Effect.fromNullishOr(view.file),
+						}),
+						Effect.provideService(AppService, {
+							getApp: () => Effect.succeed(app),
+						}),
+					)
+				);
+			}
+		}
+
+		this.addCommand({
+			id: 'go2-heading',
+			name: `Go to Heading`,
+			editorCallback: openHeadingSuggester(handler => handler.go2Heading)
+		});
+
+		this.addCommand({
+			id: 'copy-heading',
+			name: `Copy Heading`,
+			editorCallback: openHeadingSuggester(handler => handler.copyHeading)
+
+		});
+
+		this.addCommand({
+			id: 'move-heading',
+			name: `Move Heading`,
+			editorCallback: openHeadingSuggester((handler, suggesterService) =>
+				(heading, evt) =>
+					Effect.gen(function* () {
+						const modal = yield* suggesterService.getSuggesterModal((target, targetEvt) => handler.moveHeading(heading, target, evt, targetEvt));
+						modal.setPlaceholder(`選擇要移動到的標題位置`);
+						modal.start();
+					})
+				, sourceModal => {
+					sourceModal.setPlaceholder('選擇想要移動的標題');
+				})
+		});
+
+		this.addCommand({
+			id: 'insert-heading',
+			name: `Insert Heading`,
+			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
+				(source, evt) =>
+					Effect.gen({ self: this }, function* () {
+						const file = yield* editorService.getFile();
+						const editor = yield* editorService.getEditor();
+						const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
+						const source_heading_offset = find_heading_block(cached, source).offset ?? editor.cm.state.doc.length;
+						const modal = yield* suggesterService.getSuggesterModal(
+							(target, targetEvt) => handler.insertHeading(source, target, evt, targetEvt),
+							(items) => {
+								const prev_heading = cached.headings?.findLast(h =>
+									h.position.end.offset <= source.position.start.offset
+									&& h.level < source.level
+								);
+								return items.filter(item =>
+									(item.position.end.offset < source.position.start.offset
+										|| item.position.start.offset >= source_heading_offset)
+									&& item.position.start.offset != prev_heading?.position.start.offset
+								);
+							},
+						);
+						modal.setPlaceholder(`選擇要插入的標題位置`);
+						modal.start();
+					})
+				, sourceModal => {
+					sourceModal.setPlaceholder('選擇想要移動的標題');
+				})
+		});
+
+
+		this.addCommand({
+			id: 'move-current-block2-heading',
+			name: `Move Current Block to ...`,
+			editorCallback: openHeadingSuggester(handler => handler.moveCurrentBlock2Heading)
+		});
+		// todo export hotkey
+		// 暫時不提供 heading view 的 hotkey。
+		// this.addCommand({
+		// 	id: 'edit-block',
+		// 	name: 'Edit Block',
+		// 	hotkeys: [{ modifiers: ["Shift"], key: "F2", }],
+		// 	checkCallback: this.createMindMapViewCheckCallback((view) => {
+		// 		view.component?.edit_block();
+		// 	})
+		// })
+
+
 		//heading shifter 有同樣的功能了。
 		// this.addCommand({
 		// 	id: 'insert-current-level-heading',
@@ -235,55 +347,6 @@ export default class MindMapMdPlugin extends Plugin {
 		// 		Effect.runSyncExit(command);
 		// 	})
 		// });
-
-
-		this.addCommand({
-			id: 'insert-heading',
-			name: `Insert Heading`,
-			editorCallback: (editor: Editor, view: MarkdownView | MarkdownFileInfo) => {
-				const file = view.file;
-				const suggester = new FuzzySuggester(this.app, editor, file!);
-				suggester.start();
-			}
-			// checkCallback: (checking) => {
-			// 	if (checking) {
-			// 		// return whether the command can be executed
-			// 		return true;
-			// 	} else {
-			// 		// execute the command
-			// 		this.headingFunzzySuggester.start();
-
-			// 	}
-			// 	return true;
-			// }
-		});
-		// todo export hotkey
-		this.addCommand({
-			id: 'edit-block',
-			name: 'Edit Block',
-			hotkeys: [{ modifiers: ["Shift"], key: "F2", }],
-			checkCallback: this.createMindMapViewCheckCallback((view) => {
-				view.component?.edit_block();
-			})
-		})
-
-		// this.addCommand({
-		// 	id: 'move-down',
-		// 	name: 'Move down',
-		// 	hotkeys: [{ key: "ArrowDown", modifiers: [] }],
-		// 	checkCallback: (checking) => {
-		// 		const program = Effect.gen(this, function* () {
-		// 			const view = yield* getActiveViewOfType(this.app.workspace, MindMapMdView);
-		// 			console.log("move down command");
-		// 			view.component?.next(1);
-		// 			return true;
-		// 		}).pipe(
-		// 			Effect.orElse(() => Effect.succeed(false)),
-		// 		);
-
-		// 		return Effect.runSync(program);
-		// 	}
-		// })
 	}
 
 

@@ -4,7 +4,7 @@ import { Vault, TFile } from "obsidian";
 
 
 export function getFileByPath(vault:Vault,path: string) {
-    return Effect.fromNullable(vault.getFileByPath(path));
+    return Effect.fromNullishOr(vault.getFileByPath(path));
 }
 
 export function cachedRead(vault: Vault, file: TFile) {

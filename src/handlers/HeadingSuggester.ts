@@ -1,29 +1,73 @@
-import { addIcon, App, Editor, FuzzySuggestModal, setIcon, TFile, type FuzzyMatch } from "obsidian";
+import { addIcon, App, Editor, FuzzySuggestModal, setIcon, TFile, type FuzzyMatch, type HeadingCache } from "obsidian";
 import { getFileCached } from "../extension/app";
-import { Effect } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { mount } from "svelte";
-import fuzzySuggesterItem from "./FuzzySuggesterItem.svelte";
+import fuzzySuggesterItem from "./HeadingFuzzySuggesterItem.svelte";
 import { range } from "effect/Array";
+import { EditorService } from "../service/editor-service";
+import { AppService } from "../service/app-service";
 
 
 
-export type Heading = {
-    level: number;
-    text: string;
+export interface Heading extends HeadingCache {
     locate: 'upper' | 'lower';
     isParent: boolean;
 }
 
 export type BaseHeading = Omit<Heading, 'isParent'>;
 
-export class FuzzySuggester extends FuzzySuggestModal<Heading> {
+const heading_suggester_service = "heading_suggester_service";
+export class HeadingSuggesterService extends Context.Service<HeadingSuggesterService, {
+    readonly getSuggesterModal: (
+        onSelect: (item: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>,
+        getItem?: (items: Heading[]) => Heading[],
+    ) => Effect.Effect<HeadingSuggester>,
+}>()(heading_suggester_service, {
+    make: Effect.gen(function* () {
+        const editor_service = yield* EditorService
+        const editor = yield* editor_service.getEditor();
+        const file = yield* editor_service.getFile();
+        const app_service = yield* AppService;
+        const app = yield* app_service.getApp();
+        return {
+            getSuggesterModal: (onSelect, getItem) => Effect.succeed(new HeadingSuggester(app, editor, file, onSelect, getItem)),
+        };
+    })
+}) {
+    static readonly layerWithoutDependencies = Layer.effect(this, this.make)
+}
+
+// export const HeadingSuggesterServiceLive = Layer.effect(
+//     HeadingSuggesterService,
+//     Effect.gen(function* () {
+//         const editor_service = yield* EditorService
+//         const editor = yield* editor_service.getEditor();
+//         const file = yield* editor_service.getFile();
+//         const app_service = yield* AppService;
+//         const app = yield* app_service.getApp();
+//         return HeadingSuggesterService.of({
+//             getSuggesterModal: (onSelect) => Effect.succeed(new HeadingSuggester(app, editor, file, onSelect))
+//         });
+//     })
+// );
+export class HeadingSuggester extends FuzzySuggestModal<Heading> {
     private editor: Editor;
     private file: TFile;
     private current_select: number = 0;
-    constructor(app: App, editor: Editor, file: TFile) {
+    private on_select: (item: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
+    private get_items: (items: Heading[]) => Heading[];
+    constructor(
+        app: App,
+        editor: Editor,
+        file: TFile,
+        onSelect: (item: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>,
+        getItems: (items: Heading[]) => Heading[] = (items) => items
+    ) {
         super(app);
         this.editor = editor;
         this.file = file;
+        this.on_select = onSelect;
+        this.get_items = getItems;
         this.setInstructions([
             { command: "Enter:", purpose: "Copy heading and select text;" },
             { command: "Mouse Click:", purpose: "Insert heading symbol;" },
@@ -37,12 +81,10 @@ export class FuzzySuggester extends FuzzySuggestModal<Heading> {
 
         const selection = this.editor.getCursor()
         const base_heads: BaseHeading[] = headings.map(h => ({
-            level: h.level,
-            text: h.heading,
+            ...h,
             locate: h.position.start.line <= selection.line ? 'upper' : 'lower',
-        }));
 
-        this.current_select = base_heads.findLastIndex(h => h.locate === 'upper');
+        }));
 
         const first = base_heads.splice(0, 1).map(h => ({ ...h, isParent: false }));
 
@@ -54,62 +96,23 @@ export class FuzzySuggester extends FuzzySuggestModal<Heading> {
             return acc;
         }, first);
 
-        return heads;
+        const show_heads = this.get_items(heads);
+        this.current_select = show_heads.findLastIndex(h => h.locate === 'upper');
+        return show_heads;
     }
     getItemText(item: Heading): string {
-        return `H${item.level} ` + item.text;
+        return `H${item.level} ` + item.heading;
     }
     onChooseItem(item: Heading, evt: MouseEvent | KeyboardEvent): void {
-        const cursor = this.editor.getCursor();
-        const headSybols = "#".repeat(item.level);
-        const anchor = cursor.ch + headSybols.length + 1;
-        const keep_text = evt.ctrlKey || evt.metaKey;
-        const select_range = evt instanceof KeyboardEvent;
-        if (keep_text || select_range) {
-            const headText = item.text;
-            const cursor_head = anchor + headText.length;
-            this.editor.replaceRange(headSybols + " " + headText, cursor);
-            if (select_range) {
-                this.editor.setSelection({ line: cursor.line, ch: anchor }, { line: cursor.line, ch: cursor_head });
-            }
-            else {
-                this.editor.setCursor({ line: cursor.line, ch: cursor_head });
-            }
-        }
-        else {
-            this.editor.replaceRange(headSybols + " ", cursor);
-            this.editor.setCursor({ line: cursor.line, ch: anchor });
-        }
+        Effect.runSyncExit(this.on_select(item, evt));
     }
     renderSuggestion(item: FuzzyMatch<Heading>, el: HTMLElement): void {
-        const head = item.item;
-        // el.textContent = "  ".repeat(head.level - 1) + head.text;
-        // console.log('renderSuggestion', item);
-        // el.addClass('cm-header', 'cm-header-1');
-        // // el.style.borderLeft = '1px solid green';
-        // el.style.borderLeftWidth = "5px";
-        // el.style.borderLeftStyle = "solid";
-        // el.style.borderLeftColor = head.locate === Locate.Upper ? "green" : "red";
-        // this.count++;
-        // if (this.count === 3) {
-        //     el.addClass('is-selected');
-        // }
-
-        // el.style.display = "flex";
-        // el.style.alignItems = "center";
-        // const color = head.locate === 'upper' ? "green" : "red";
-        // if (head.isParent) {      
-        //     const iconEl = el.createSpan();
-        //     setIcon(iconEl, "chevron-down");
-        //     iconEl.style.color = color;
-        // }
-        // el.style.paddingTop = "0px";
-        // el.style.paddingBottom = "0px";
+        const heading = item.item;
 
         mount(fuzzySuggesterItem, {
             target: el,
             props: {
-                heading: head,
+                heading,
             }
         });
 
@@ -118,43 +121,14 @@ export class FuzzySuggester extends FuzzySuggestModal<Heading> {
         this.open();
         if (this.current_select === 0) return;
 
-        //下移多一個，讓超出範圍的內容也顯示在當前畫面
-        range(0, this.current_select-1).forEach(() => {
+        range(0, this.current_select - 1).forEach(() => {
             const down = new KeyboardEvent('keydown', { key: 'ArrowDown' });
             this.modalEl.dispatchEvent(down);
         });
         const target = this.modalEl.getElementsByClassName('is-selected')[0] as HTMLElement;
-        console.log('target', target);
         requestAnimationFrame(() => {
             target.scrollIntoView({ block: 'center', behavior: 'instant' });
         });
-        // target.scrollIntoView({ block: 'center', behavior: 'instant' });
-        
-        //this.modalEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
-        // this.modalEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-
-        //         let offset = 0;
-//         const observer = new ResizeObserver(() => {
-//             // 3. 計算目標元素相對於容器頂部的絕對距離
-//             const containerTop = this.modalEl.getBoundingClientRect().top;
-//             const targetTop = target.getBoundingClientRect().top;
-//             const currentScrollTop = this.modalEl.scrollTop;
-
-//             // 實際需要捲動到的位置 = 當前捲動量 + 元素相對視窗位置 - 容器相對視窗位置 - 預留邊距
-//             const finalScrollTop = currentScrollTop + targetTop - containerTop - offset;
-// console.log('finalScrollTop', finalScrollTop, 'currentScrollTop', currentScrollTop, 'targetTop', targetTop, 'containerTop', containerTop, 'offset', offset);
-//             // 4. 強制捲動
-//             this.modalEl.scrollTo({
-//                 top: finalScrollTop,
-//                 behavior: 'auto' // 若怕被瀏覽器優化中斷，可改為 'auto'
-//             });
-
-//             // 捲動完成後關閉監聽，避免無限循環
-//             observer.disconnect();
-//         });
-
-//         observer.observe(this.modalEl);
-
 
     }
 }

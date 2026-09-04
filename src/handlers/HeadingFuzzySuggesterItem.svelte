@@ -9,7 +9,7 @@
 	}
 	const { heading }: Props = $props();
 	const indent = "   ".repeat(heading.level - 1);
-	const content = heading.text;
+	const content = heading.heading;
 
 	const icon: Attachment<HTMLElement> = (el) => {
 		const color = heading.locate === "upper" ? "green" : "red";

@@ -1,5 +1,5 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
-import MindMapMdPlugin from "./main";
+import HeadingsPlugin from "./main";
 
 export interface MyPluginSettings {
 	mySetting: string;
@@ -10,9 +10,9 @@ export const DEFAULT_SETTINGS: MyPluginSettings = {
 }
 
 export class MindMapMdSettingTab extends PluginSettingTab {
-	plugin: MindMapMdPlugin;
+	plugin: HeadingsPlugin;
 
-	constructor(app: App, plugin: MindMapMdPlugin) {
+	constructor(app: App, plugin: HeadingsPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

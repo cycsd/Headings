@@ -99,6 +99,10 @@
 	}
 
 @layer utilities {
+	.mindmapmd-theme {
+	  font-size: var(--font-text-size);
+	  font-family: var(--font-text);
+	}
 	.mindmapmd-theme .mmmd-path {
 		@apply border-2 border-s-amber-400;
 	}
