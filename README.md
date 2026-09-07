@@ -1,33 +1,25 @@
 # Headings
 
-快速整理 Obsidian Markdown 筆記的大綱與段落。
-本插件提供標題（heading）導航、複製、選取、移動、插入與階層對齊，
-適合需要重組長篇筆記、調整章節順序或維持標題階層的使用者。
+[English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md)
 
+Organize the outline and sections of your Obsidian Markdown notes quickly. This plugin lets you navigate, copy, select, move, insert, and align headings. It is useful when restructuring long notes, reordering sections, or maintaining a consistent heading hierarchy.
 
 ## Commands
 
-### 前往標題
-瀏覽目前筆記的所有標題，並將游標跳至所選標題的位置。
+### Go to heading
+Browse all headings in the current note and move the cursor to the selected heading.
 
-### 複製標題
-瀏覽目前筆記的所有標題，選擇後可複製標題，或插入標題符號至目前游標位置。
+### Copy heading
+Browse all headings in the current note. After selecting one, you can copy the heading or insert its heading marker at the current cursor position.
 
+### Align heading level
+Move a heading and all of its content to the position after the selected heading and before the next higher-level heading. The moved heading level is changed to match the selected heading, and its descendants are adjusted by the same amount.
 
-### 對齊標題階層
-移動標題整體至所選擇的標題至下一個大標題之間，
-並修改移動的標題階層與選擇的標題的階層一致。
+> The heading hierarchy is changed to align the heading level.
 
-> [!important]
-> 會修改標題階層，以對齊標題階層
+Example: align H5 with H3. The plugin finds the next heading higher than H3 (H2), moves H5 and its content before that H2, and changes H5 to the same level as H3.
 
-範例：
-對齊 H5 至 H3，
-則會找到下一個比 H3 大的標題(H2)，
-將 H5 底下的內容移至 H2 之前，
-並且更改 H5 的階層以對齊 H3。
-
-對齊前
+Before:
 ```markdown
 ## H2
 ### H3
@@ -36,7 +28,8 @@
 ##### H5
 ###### H6
 ```
-對齊後
+
+After:
 ```markdown
 ## H2
 ### H3
@@ -46,15 +39,11 @@
 ## H2
 ```
 
->[!caution]
-> obsidian 支援的階層只到 Level 6(######)，
-> 如果判斷需要更改階層但超過 Level 6 的標題，皆會以 Level 6 顯示 
+> Obsidian supports heading levels 1 through 6 only. When an adjustment would exceed level 6, the heading is displayed at level 6.
 
-範例：
+Example: align H3 ✌️ with H4.
 
-對齊 H3 ✌️ 至 H4。
-
-對齊前
+Before:
 ```markdown
 ## H2
 ### H3
@@ -67,7 +56,7 @@
 ###### H6 ✌️
 ```
 
-對齊後
+After:
 ```markdown
 ## H2
 ### H3
@@ -79,24 +68,17 @@
 ###### H6 ✌️
 ## H2
 ```
-### 將標題插入另一標題下
-移動標題整體至所選擇的標題至下一個大標題之間，
-會修改選擇的標題階層以符合整體階層，
-保持插入的標題正確的歸屬於所選擇的標題之下。
 
-> [!Important]
-> 不能插入到自己的子標題底下，也不能插入到當前標題底下，因為自己本身就屬於當前標題了。
+### Insert heading under another heading
+Move a heading and all of its content under the selected heading, before its next higher-level heading. The inserted heading level is adjusted to preserve the intended hierarchy and make it a child of the selected heading.
 
-> [!Important]
-> 無論原標題是否需要更改階層才能符合整體階層，
-> 只要插入的標題與被插入的標題之間有階層差距，
-> 都會修改原標題的階層，用以保持標準的階層結構設計。
+> You cannot insert a heading under one of its own descendants or under its current parent, because it already belongs there.
 
-範例：
+> Whenever there is a level difference between the moved heading and the target heading, the moved heading level is adjusted to preserve a valid hierarchy.
 
-想將 H4 插入至 H2 ☝️ 底下，
+Example: insert H4 under H2 ☝️.
 
-插入前
+Before:
 ```markdown
 ## H2 ☝️
 ### H3
@@ -104,8 +86,7 @@
 #### H4
 ```
 
-如果標題級距不跟著改，
-H4 會變成屬於 H3 的子內容，而不是 H2 的子內容，
+Without adjusting its level, H4 would become a child of H3 rather than a direct child of H2 ☝️:
 
 ```markdown
 ## H2 ☝️
@@ -113,8 +94,8 @@ H4 會變成屬於 H3 的子內容，而不是 H2 的子內容，
 #### H4 ❌
 ## H2
 ```
-這並不符合操作意圖，所以會修改 H4 的階層至 level 3，
-以符合操作意圖，
+
+To preserve the intended structure, H4 is changed to level 3:
 
 ```markdown
 ## H2 ☝️
@@ -123,15 +104,11 @@ H4 會變成屬於 H3 的子內容，而不是 H2 的子內容，
 ## H2
 ```
 
->[!caution]
-> obsidian 支援的階層只到 Level 6(######)，
-> 如果判斷需要更改階層但超過 Level 6 的標題，皆會以 Level 6 顯示 
+> Obsidian supports heading levels 1 through 6 only. When an adjustment would exceed level 6, the heading is displayed at level 6.
 
-範例：
+Example: insert H3 ✌️ under H4.
 
-插入 H3 ✌️ 至 H4 底下，
-
-插入前
+Before:
 ```markdown
 ## H2
 ### H3
@@ -144,7 +121,7 @@ H4 會變成屬於 H3 的子內容，而不是 H2 的子內容，
 ###### H6 ✌️
 ```
 
-插入後
+After:
 ```markdown
 ## H2
 ### H3
@@ -155,23 +132,16 @@ H4 會變成屬於 H3 的子內容，而不是 H2 的子內容，
 ###### H5 ✌️
 ###### H6 ✌️
 ## H2
-
 ```
 
-### 移動標題
-移動選擇的標題及其所涵蓋的內容至另一個標題到下一個標題的段落之間。
+### Move heading
+Move the selected heading and all of its content to the position after another selected heading and before that heading's next child section. This command does not change heading levels.
 
-> [!Important]
-> 此指令只是單純的移動標題內容位置，
-> 不會更改原有的標題階層。
+> This command changes only the position of the heading and its content. It keeps the original heading hierarchy.
 
-範例:
+Example: when moving H1 to H2, the plugin finds the next heading, H3, and moves H1 and its H2 content before H3 without changing their levels.
 
-如果移動 H1 至 H2 ，那麼會從 H2 找到下一個標題 H3，
-將 H1 及底下的 H2 內容，移動至 H3 之前，
-並不會改變 H1 底下內容的階層
-
-移動前
+Before:
 ```markdown
 ## H2
 ### H3
@@ -179,7 +149,7 @@ H4 會變成屬於 H3 的子內容，而不是 H2 的子內容，
 ## H2
 ```
 
-移動後
+After:
 ```markdown
 ## H2
 # H1
@@ -187,33 +157,34 @@ H4 會變成屬於 H3 的子內容，而不是 H2 的子內容，
 ### H3
 ```
 
-適用於標題位置調整，
-範例：
+This is also useful for reordering headings at the same level.
+
+Before:
 ```markdown
 ## H2
-### H3 
+### H3
 #### H4 ☝️
 #### H4 ✌️
 ```
-移動 H4 ✌️ 至 H3 ，則會變為
+
+Moving H4 ✌️ to H3 produces:
 ```markdown
 ## H2
-### H3 
+### H3
 #### H4 ✌️
 #### H4 ☝️
 ```
 
-### 將目前區塊移至標題下
-將目前游標所在的區塊移至所選標題底下。
+### Move current block under heading
+Move the block containing the current cursor position under the selected heading.
 
-### 將選取文字移至標題下
-將目前選取的文字範圍移至所選標題底下。
+### Move selected text under heading
+Move the selected text under the selected heading.
 
-### 選取標題內容
-選取所選標題底下的所有內容。
+### Select heading content
+Select all content under the selected heading.
 
-## 參考
+## References
+
 ### [Heading Shifter](https://github.com/k4a-l/obsidian-heading-shifter)
-一些實用功能已經由 Heading Shifter 插件提供，如非必要不會在提供重複的功能，
-如果需要對應功能請下載該插件支持作者。
-
+Heading Shifter already provides several useful heading features. This plugin avoids duplicating those features unless necessary; install Heading Shifter when you need its corresponding functionality.
