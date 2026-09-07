@@ -249,13 +249,13 @@ export default class HeadingsPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'go2-heading',
-			name: `Go to Heading`,
+			name: 'Go to heading',
 			editorCallback: openHeadingSuggester(handler => handler.go2Heading)
 		});
 
 		this.addCommand({
 			id: 'copy-heading',
-			name: `Copy Heading`,
+			name: 'Copy heading',
 			editorCallback: openHeadingSuggester(
 				handler => handler.copyHeading,
 				modal => {
@@ -270,7 +270,7 @@ export default class HeadingsPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'align-heading',
-			name: `Align Heading`,
+			name: 'Align heading level',
 			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
 				(source, evt) =>
 					Effect.gen(function* () {
@@ -297,7 +297,7 @@ export default class HeadingsPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'insert-under-heading',
-			name: `Insert Under ...`,
+			name: 'Insert heading under another heading',
 			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
 				(source, evt) =>
 					Effect.gen({ self: this }, function* () {
@@ -329,7 +329,7 @@ export default class HeadingsPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'move-heading',
-			name: `Move Heading`,
+			name: 'Move heading',
 			editorCallback: openHeadingSuggester((handler, suggesterService) =>
 				(heading, evt) =>
 					Effect.gen(function* () {
@@ -344,19 +344,19 @@ export default class HeadingsPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'move-current-block2-heading',
-			name: `Move Current Block to ...`,
+			name: 'Move current block under heading',
 			editorCallback: openHeadingSuggester(handler => handler.moveCurrentBlock2Heading)
 		});
 
 		this.addCommand({
 			id: 'move-selected-2-heading',
-			name: `Move Selected to ...`,
+			name: 'Move selected text under heading',
 			editorCallback: openHeadingSuggester(handler => handler.moveSelected2Heading)
 		});
 
 		this.addCommand({
 			id: 'select-content',
-			name: `Select Content`,
+			name: 'Select heading content',
 			editorCallback: openHeadingSuggester(handler => handler.selectContent)
 		});
 		// todo export hotkey

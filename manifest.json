@@ -3,7 +3,7 @@
 	"name": "Headings",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Quickly find and copy existing headings, or move paragraphs between headings.",
+	"description": "Navigate, copy, select, align, and move Markdown headings.",
 	"author": "cycsd",
 	"authorUrl": "https://github.com/cycsd",
 	"fundingUrl": "https://obsidian.md/pricing",
