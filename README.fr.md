@@ -15,6 +15,7 @@ Parcourez les titres de la note actuelle. Apres en avoir choisi un, vous pouvez 
 ### Aligner le niveau du titre
 Deplacez un titre et tout son contenu apres le titre choisi et avant le prochain titre de niveau superieur. Le titre deplace adopte le niveau du titre choisi, et ses sous-titres sont ajustes de la meme facon.
 
+> [!important]
 > Cette operation modifie la hierarchie des titres afin d'aligner leur niveau.
 
 Exemple : alignez H5 sur H3. Le plugin trouve le prochain titre superieur a H3 (H2), deplace H5 et son contenu avant ce H2, puis change H5 au meme niveau que H3.
@@ -39,6 +40,7 @@ Apres :
 ## H2
 ```
 
+> [!caution]
 > Obsidian ne prend en charge que les titres de niveau 1 a 6. Si un ajustement depasse le niveau 6, le titre est affiche au niveau 6.
 
 Exemple : alignez H3 ✌️ sur H4.
@@ -70,8 +72,10 @@ Apres :
 ### Inserer un titre sous un autre titre
 Deplacez un titre et tout son contenu sous le titre choisi et avant son prochain titre de niveau superieur. Son niveau est ajuste afin de conserver une relation parent-enfant correcte.
 
+> [!important]
 > Vous ne pouvez pas inserer un titre sous l'un de ses propres descendants ni sous son parent actuel, car il appartient deja a ce parent.
 
+> [!important]
 > S'il existe une difference de niveau entre le titre deplace et le titre cible, le niveau est ajuste pour conserver une hierarchie valide.
 
 Exemple : inserez H4 sous H2 ☝️.
@@ -100,6 +104,7 @@ Pour conserver la structure voulue, H4 est passe au niveau 3 :
 ## H2
 ```
 
+> [!caution]
 > Obsidian ne prend en charge que les titres de niveau 1 a 6. Si un ajustement depasse le niveau 6, le titre est affiche au niveau 6.
 
 Exemple : inserez H3 ✌️ sous H4.
@@ -131,6 +136,7 @@ Apres :
 ### Deplacer le titre
 Deplacez le titre choisi et tout son contenu apres un autre titre choisi et avant la prochaine section enfant de ce titre. Cette commande ne modifie pas les niveaux de titres.
 
+> [!important]
 > Cette operation ne change que la position et conserve la hierarchie existante.
 
 Exemple : en deplacant H1 vers H2, le plugin trouve le titre suivant, H3, et deplace H1 et son contenu H2 avant H3.

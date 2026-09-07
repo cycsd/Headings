@@ -15,6 +15,7 @@ Browse all headings in the current note. After selecting one, you can copy the h
 ### Align heading level
 Move a heading and all of its content to the position after the selected heading and before the next higher-level heading. The moved heading level is changed to match the selected heading, and its descendants are adjusted by the same amount.
 
+> [!important]
 > The heading hierarchy is changed to align the heading level.
 
 Example: align H5 with H3. The plugin finds the next heading higher than H3 (H2), moves H5 and its content before that H2, and changes H5 to the same level as H3.
@@ -39,6 +40,7 @@ After:
 ## H2
 ```
 
+> [!caution]
 > Obsidian supports heading levels 1 through 6 only. When an adjustment would exceed level 6, the heading is displayed at level 6.
 
 Example: align H3 ✌️ with H4.
@@ -72,8 +74,10 @@ After:
 ### Insert heading under another heading
 Move a heading and all of its content under the selected heading, before its next higher-level heading. The inserted heading level is adjusted to preserve the intended hierarchy and make it a child of the selected heading.
 
+> [!important]
 > You cannot insert a heading under one of its own descendants or under its current parent, because it already belongs there.
 
+> [!important]
 > Whenever there is a level difference between the moved heading and the target heading, the moved heading level is adjusted to preserve a valid hierarchy.
 
 Example: insert H4 under H2 ☝️.
@@ -104,6 +108,7 @@ To preserve the intended structure, H4 is changed to level 3:
 ## H2
 ```
 
+> [!caution]
 > Obsidian supports heading levels 1 through 6 only. When an adjustment would exceed level 6, the heading is displayed at level 6.
 
 Example: insert H3 ✌️ under H4.
@@ -137,6 +142,7 @@ After:
 ### Move heading
 Move the selected heading and all of its content to the position after another selected heading and before that heading's next child section. This command does not change heading levels.
 
+> [!important]
 > This command changes only the position of the heading and its content. It keeps the original heading hierarchy.
 
 Example: when moving H1 to H2, the plugin finds the next heading, H3, and moves H1 and its H2 content before H3 without changing their levels.
