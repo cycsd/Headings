@@ -1,4 +1,4 @@
-import type { CachedMetadata, Editor, EditorPosition } from "obsidian";
+import type { App, CachedMetadata, Editor, EditorPosition } from "obsidian";
 import type { Heading } from "./HeadingSuggester";
 import { find_heading_block, find_next_heading } from "../extension/cached-metadata";
 import { Context, Effect, Layer, Option } from "effect";
@@ -14,8 +14,11 @@ export class HeadingHandlers extends Context.Service<HeadingHandlers,
         readonly go2Heading: (heading: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void>;
         readonly copyHeading: (heading: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void>;
         readonly moveHeading: (source: Heading, target: Heading, source_evt: MouseEvent | KeyboardEvent, target_evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
-        readonly insertHeading: (source: Heading, target: Heading, source_evt: MouseEvent | KeyboardEvent, target_evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
+        readonly alignHeading: (source: Heading, target: Heading, source_evt: MouseEvent | KeyboardEvent, target_evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
+        readonly insertUnder: (source: Heading, target: Heading, source_evt: MouseEvent | KeyboardEvent, target_evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
         readonly moveCurrentBlock2Heading: (heading: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
+        readonly moveSelected2Heading: (heading: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
+        readonly selectContent: (heading: Heading, evt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>;
     }
 >()(heading_handlers) {
 }
@@ -87,86 +90,8 @@ export const HeadingHandlersLive = Layer.effect(
 
                 });
             },
-            insertHeading(source, target) {
-                return Effect.gen(function* () {
-                    const file = yield* editor_service.getFile();
-                    const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
-                    const editor = yield* editor_service.getEditor();
-                    const cm = editor.cm;
-
-                    const source_heading_offset = find_heading_block(cached, source).offset ?? cm.state.doc.length;
-                    const target_block_offset = find_heading_block(cached, target).offset ?? cm.state.doc.length;
-
-
-                    const cut = { from: source.position.start.offset, to: source_heading_offset };
-                    const source_headings = yield* Effect.fromNullishOr(
-                        cached
-                            .headings
-                            ?.filter(h => h.position.start.offset >= source.position.start.offset
-                                && h.position.end.offset <= source_heading_offset
-                                && h.level < 6
-                            )
-                    );
-
-                    let text: string
-                    const gap = source.level - target.level;
-                    if (gap === 1) {
-                        text = cm.state.doc.sliceString(cut.from, cut.to);
-                    }
-                    else if (gap > 1) {
-                        // Decrease the heading level by removing '#' characters at the start of each heading
-                        const indent = gap - 1;
-                        const changes = source_headings
-                            .map(h => {
-                                const from = h.position.start.offset;
-                                return {
-                                    from,
-                                    to: from + indent
-                                }
-                            });
-                        const tr = cm.state.update({
-                            changes: changes
-                        });
-                        const new_source_offset = tr.changes.mapPos(cut.to);
-                        text = tr.state.doc.sliceString(cut.from, new_source_offset);
-                    }
-                    else {
-                        // Increase the heading level by adding '#' characters at the start of each heading
-                        const indent = 1 - gap;
-                        const changes = source_headings
-                            .map(h => {
-                                return {
-                                    from: h.position.start.offset,
-                                    insert: '#'.repeat(Math.min(indent, 6 - h.level))
-
-                                }
-                            })
-
-                        const tr = cm.state.update({
-                            changes: changes
-                        });
-                        const new_source_offset = tr.changes.mapPos(cut.to);
-                        text = tr.state.doc.sliceString(cut.from, new_source_offset);
-                    }
-
-                    const tr = cm.state.update({
-                        changes: [
-                            { from: cut.from, to: cut.to },
-                            { from: target_block_offset, insert: text }
-                        ]
-                    });
-
-                    const map_anchor = tr.changes.mapPos(target_block_offset);
-                    cm.dispatch({
-                        changes: tr.changes,
-                        selection: { anchor: map_anchor, head: map_anchor + text.length },
-                        effects: EditorView.scrollIntoView(map_anchor, {
-                            y: "center",
-                        }),
-                    });
-
-                });
-            },
+            alignHeading: InsertHeading(0, app, editor_service),
+            insertUnder: InsertHeading(1, app, editor_service),
             moveCurrentBlock2Heading: (heading, evt) => {
                 const program = Effect.gen(function* () {
                     const file = yield* editor_service.getFile();
@@ -194,22 +119,8 @@ export const HeadingHandlersLive = Layer.effect(
                     const content = new CodeMirrorService(cm)
                         .cut(section_from, section_to);
                     const text = line_break + content.text;
-                    // const text = line_break + cm.state.sliceDoc(section_from, section_to);
 
                     const tr = content.pasteNew(next_heading_offset, text);
-                    // const tr = editor.cm.state.update({
-                    //     changes: [
-                    //         {
-                    //             from: next_heading_offset,
-                    //             insert: text,
-                    //         },
-                    //         {
-                    //             from: section_from,
-                    //             to: section_to,
-                    //             insert: ""
-                    //         }
-                    //     ]
-                    // })
 
                     const map_anchor = tr.changes.mapPos(next_heading_offset);
                     cm.dispatch({
@@ -222,14 +133,139 @@ export const HeadingHandlersLive = Layer.effect(
 
                 })
                 return program;
-            }
-        })
+            },
+            moveSelected2Heading: (heading, evt) => {
+                return Effect.gen(function* () {
+                    const file = yield* editor_service.getFile();
+                    const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
+                    const cm = editor.cm;
+                    const main_selection = cm.state.selection.main;
+                    const next_heading_offset = find_next_heading(cached, heading).offset ?? cm.state.doc.length;
+
+                    const content = new CodeMirrorService(cm)
+                        .cut(main_selection.from, main_selection.to);
+                    const text = content.text;
+                    const tr = content.paste(next_heading_offset);
+
+                    const map_anchor = tr.changes.mapPos(next_heading_offset);
+                    const selection = main_selection.head < main_selection.anchor
+                        ? { anchor: map_anchor + text.length, head: map_anchor }
+                        : { anchor: map_anchor, head: map_anchor + text.length };
+
+                    cm.dispatch({
+                        changes: tr.changes,
+                        selection: selection,
+                        effects: EditorView.scrollIntoView(map_anchor, {
+                            y: "center",
+                        }),
+                    });
+                });
+            },
+            selectContent: (heading, evt) => {
+                return Effect.gen(function* () {
+                    const file = yield* editor_service.getFile();
+                    const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
+                    const next_heading_offset = find_heading_block(cached, heading).offset ?? editor.cm.state.doc.length;
+                    const section_from = heading.position.start.offset;
+                    editor.cm.dispatch({
+                        selection: { anchor: section_from, head: next_heading_offset },
+                        effects: EditorView.scrollIntoView(section_from, {
+                            y: "center",
+                        }),
+                    });
+                });
+            },
+        });
     })
 )
 
 
 
-export function InsertHeading(editor: Editor, item: Heading, evt: MouseEvent | KeyboardEvent): void {
+
+
+export function InsertHeading(threshold: number, app: App, editorService: Context.Service.Shape<typeof EditorService>) {
+    return (source: Heading,
+        target: Heading,
+        source_evt: MouseEvent | KeyboardEvent,
+        target_evt: MouseEvent | KeyboardEvent) =>
+        Effect.gen(function* () {
+            const file = yield* editorService.getFile();
+            const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
+            const editor = yield* editorService.getEditor();
+            const cm = editor.cm;
+
+            const source_heading_offset = find_heading_block(cached, source).offset ?? cm.state.doc.length;
+            const target_block_offset = find_heading_block(cached, target).offset ?? cm.state.doc.length;
+
+
+            const cut = { from: source.position.start.offset, to: source_heading_offset };
+            const source_headings = yield* Effect.fromNullishOr(
+                cached
+                    .headings
+                    ?.filter(h => h.position.start.offset >= source.position.start.offset
+                        && h.position.end.offset <= source_heading_offset
+                        && h.level < 6
+                    )
+            );
+
+            let text: string
+            const gap = source.level - target.level;
+            if (gap === threshold) {
+                text = cm.state.doc.sliceString(cut.from, cut.to);
+            }
+            else if (gap > threshold) {
+                // Decrease the heading level by removing '#' characters at the start of each heading
+                const indent = gap - threshold;
+                const changes = source_headings
+                    .map(h => {
+                        const from = h.position.start.offset;
+                        return {
+                            from,
+                            to: from + indent
+                        }
+                    });
+                const tr = cm.state.update({
+                    changes: changes
+                });
+                const new_source_offset = tr.changes.mapPos(cut.to);
+                text = tr.state.doc.sliceString(cut.from, new_source_offset);
+            }
+            else {
+                // Increase the heading level by adding '#' characters at the start of each heading
+                const indent = threshold - gap;
+                const changes = source_headings
+                    .map(h => {
+                        return {
+                            from: h.position.start.offset,
+                            insert: '#'.repeat(Math.min(indent, 6 - h.level))
+
+                        }
+                    })
+
+                const tr = cm.state.update({
+                    changes: changes
+                });
+                const new_source_offset = tr.changes.mapPos(cut.to);
+                text = tr.state.doc.sliceString(cut.from, new_source_offset);
+            }
+
+            const tr = cm.state.update({
+                changes: [
+                    { from: cut.from, to: cut.to },
+                    { from: target_block_offset, insert: text }
+                ]
+            });
+
+            const map_anchor = tr.changes.mapPos(target_block_offset);
+            cm.dispatch({
+                changes: tr.changes,
+                selection: { anchor: map_anchor, head: map_anchor + text.length },
+                effects: EditorView.scrollIntoView(map_anchor, {
+                    y: "center",
+                }),
+            });
+
+        })
 
 }
 

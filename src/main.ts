@@ -256,8 +256,75 @@ export default class HeadingsPlugin extends Plugin {
 		this.addCommand({
 			id: 'copy-heading',
 			name: `Copy Heading`,
-			editorCallback: openHeadingSuggester(handler => handler.copyHeading)
+			editorCallback: openHeadingSuggester(
+				handler => handler.copyHeading,
+				modal => {
+					modal.setInstructions([
+						{ command: "Enter:", purpose: "Copy heading and select text;" },
+						{ command: "Mouse Click:", purpose: "Insert heading symbol;" },
+						{ command: "Ctrl/Cmd + Mouse Click:", purpose: "Copy heading;" },
+					]);
+				})
 
+		});
+
+		this.addCommand({
+			id: 'align-heading',
+			name: `Align Heading`,
+			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
+				(source, evt) =>
+					Effect.gen(function* () {
+						const file = yield* editorService.getFile();
+						const editor = yield* editorService.getEditor();
+						const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
+						const source_heading_offset = find_heading_block(cached, source).offset ?? editor.cm.state.doc.length;
+						const modal = yield* suggesterService.getSuggesterModal(
+							(target, targetEvt) => handler.alignHeading(source, target, evt, targetEvt),
+							(items) => {
+								return items.filter(item =>
+									item.position.end.offset < source.position.start.offset
+									|| item.position.end.offset > source_heading_offset
+								);
+							},);
+						modal.setPlaceholder(`選擇要對齊的標題位置`);
+						modal.start();
+					}
+					)
+				, sourceModal => {
+					sourceModal.setPlaceholder('選擇想要對齊的標題');
+				})
+		});
+
+		this.addCommand({
+			id: 'insert-under-heading',
+			name: `Insert Under ...`,
+			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
+				(source, evt) =>
+					Effect.gen({ self: this }, function* () {
+						const file = yield* editorService.getFile();
+						const editor = yield* editorService.getEditor();
+						const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
+						const source_heading_offset = find_heading_block(cached, source).offset ?? editor.cm.state.doc.length;
+						const modal = yield* suggesterService.getSuggesterModal(
+							(target, targetEvt) => handler.insertUnder(source, target, evt, targetEvt),
+							(items) => {
+								const prev_heading = cached.headings?.findLast(h =>
+									h.position.end.offset <= source.position.start.offset
+									&& h.level < source.level
+								);
+								return items.filter(item =>
+									(item.position.end.offset < source.position.start.offset
+										|| item.position.end.offset > source_heading_offset)
+									&& item.position.start.offset != prev_heading?.position.start.offset
+								);
+							},
+						);
+						modal.setPlaceholder(`選擇要插入的標題位置`);
+						modal.start();
+					})
+				, sourceModal => {
+					sourceModal.setPlaceholder('選擇想要移動的標題');
+				})
 		});
 
 		this.addCommand({
@@ -276,42 +343,21 @@ export default class HeadingsPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'insert-heading',
-			name: `Insert Heading`,
-			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
-				(source, evt) =>
-					Effect.gen({ self: this }, function* () {
-						const file = yield* editorService.getFile();
-						const editor = yield* editorService.getEditor();
-						const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
-						const source_heading_offset = find_heading_block(cached, source).offset ?? editor.cm.state.doc.length;
-						const modal = yield* suggesterService.getSuggesterModal(
-							(target, targetEvt) => handler.insertHeading(source, target, evt, targetEvt),
-							(items) => {
-								const prev_heading = cached.headings?.findLast(h =>
-									h.position.end.offset <= source.position.start.offset
-									&& h.level < source.level
-								);
-								return items.filter(item =>
-									(item.position.end.offset < source.position.start.offset
-										|| item.position.start.offset >= source_heading_offset)
-									&& item.position.start.offset != prev_heading?.position.start.offset
-								);
-							},
-						);
-						modal.setPlaceholder(`選擇要插入的標題位置`);
-						modal.start();
-					})
-				, sourceModal => {
-					sourceModal.setPlaceholder('選擇想要移動的標題');
-				})
-		});
-
-
-		this.addCommand({
 			id: 'move-current-block2-heading',
 			name: `Move Current Block to ...`,
 			editorCallback: openHeadingSuggester(handler => handler.moveCurrentBlock2Heading)
+		});
+
+		this.addCommand({
+			id: 'move-selected-2-heading',
+			name: `Move Selected to ...`,
+			editorCallback: openHeadingSuggester(handler => handler.moveSelected2Heading)
+		});
+
+		this.addCommand({
+			id: 'select-content',
+			name: `Select Content`,
+			editorCallback: openHeadingSuggester(handler => handler.selectContent)
 		});
 		// todo export hotkey
 		// 暫時不提供 heading view 的 hotkey。

@@ -68,11 +68,6 @@ export class HeadingSuggester extends FuzzySuggestModal<Heading> {
         this.file = file;
         this.on_select = onSelect;
         this.get_items = getItems;
-        this.setInstructions([
-            { command: "Enter:", purpose: "Copy heading and select text;" },
-            { command: "Mouse Click:", purpose: "Insert heading symbol;" },
-            { command: "Ctrl/Cmd + Mouse Click:", purpose: "Copy heading;" },
-        ]);
     }
     getItems(): Heading[] {
         const cached = this.app.metadataCache.getFileCache(this.file);
