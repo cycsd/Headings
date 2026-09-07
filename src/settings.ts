@@ -1,5 +1,6 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
 import HeadingsPlugin from "./main";
+import { t } from "./i18n";
 
 export interface MyPluginSettings {
 	mySetting: string;
@@ -23,10 +24,10 @@ export class MindMapMdSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Settings #1')
-			.setDesc('It\'s a secret')
+			.setName(t('settingName'))
+			.setDesc(t('settingDescription'))
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
+				.setPlaceholder(t('settingPlaceholder'))
 				.setValue(this.plugin.settings.mySetting)
 				.onChange(async (value) => {
 					this.plugin.settings.mySetting = value;

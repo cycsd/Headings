@@ -13,6 +13,7 @@ import { EditorService } from './service/editor-service';
 import { getFileCached } from './extension/app';
 import { AppService } from './service/app-service';
 import { find_heading_block } from './extension/cached-metadata';
+import { t } from './i18n';
 
 // Remember to rename these classes and interfaces!
 
@@ -203,11 +204,11 @@ export default class HeadingsPlugin extends Plugin {
 					Effect.gen(function* () {
 						const method = action(handler);
 						const modal = yield* suggesterService.getSuggesterModal((target, targetEvt) => method(heading, target, evt, targetEvt));
-						modal.setPlaceholder(`選擇要移動到的標題位置`);
+						modal.setPlaceholder(t('placeholderChooseMoveDestination'));
 						modal.start();
 					})
 				, sourceModal => {
-					sourceModal.setPlaceholder('選擇想要移動的標題');
+					sourceModal.setPlaceholder(t('placeholderChooseHeadingToMove'));
 				});
 		}
 		function openHeadingSuggester(
@@ -249,20 +250,20 @@ export default class HeadingsPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'go2-heading',
-			name: 'Go to heading',
+			name: t('commandGoToHeading'),
 			editorCallback: openHeadingSuggester(handler => handler.go2Heading)
 		});
 
 		this.addCommand({
 			id: 'copy-heading',
-			name: 'Copy heading',
+			name: t('commandCopyHeading'),
 			editorCallback: openHeadingSuggester(
 				handler => handler.copyHeading,
 				modal => {
 					modal.setInstructions([
-						{ command: "Enter:", purpose: "Copy heading and select text;" },
-						{ command: "Mouse Click:", purpose: "Insert heading symbol;" },
-						{ command: "Ctrl/Cmd + Mouse Click:", purpose: "Copy heading;" },
+						{ command: t('instructionEnter'), purpose: t('instructionCopyAndSelect') },
+						{ command: t('instructionClick'), purpose: t('instructionInsertMarker') },
+						{ command: t('instructionModifierClick'), purpose: t('instructionCopy') },
 					]);
 				})
 
@@ -270,7 +271,7 @@ export default class HeadingsPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'align-heading',
-			name: 'Align heading level',
+			name: t('commandAlignHeadingLevel'),
 			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
 				(source, evt) =>
 					Effect.gen(function* () {
@@ -286,18 +287,18 @@ export default class HeadingsPlugin extends Plugin {
 									|| item.position.end.offset > source_heading_offset
 								);
 							},);
-						modal.setPlaceholder(`選擇要對齊的標題位置`);
+						modal.setPlaceholder(t('placeholderChooseAlignmentTarget'));
 						modal.start();
 					}
 					)
 				, sourceModal => {
-					sourceModal.setPlaceholder('選擇想要對齊的標題');
+					sourceModal.setPlaceholder(t('placeholderChooseHeadingToAlign'));
 				})
 		});
 
 		this.addCommand({
 			id: 'insert-under-heading',
-			name: 'Insert heading under another heading',
+			name: t('commandInsertUnderHeading'),
 			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
 				(source, evt) =>
 					Effect.gen({ self: this }, function* () {
@@ -319,44 +320,44 @@ export default class HeadingsPlugin extends Plugin {
 								);
 							},
 						);
-						modal.setPlaceholder(`選擇要插入的標題位置`);
+						modal.setPlaceholder(t('placeholderChooseInsertionTarget'));
 						modal.start();
 					})
 				, sourceModal => {
-					sourceModal.setPlaceholder('選擇想要移動的標題');
+					sourceModal.setPlaceholder(t('placeholderChooseHeadingToMove'));
 				})
 		});
 
 		this.addCommand({
 			id: 'move-heading',
-			name: 'Move heading',
+			name: t('commandMoveHeading'),
 			editorCallback: openHeadingSuggester((handler, suggesterService) =>
 				(heading, evt) =>
 					Effect.gen(function* () {
 						const modal = yield* suggesterService.getSuggesterModal((target, targetEvt) => handler.moveHeading(heading, target, evt, targetEvt));
-						modal.setPlaceholder(`選擇要移動到的標題位置`);
+						modal.setPlaceholder(t('placeholderChooseMoveDestination'));
 						modal.start();
 					})
 				, sourceModal => {
-					sourceModal.setPlaceholder('選擇想要移動的標題');
+					sourceModal.setPlaceholder(t('placeholderChooseHeadingToMove'));
 				})
 		});
 
 		this.addCommand({
 			id: 'move-current-block2-heading',
-			name: 'Move current block under heading',
+			name: t('commandMoveCurrentBlock'),
 			editorCallback: openHeadingSuggester(handler => handler.moveCurrentBlock2Heading)
 		});
 
 		this.addCommand({
 			id: 'move-selected-2-heading',
-			name: 'Move selected text under heading',
+			name: t('commandMoveSelectedText'),
 			editorCallback: openHeadingSuggester(handler => handler.moveSelected2Heading)
 		});
 
 		this.addCommand({
 			id: 'select-content',
-			name: 'Select heading content',
+			name: t('commandSelectHeadingContent'),
 			editorCallback: openHeadingSuggester(handler => handler.selectContent)
 		});
 		// todo export hotkey
