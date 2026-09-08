@@ -9,8 +9,13 @@ Organize the outline and sections of your Obsidian Markdown notes quickly. This 
 ### Go to heading
 Browse all headings in the current note and move the cursor to the selected heading.
 
+![go to head](./doc/img/go_to_head.gif)
+
+
 ### Copy heading
 Browse all headings in the current note. After selecting one, you can copy the heading or insert its heading marker at the current cursor position.
+
+![copy heading](./doc/img/copy_heading.gif)
 
 ### Align heading level
 Move a heading and all of its content to the position after the selected heading and before the next higher-level heading. The moved heading level is changed to match the selected heading, and its descendants are adjusted by the same amount.
@@ -18,7 +23,8 @@ Move a heading and all of its content to the position after the selected heading
 > [!important]
 > The heading hierarchy is changed to align the heading level.
 
-Example: align H5 with H3. The plugin finds the next heading higher than H3 (H2), moves H5 and its content before that H2, and changes H5 to the same level as H3.
+Example: 
+Align H5 with H3. The plugin finds the next heading higher than H3 (H2), moves H5 and its content before that H2, and changes H5 to the same level as H3.
 
 Before:
 ```markdown
@@ -39,6 +45,8 @@ After:
 #### H6
 ## H2
 ```
+
+![align heading level](./doc/img/align_heading_level.gif)
 
 > [!caution]
 > Obsidian supports heading levels 1 through 6 only. When an adjustment would exceed level 6, the heading is displayed at level 6.
@@ -71,6 +79,7 @@ After:
 ## H2
 ```
 
+
 ### Insert heading under another heading
 Move a heading and all of its content under the selected heading, before its next higher-level heading. The inserted heading level is adjusted to preserve the intended hierarchy and make it a child of the selected heading.
 
@@ -80,7 +89,8 @@ Move a heading and all of its content under the selected heading, before its nex
 > [!important]
 > Whenever there is a level difference between the moved heading and the target heading, the moved heading level is adjusted to preserve a valid hierarchy.
 
-Example: insert H4 under H2 ☝️.
+Example: 
+Insert H4 under H2 ☝️.
 
 Before:
 ```markdown
@@ -108,10 +118,13 @@ To preserve the intended structure, H4 is changed to level 3:
 ## H2
 ```
 
+![insert heading under](./doc/img/insert_heading_under.gif)
+
 > [!caution]
 > Obsidian supports heading levels 1 through 6 only. When an adjustment would exceed level 6, the heading is displayed at level 6.
 
-Example: insert H3 ✌️ under H4.
+Example: 
+Insert H3 ✌️ under H4.
 
 Before:
 ```markdown
@@ -140,16 +153,18 @@ After:
 ```
 
 ### Move heading
-Move the selected heading and all of its content to the position after another selected heading and before that heading's next child section. This command does not change heading levels.
+Move the selected heading and all of its content to the position after another selected heading and before that heading's next  section. This command does not change heading levels.
 
 > [!important]
 > This command changes only the position of the heading and its content. It keeps the original heading hierarchy.
 
-Example: when moving H1 to H2, the plugin finds the next heading, H3, and moves H1 and its H2 content before H3 without changing their levels.
+Example: 
+Moving H1 to H2 ☝️, 
+the plugin finds the next heading(H3) from H2 ☝️, and moves H1 and its content before H3 without changing their levels.
 
 Before:
 ```markdown
-## H2
+## H2 ☝️
 ### H3
 # H1
 ## H2
@@ -157,38 +172,27 @@ Before:
 
 After:
 ```markdown
-## H2
+## H2 ☝️
 # H1
 ## H2
 ### H3
 ```
 
-This is also useful for reordering headings at the same level.
+![move heading](./doc/img/move_heading.gif)
 
-Before:
-```markdown
-## H2
-### H3
-#### H4 ☝️
-#### H4 ✌️
-```
-
-Moving H4 ✌️ to H3 produces:
-```markdown
-## H2
-### H3
-#### H4 ✌️
-#### H4 ☝️
-```
 
 ### Move current block under heading
 Move the block containing the current cursor position under the selected heading.
 
+![move current block](./doc/img/move_current_block.gif)
+
 ### Move selected text under heading
 Move the selected text under the selected heading.
+![move selected](/doc/img/move_selected.gif)
 
 ### Select heading content
 Select all content under the selected heading.
+![select heading content](/doc/img/select_heading_content.gif)
 
 ## References
 
