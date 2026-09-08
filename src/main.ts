@@ -331,10 +331,22 @@ export default class HeadingsPlugin extends Plugin {
 		this.addCommand({
 			id: 'move-heading',
 			name: t('commandMoveHeading'),
-			editorCallback: openHeadingSuggester((handler, suggesterService) =>
-				(heading, evt) =>
+			editorCallback: openHeadingSuggester((handler, suggesterService, editorService) =>
+				(source, evt) =>
 					Effect.gen(function* () {
-						const modal = yield* suggesterService.getSuggesterModal((target, targetEvt) => handler.moveHeading(heading, target, evt, targetEvt));
+						const file = yield* editorService.getFile();
+						const editor = yield* editorService.getEditor();
+						const cached = yield* Effect.fromNullishOr(app.metadataCache.getFileCache(file));
+						const source_heading_offset = find_heading_block(cached, source).offset ?? editor.cm.state.doc.length;
+						const modal = yield* suggesterService
+							.getSuggesterModal(
+								(target, targetEvt) => handler.moveHeading(source, target, evt, targetEvt),
+								(items) => {
+									return items.filter(item =>
+										item.position.end.offset < source.position.start.offset
+										|| item.position.end.offset > source_heading_offset
+									);
+								},);
 						modal.setPlaceholder(t('placeholderChooseMoveDestination'));
 						modal.start();
 					})

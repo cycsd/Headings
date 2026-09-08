@@ -204,7 +204,6 @@ export function InsertHeading(threshold: number, app: App, editorService: Contex
                     .headings
                     ?.filter(h => h.position.start.offset >= source.position.start.offset
                         && h.position.end.offset <= source_heading_offset
-                        && h.level < 6
                     )
             );
 
