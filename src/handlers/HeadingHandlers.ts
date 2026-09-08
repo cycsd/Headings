@@ -1,8 +1,7 @@
-import type { App, CachedMetadata, Editor, EditorPosition } from "obsidian";
+import type { App } from "obsidian";
 import type { Heading } from "./HeadingSuggester";
 import { find_heading_block, find_next_heading } from "../extension/cached-metadata";
-import { Context, Effect, Layer, Option } from "effect";
-import { next } from "effect/Random";
+import { Context, Effect, Layer } from "effect";
 import { EditorView } from "@codemirror/view";
 import { EditorService } from "../service/editor-service";
 import { AppService } from "../service/app-service";

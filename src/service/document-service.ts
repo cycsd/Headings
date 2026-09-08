@@ -1,4 +1,4 @@
-import { MarkdownEditView, MarkdownView, type CachedMetadata, type TFile } from "obsidian";
+import { MarkdownView, type CachedMetadata, type TFile } from "obsidian";
 import type HeadingsPlugin from "../main";
 import { Effect, Option } from "effect";
 import { getFileCached } from "../extension/app";

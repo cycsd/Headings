@@ -1,5 +1,5 @@
 
-import { App, TFile, Vault } from "obsidian";
+import { App, TFile } from "obsidian";
 import { Effect } from "effect";
 import { cachedRead } from "../extension/vault";
 

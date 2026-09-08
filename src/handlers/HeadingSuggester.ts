@@ -1,5 +1,4 @@
-import { addIcon, App, Editor, FuzzySuggestModal, setIcon, TFile, type FuzzyMatch, type HeadingCache } from "obsidian";
-import { getFileCached } from "../extension/app";
+import { App, Editor, FuzzySuggestModal, TFile, type FuzzyMatch, type HeadingCache } from "obsidian";
 import { Context, Effect, Layer } from "effect";
 import { mount } from "svelte";
 import fuzzySuggesterItem from "./HeadingFuzzySuggesterItem.svelte";
