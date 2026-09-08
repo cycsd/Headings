@@ -239,24 +239,24 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
     curr_column!.centerBlockIndex = selectedBlock.index;
 
 
+    let s = Option.fromNullishOr(selectedBlock).pipe(
+        Option.map(b => {
+            return {
+                target: b.parentId,
+                columnIndex: columnIndex - 1,
+            };
+        })
+    );
     const set_road = Effect.whileLoop(
-        Option.fromNullishOr(selectedBlock).pipe(
-            Option.map(b => {
-                return {
-                    target: b.parentId,
-                    columnIndex: columnIndex - 1,
-                };
-            })
-        ),
         {
-            while: (s) => s.pipe(
+            while: () => s.pipe(
                 Option.map(({ columnIndex }) => columnIndex),
                 Option.flatMap(Option.liftPredicate(n => n >= 0)),
                 Option.isSome,
             ),
-            step: (s) => {
+            step: (n) => {
                 const selected = Option.gen(function* () {
-                    const { target, columnIndex } = yield* s;
+                    const { target, columnIndex } = yield* n;
                     const column_layout = yield* Option.fromNullishOr(view[columnIndex]);
 
                     const selected_block = yield* Option.fromNullishOr(column_layout.blocks.find((b) => b.id === target));
@@ -270,61 +270,37 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
                 })
                 return selected
             },
-            body: (s) => {
+            body: () => Effect.gen(function* () {
                 const { target, columnIndex } = Option.getOrThrow(s);
                 const column_layout = view.at(columnIndex)!;
                 for (const b of column_layout.blocks) {
                     b.state = b.id === target ? road : unselected;
                 }
                 return s;
-            }
+            })
         }
     );
 
     //todo return breadcrumbs
     const r = await Effect.runSync(set_road);
 
-    const set_path = Effect.loop({
-        parents: [selectedBlock.id],
-        start: selectedBlock.endOffset,
-        end: pipe(Option.fromNullable(curr_column?.blocks.at(selectedBlock.index + 1)?.startOffset),
-            Option.getOrElse(() => Infinity),
-        ),
-        columnIndex: columnIndex + 1,
-    }, {
-        while: ({ parents, columnIndex }) => columnIndex < view.length,
-        step: ({ columnIndex, start, end }) => {
-            const s = Option.gen(function* () {
-                const column_layout = yield* Option.fromNullable(view[columnIndex]);
-                const blocks = column_layout.blocks;
-
-                const next_parents = blocks.filter(b => b.state === path);
 
 
-                //應找距離上一層範圍內的區塊，如果沒有則找被選取的區塊最近的區塊。
-                const center_block = yield* Option.fromNullable(next_parents.first())
-                    .pipe(Option.orElse(() => {
-                        const closest_block = blocks.find(b => b.startOffset >= start);
-                        return Option.some(closest_block ?? blocks.at(-1)!);
-                    }))
 
-                // 如果新的 centerBlockIndex 與舊的 centerBlockIndex 屬於同一個群組，則保持不變，這樣視覺效果比較好
-                const old_center_block = yield* Option.fromNullable(column_layout.blocks.at(column_layout.centerBlockIndex));
-                if (old_center_block.parentId !== center_block.parentId)
-                    column_layout.centerBlockIndex = center_block.index;
-                return {
-                    parents: next_parents.map(b => b.id),
-                    columnIndex: columnIndex + 1,
-                    start,
-                    end,
-                };
-            })
-            return s.pipe(Option.getOrElse(() => ({ parents: [], columnIndex: columnIndex + 1, start, end })));
-        },
-        body: (s) => {
+    const set_path = Option.gen(function* () {
+        let state = {
+            parents: [selectedBlock.id],
+            start: selectedBlock.endOffset,
+            end: pipe(Option.fromNullishOr(curr_column?.blocks.at(selectedBlock.index + 1)?.startOffset),
+                Option.getOrElse(() => Infinity),
+            ),
+            columnIndex: columnIndex + 1,
+        }
+        const result: Block[][] = [];
+        while (state.columnIndex < view.length) {
             const b = Option.gen(function* () {
-                const { parents, columnIndex, start, end } = s;
-                const column_layout = yield* Option.fromNullable(view.at(columnIndex));
+                const { parents, columnIndex, start, end } = state;
+                const column_layout = yield* Option.fromNullishOr(view.at(columnIndex));
                 const blocks = column_layout.blocks;
                 for (const b of blocks) {
                     b.state = b.startOffset < start
@@ -337,12 +313,39 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
                 }
                 return blocks;
             });
-            return b;
-        }
-    }
-    );
+            result.push(yield* b);
 
-    const p = await Effect.runPromise(set_path);
+            const s = Option.gen(function* () {
+                const column_layout = yield* Option.fromNullishOr(view[state.columnIndex]);
+                const blocks = column_layout.blocks;
+
+                const next_parents = blocks.filter(b => b.state === path);
+                //應找距離上一層範圍內的區塊，如果沒有則找被選取的區塊最近的區塊。
+                const center_block = yield* Option.fromNullishOr(next_parents.first())
+                    .pipe(Option.orElse(() => {
+                        const closest_block = blocks.find(b => b.startOffset >= state.start);
+                        return Option.some(closest_block ?? blocks.at(-1)!);
+                    }))
+
+                // 如果新的 centerBlockIndex 與舊的 centerBlockIndex 屬於同一個群組，則保持不變，這樣視覺效果比較好
+                const old_center_block = yield* Option.fromNullishOr(column_layout.blocks.at(column_layout.centerBlockIndex));
+                if (old_center_block.parentId !== center_block.parentId)
+                    column_layout.centerBlockIndex = center_block.index;
+                return {
+                    parents: next_parents.map(b => b.id),
+                    columnIndex: state.columnIndex + 1,
+                    start: state.start,
+                    end: state.end,
+                };
+            })
+            state = s.pipe(Option.getOrElse(() => ({ parents: [], columnIndex: state.columnIndex + 1, start: state.start, end: state.end })));
+        }
+        return result;
+    })
+
+
+
+    const p = await Effect.runPromise(Effect.fromOption(set_path));
 
     return;
 }
