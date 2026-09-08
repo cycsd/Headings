@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { type CachedMetadata, ItemView, MarkdownRenderChild, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { type CachedMetadata, TFile } from "obsidian";
 
 
 export type MindMapMdViewState = {
