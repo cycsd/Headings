@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +22,7 @@ jobs:
 
       - name: Build plugin
         run: |
-          npm install --legacy-peer-deps
+          npm install
           npm run build
 
       - name: Create release
@@ -33,3 +35,9 @@ jobs:
             --title="$tag" \
             --draft \
             main.js manifest.json styles.css
+      - name: Generate provenance attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            main.js
+            styles.css
