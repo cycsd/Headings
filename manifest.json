@@ -1,7 +1,7 @@
 {
 	"id": "headings",
 	"name": "Headings",
-	"version": "1.0.3",
+	"version": "1.0.4",
 	"minAppVersion": "1.5.11",
 	"description": "Navigate, copy, select, align, and move Markdown headings.",
 	"author": "cycsd",
