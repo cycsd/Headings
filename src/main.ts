@@ -175,7 +175,7 @@ export default class HeadingsPlugin extends Plugin {
 				Effect.catchCause(() => this.turnOnMarkdownView),
 				Effect.andThen((_) => getActiveViewOfType(workspace, MarkdownView)),
 			)
-		);
+		).catch((e) => { console.log(e) });
 	}
 
 	/**
@@ -194,20 +194,6 @@ export default class HeadingsPlugin extends Plugin {
 
 		const app = this.app;
 
-		function openHeadingChanger(action: (handler: Context.Service.Shape<typeof HeadingHandlers>)
-			=> (source: Heading, target: Heading, sourceEvt: MouseEvent | KeyboardEvent, targetEvt: MouseEvent | KeyboardEvent) => Effect.Effect<void, Error>) {
-			return openHeadingSuggester((handler, suggesterService) =>
-				(heading, evt) =>
-					Effect.gen(function* () {
-						const method = action(handler);
-						const modal = yield* suggesterService.getSuggesterModal((target, targetEvt) => method(heading, target, evt, targetEvt));
-						modal.setPlaceholder(t('placeholderChooseMoveDestination'));
-						modal.start();
-					})
-				, sourceModal => {
-					sourceModal.setPlaceholder(t('placeholderChooseHeadingToMove'));
-				});
-		}
 		function openHeadingSuggester(
 			action: (
 				handler: Context.Service.Shape<typeof HeadingHandlers>,
@@ -408,18 +394,3 @@ export default class HeadingsPlugin extends Plugin {
 
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		let { contentEl } = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
-}

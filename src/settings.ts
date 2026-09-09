@@ -34,4 +34,8 @@ export class HeadingsSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 	}
+
+	getSettingDefinitions() {
+
+	}
 }

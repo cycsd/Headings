@@ -271,7 +271,7 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
                 return selected
             },
             body: () => Effect.gen(function* () {
-                const { target, columnIndex } = Option.getOrThrow(s);
+                const { target, columnIndex } = yield* Effect.fromOption(s);
                 const column_layout = view.at(columnIndex)!;
                 for (const b of column_layout.blocks) {
                     b.state = b.id === target ? road : unselected;
@@ -282,7 +282,7 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
     );
 
     //todo return breadcrumbs
-    const r = await Effect.runSync(set_road);
+    // const r = await Effect.runSync(set_road);
 
 
 

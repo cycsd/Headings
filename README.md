@@ -3,6 +3,8 @@
 [English](README.md) | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md)
 
 Organize the outline and sections of your Obsidian Markdown notes quickly. This plugin lets you navigate, copy, select, move, insert, and align headings. It is useful when restructuring long notes, reordering sections, or maintaining a consistent heading hierarchy.
+
+
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B37J4BG)
 
 ## Commands

@@ -120,7 +120,7 @@ export class HeadingSuggester extends FuzzySuggestModal<Heading> {
             this.modalEl.dispatchEvent(down);
         });
         const target = this.modalEl.getElementsByClassName('is-selected')[0] as HTMLElement;
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             target.scrollIntoView({ block: 'center' });
         });
 

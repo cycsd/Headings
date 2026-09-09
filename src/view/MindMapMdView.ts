@@ -72,7 +72,7 @@ export class HeadingsView extends ItemView {
                     .pipe(Option.filter(f => f.path === file.path), Effect.fromOption);
 
                 const component = yield* Effect.fromNullishOr(this.mindMapEditorView);
-                this.docServeice.send(file, doc, cached);
+                yield* Effect.tryPromise(() => this.docServeice.send(file, doc, cached));
                 // component.setState({
                 //     file,
                 //     cached,
@@ -85,12 +85,16 @@ export class HeadingsView extends ItemView {
     }
 
     async onClose() {
-        if (this.mindMapEditorView) {
+        try {
+            if (this.mindMapEditorView) {
             // Remove the MindMapEditorView from the ItemView.
-            unmount(this.mindMapEditorView);
-        }
-        if (this.cacheChagedEventRef) {
-            this.plugin.app.metadataCache.offref(this.cacheChagedEventRef);
+                await unmount(this.mindMapEditorView);
+            }
+            if (this.cacheChagedEventRef) {
+                this.plugin.app.metadataCache.offref(this.cacheChagedEventRef);
+            }
+        } catch (err) {
+            console.log('view close error:', err)
         }
     }
 
@@ -105,7 +109,7 @@ export class HeadingsView extends ItemView {
 
             const { file, cached, doc } = yield* this.getComponentState(state);
 
-            this.docServeice.send(file, doc, cached);
+            yield* Effect.tryPromise(() => this.docServeice.send(file, doc, cached));
             // component.setState({
             //     file,
             //     cached,

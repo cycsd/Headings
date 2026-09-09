@@ -99,7 +99,7 @@ export class PluginDocumentService implements DocumentService {
             cached: {},
         }
 
-    async subscribe(callback: (file: TFile, doc: string, cached: CachedMetadata) => Promiseable<boolean>) {
+    subscribe(callback: (file: TFile, doc: string, cached: CachedMetadata) => Promiseable<boolean>) {
         this.subscribers.add(callback);
     };
 
