@@ -1,4 +1,4 @@
-/*! tailwindcss v4.2.4 | MIT License | https://tailwindcss.com */
+/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
 @layer properties {
   @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {
     *, :before, :after, ::backdrop {
@@ -120,14 +120,6 @@
     position: sticky;
   }
 
-  .start {
-    inset-inline-start: var(--spacing);
-  }
-
-  .end {
-    inset-inline-end: var(--spacing);
-  }
-
   .container {
     width: 100%;
   }
@@ -174,10 +166,6 @@
     display: contents;
   }
 
-  .flex {
-    display: flex;
-  }
-
   .grid {
     display: grid;
   }
@@ -206,10 +194,6 @@
     min-width: calc(var(--spacing) * 100);
   }
 
-  .grow {
-    flex-grow: 1;
-  }
-
   .transform {
     transform: var(--tw-rotate-x, ) var(--tw-rotate-y, ) var(--tw-rotate-z, ) var(--tw-skew-x, ) var(--tw-skew-y, );
   }
@@ -220,18 +204,6 @@
 
   .grid-flow-col {
     grid-auto-flow: column;
-  }
-
-  .items-center {
-    align-items: center;
-  }
-
-  .justify-between {
-    justify-content: space-between;
-  }
-
-  .gap-2 {
-    gap: calc(var(--spacing) * 2);
   }
 
   .gap-7 {
@@ -294,9 +266,43 @@
     filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );
   }
 
+  .running {
+    animation-play-state: running;
+  }
+
   .mindmapmd-theme {
     font-size: var(--font-text-size);
     font-family: var(--font-text);
+  }
+
+  .heading-suggester-item {
+    flex-grow: 1;
+    justify-content: space-between;
+    align-items: center;
+    display: flex;
+  }
+
+  .heading-suggester-content {
+    min-width: 0;
+    padding-left: calc((var(--heading-level) - 1) * 1.5rem);
+    align-items: center;
+    gap: .5rem;
+    display: flex;
+  }
+
+  .heading-suggester-icon {
+    flex: none;
+  }
+
+  .heading-suggester-title {
+    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: hidden;
+  }
+
+  .heading-suggester-level {
+    flex: none;
+    margin-left: .5rem;
   }
 
   .mindmapmd-theme .mmmd-path {
