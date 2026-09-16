@@ -103,6 +103,37 @@
 	  font-size: var(--font-text-size);
 	  font-family: var(--font-text);
 	}
+
+	.heading-suggester-item {
+		display: flex;
+		flex-grow: 1;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.heading-suggester-content {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+		padding-left: calc((var(--heading-level) - 1) * 1.5rem);
+	}
+
+	.heading-suggester-icon {
+		flex: none;
+	}
+
+	.heading-suggester-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: normal;
+	}
+
+	.heading-suggester-level {
+		flex: none;
+		margin-left: 0.5rem;
+	}
+
 	.mindmapmd-theme .mmmd-path {
 		@apply border-2 border-s-amber-400;
 	}
