@@ -1,4 +1,4 @@
-import {App, PluginSettingTab, Setting} from "obsidian";
+import { App, PluginSettingTab, Setting } from "obsidian";
 import HeadingsPlugin from "./main";
 import { t } from "./i18n";
 
@@ -19,7 +19,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 
@@ -36,6 +36,14 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	}
 
 	getSettingDefinitions() {
-
+		return [
+			{
+				key: 'mySetting',
+				name: t('settingName'),
+				description: t('settingDescription'),
+				type: 'string',
+				default: 'default'
+			}
+		]
 	}
 }
