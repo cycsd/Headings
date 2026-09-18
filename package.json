@@ -1,6 +1,6 @@
 {
 	"name": "headings",
-	"version": "1.0.7",
+	"version": "1.0.8",
 	"description": "Navigate, copy, select, align, and move Markdown headings.",
 	"main": "main.js",
 	"type": "module",
