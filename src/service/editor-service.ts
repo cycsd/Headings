@@ -1,5 +1,5 @@
 import { Context, Effect } from "effect";
-import type { CachedMetadata, Editor, TFile } from "obsidian";
+import type { Editor, TFile } from "obsidian";
 
 const editor_service = "editor_service";
 export class EditorService extends Context.Service<

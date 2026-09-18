@@ -68,10 +68,10 @@ export class HeadingsView extends ItemView {
 
         this.cacheChagedEventRef = this.plugin.app.metadataCache.on("changed", async (file, doc, cached) => {
             const program = Effect.gen({ self: this }, function* () {
-                const exist_file = yield* Option.fromNullishOr(this.state.file)
-                    .pipe(Option.filter(f => f.path === file.path), Effect.fromOption);
+                // const exist_file = yield* Option.fromNullishOr(this.state.file)
+                //     .pipe(Option.filter(f => f.path === file.path), Effect.fromOption);
 
-                const component = yield* Effect.fromNullishOr(this.mindMapEditorView);
+                // const component = yield* Effect.fromNullishOr(this.mindMapEditorView);
                 yield* Effect.tryPromise(() => this.docServeice.send(file, doc, cached));
                 // component.setState({
                 //     file,
@@ -94,7 +94,7 @@ export class HeadingsView extends ItemView {
                 this.plugin.app.metadataCache.offref(this.cacheChagedEventRef);
             }
         } catch (err) {
-            console.log('view close error:', err)
+            console.error('view close error:', err)
         }
     }
 
@@ -105,7 +105,7 @@ export class HeadingsView extends ItemView {
         // 才會再來執行 setState ，將之前存在 workspace.json 中的 state 取出來，並 setState 給 view
 
         const setComponentState = Effect.gen({ self: this }, function* () {
-            const component = yield* Effect.fromNullishOr(this.mindMapEditorView)
+            // const component = yield* Effect.fromNullishOr(this.mindMapEditorView)
 
             const { file, cached, doc } = yield* this.getComponentState(state);
 

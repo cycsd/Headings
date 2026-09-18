@@ -1,4 +1,3 @@
-import type { RegisterableHotkey } from '@tanstack/svelte-hotkeys';
 
 //todo obsidian hotkey 設定
 // 或許不用自己綁定 hotkey ，直接用 obsidian 的 commad 設定？

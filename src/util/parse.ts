@@ -1,11 +1,9 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type LevelSection, type NonStateBlock, type BaseBlock, type State, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
-import { Data, Effect, Match, Option, pipe, Random } from "effect";
+import { unselected, type Block, type BlockView, type LevelSection, type BaseBlock, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
+import { Effect, Match, Option, pipe } from "effect";
 import type { Position } from "../view/MindMapMd";
-import { range } from "effect/Array";
 import { hash } from "effect/Hash";
-import { get } from "svelte/store";
 
 export const blockquote = 'blockquote';
 export const callout = 'callout';
@@ -77,9 +75,10 @@ export function parse_cache_metadat_2_sections(metadataCache: CachedMetadata): L
     return [];
 }
 
-function sliceDocument(position: Pos, doc: string) {
-    return doc.slice(position.start.offset, position.end.offset);
-}
+// function sliceDocument(position: Pos, doc: string) {
+//     return doc.slice(position.start.offset, position.end.offset);
+// }
+
 function getOffsetKey(position: Pos) {
     const start = position.start.offset;
     const end = position.end.offset;
@@ -345,7 +344,7 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
 
 
 
-    const p = await Effect.runPromise(Effect.fromOption(set_path));
+    // const p = await Effect.runPromise(Effect.fromOption(set_path));
 
     return;
 }

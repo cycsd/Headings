@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Plugin, View, type Constructor, type MarkdownFileInfo } from 'obsidian';
+import { Editor, MarkdownView, Plugin, View, type Constructor, type MarkdownFileInfo } from 'obsidian';
 import "./app.css";
 import { DEFAULT_SETTINGS, type HeadingsSettings as HeadingsSettings } from "./settings";
 import { HeadingsView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
@@ -175,7 +175,7 @@ export default class HeadingsPlugin extends Plugin {
 				Effect.catchCause(() => this.turnOnMarkdownView),
 				Effect.andThen((_) => getActiveViewOfType(workspace, MarkdownView)),
 			)
-		).catch((e) => { console.log(e) });
+		).catch((e) => { console.error(e) });
 	}
 
 	/**
