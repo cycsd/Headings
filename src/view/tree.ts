@@ -7,12 +7,12 @@ import { heading } from "../util/parse"
 
 
 
-type ListItemTree = {
+export type ListItemTree = {
     listItem: ListItemCache
     children: ListItemTree[]
 }
 
-type HeadingTree = {
+export type HeadingTree = {
     heading: HeadingCache
     sections: SectionCache[]
     children: (HeadingTree | ListItemTree)[]

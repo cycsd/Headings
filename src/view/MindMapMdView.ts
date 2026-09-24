@@ -3,7 +3,7 @@ import type HeadingsPlugin from "../main";
 import MindMapEditorView from "./MindMapEditorView.svelte";
 import { mount, unmount } from "svelte";
 import type { MindMapMdViewState, MindMapMdViewStateSave } from "./MindMapMd"
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { getFileByPath } from "../extension/vault";
 import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";

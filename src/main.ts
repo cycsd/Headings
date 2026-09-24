@@ -1,7 +1,8 @@
-import { Editor, MarkdownView, Plugin, View, type Constructor, type MarkdownFileInfo } from 'obsidian';
+import { Editor, MarkdownView, Plugin, View, WorkspaceLeaf, type Constructor, type MarkdownFileInfo } from 'obsidian';
 import "./app.css";
 import { DEFAULT_SETTINGS, type HeadingsSettings as HeadingsSettings } from "./settings";
 import { HeadingsView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
+import { TreeTableView, VIEW_ICON_TREETABLE, VIEW_TYPE_TREETABLE, type TreeTableViewState } from "./view/TreeTableView";
 import { getActiveViewOfType } from "./extension/workspace";
 import { Context, Effect, Layer, pipe } from "effect";
 import type { MindMapMdViewState } from './view/MindMapMd';
@@ -19,6 +20,13 @@ export default class HeadingsPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		this.registerView(
+			VIEW_TYPE_TREETABLE,
+			(leaf: WorkspaceLeaf) => new TreeTableView(leaf, this));
+		this.addRibbonIcon(VIEW_ICON_TREETABLE, 'Open tree table view', () => {
+			this.activateTreeTableView();
+		});
 
 		// todo 暫時不提供 heading view 功能
 		// this.registerView(
@@ -63,6 +71,28 @@ export default class HeadingsPlugin extends Plugin {
 
 	}
 
+
+	async activateTreeTableView() {
+		const { workspace } = this.app;
+
+		// const existing = workspace.getLeavesOfType(VIEW_TYPE_TREETABLE);
+		// if (existing.length > 0) {
+		// 	await workspace.revealLeaf(existing[0]!);
+		// 	return;
+		// }
+
+		const view = workspace.getActiveViewOfType(MarkdownView);
+		const leaf = view?.leaf;
+		const tree_table_view_state: TreeTableViewState = {
+			filePath: view?.file?.path || "",
+			file: view?.file || null,
+			doc: view?.editor.getValue() || null,
+		};
+		await leaf?.setViewState({ type: VIEW_TYPE_TREETABLE, active: true, state: tree_table_view_state });
+		if (leaf) {
+			await workspace.revealLeaf(leaf);
+		}
+	}
 
 	createMindMapViewCheckCallback(action: (view: HeadingsView) => void) {
 		return (checking: boolean) => {
