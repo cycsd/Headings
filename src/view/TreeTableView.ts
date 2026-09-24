@@ -67,7 +67,7 @@ export class TreeTableView extends ItemView {
             }),
         );
 
-        // await this.refresh();
+        await this.refresh();
     }
 
     async setState(state: TreeTableViewState, result: ViewStateResult) {
@@ -84,6 +84,7 @@ export class TreeTableView extends ItemView {
     // 依目前 active 的 markdown 檔案，將對應的 file/cache 推送給 TreeTableHost 顯示
     private async refresh() {
         const program = Effect.gen({ self: this }, function* () {
+            console.log("Refreshing TreeTableView with file:", this.state);
             const { doc, cached } = yield* getFileCached(this.app, this.state.file!);
             yield* Effect.promise(() => this.docService.send(this.state.file!, doc, cached));
         });
