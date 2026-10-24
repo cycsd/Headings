@@ -13,6 +13,7 @@ export default tseslint.config(
 				projectService: {
 					allowDefaultProject: [
 						'eslint.config.js',
+						'eslint.config.mts',
 						'manifest.json'
 					]
 				},
@@ -25,10 +26,12 @@ export default tseslint.config(
 	globalIgnores([
 		"node_modules",
 		"dist",
+		".vite-build",
 		"vite.config.mts",
 		"eslint.config.js",
 		"version-bump.mjs",
 		"versions.json",
 		"main.js",
+		"tests",
 	]),
 );

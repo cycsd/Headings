@@ -13,7 +13,7 @@ export const upper_path = 'upper-path';
 export const lower_path = 'lower-path';
 //代表跟當前被選擇的 Block 沒有關係的 Block （不在同一群組的 Block)
 export const unselected = 'unselected';
-const states = [road, fork, sibling, path, upper_path, lower_path, unselected] as const;
+export const states = [road, fork, sibling, path, upper_path, lower_path, unselected] as const;
 export type State = typeof states[number];
 
 //todo

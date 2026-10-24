@@ -162,10 +162,6 @@
     display: block;
   }
 
-  .contents {
-    display: contents;
-  }
-
   .grid {
     display: grid;
   }
@@ -364,10 +360,6 @@
     .mindmapmd-theme .mmmd-unselected {
       background-color: color-mix(in oklab, var(--accent-foreground) 12%, transparent);
     }
-  }
-
-  .mindmapmd-theme .mmmd-column {
-    scrollbar-width: none;
   }
 
   .mindmapmd-theme .mmmd-column::-webkit-scrollbar {

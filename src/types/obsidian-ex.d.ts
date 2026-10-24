@@ -17,6 +17,7 @@ import {
 	TFile,
 } from "obsidian";
 import { Component } from "obsidian";
+import type { CachedMetadata, EventRef, Menu, Scope, SettingTab, TAbstractFile } from "obsidian";
 import { HabitProps } from "./habit-card";
 import { RootFilterState } from "@/components/features/task/filter/ViewTaskFilter";
 import { SelectionModeChangeEventData } from "@/types/selection";
@@ -315,7 +316,7 @@ declare module "obsidian" {
 	}
 
 	interface MetadataTypeManager {
-		properties: Record<string, any>;
+		properties: Record<string, unknown>;
 	}
 
 	interface App {
@@ -329,7 +330,11 @@ declare module "obsidian" {
 
 	interface EmbedRegistry {
 		embedByExtension: {
-			md: (args: any, file: TFile, subpath: string) => WidgetEditorView;
+			md: (
+				args: { app: App; containerEl: HTMLElement },
+				file: TFile | null,
+				subpath: string,
+			) => WidgetEditorView;
 		};
 	}
 
@@ -361,7 +366,7 @@ declare module "obsidian" {
 	interface Commands {
 		executeCommandById(commandId: string): void;
 
-		executeCommandById(commandId: string, ...args: any[]): void;
+		executeCommandById(commandId: string, ...args: unknown[]): void;
 	}
 
 	interface Component {
@@ -760,10 +765,6 @@ declare module "obsidian" {
 		 * Show preview of widget.
 		 */
 		showPreview(show?: boolean): void;
-	}
-
-	interface AbstractInputSuggest<T> {
-		suggestEl: HTMLElement;
 	}
 
 	interface Vault {

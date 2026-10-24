@@ -1,7 +1,7 @@
 
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
-import { unselected, type Block, type BlockView, type LevelSection, type BaseBlock, type ColumnLayout, road, fork, path, upper_path, lower_path, sibling } from "./block-level";
-import { Effect, Match, Option, pipe } from "effect";
+import { unselected, type Block, type BlockView, type LevelSection, type BaseBlock, type ColumnLayout, fork, path, upper_path, lower_path, sibling } from "./block-level";
+import { Match, Option, pipe } from "effect";
 import type { Position } from "../view/MindMapMd";
 import { hash } from "effect/Hash";
 
@@ -238,55 +238,13 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
     curr_column!.centerBlockIndex = selectedBlock.index;
 
 
-    let s = Option.fromNullishOr(selectedBlock).pipe(
-        Option.map(b => {
-            return {
-                target: b.parentId,
-                columnIndex: columnIndex - 1,
-            };
-        })
-    );
-    const set_road = Effect.whileLoop(
-        {
-            while: () => s.pipe(
-                Option.map(({ columnIndex }) => columnIndex),
-                Option.flatMap(Option.liftPredicate(n => n >= 0)),
-                Option.isSome,
-            ),
-            step: (n) => {
-                const selected = Option.gen(function* () {
-                    const { target, columnIndex } = yield* n;
-                    const column_layout = yield* Option.fromNullishOr(view[columnIndex]);
-
-                    const selected_block = yield* Option.fromNullishOr(column_layout.blocks.find((b) => b.id === target));
-
-                    column_layout.centerBlockIndex = selected_block.index;
-
-                    return {
-                        target: selected_block.parentId,
-                        columnIndex: columnIndex - 1,
-                    };
-                })
-                return selected
-            },
-            body: () => Effect.gen(function* () {
-                const { target, columnIndex } = yield* Effect.fromOption(s);
-                const column_layout = view.at(columnIndex)!;
-                for (const b of column_layout.blocks) {
-                    b.state = b.id === target ? road : unselected;
-                }
-                return s;
-            })
-        }
-    );
-
-    //todo return breadcrumbs
-    // const r = await Effect.runSync(set_road);
+    //todo: 設定 road (祖先區塊) 狀態並回傳 breadcrumbs
 
 
 
 
-    const set_path = Option.gen(function* () {
+    // 立即執行：依據選取區塊設定後續欄位的 path / upper-path / lower-path 狀態
+    Option.gen(function* () {
         let state = {
             parents: [selectedBlock.id],
             start: selectedBlock.endOffset,
@@ -298,7 +256,7 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
         const result: Block[][] = [];
         while (state.columnIndex < view.length) {
             const b = Option.gen(function* () {
-                const { parents, columnIndex, start, end } = state;
+                const { columnIndex, start, end } = state;
                 const column_layout = yield* Option.fromNullishOr(view.at(columnIndex));
                 const blocks = column_layout.blocks;
                 for (const b of blocks) {
@@ -344,7 +302,7 @@ export async function setBlockViewBreadCrumbs(view: BlockView, seletedPosition: 
 
 
 
-    // const p = await Effect.runPromise(Effect.fromOption(set_path));
+    // todo: 收集 path 結果 (Option.gen 的回傳值) 作為 breadcrumbs
 
     return;
 }
