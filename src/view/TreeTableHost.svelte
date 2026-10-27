@@ -32,11 +32,11 @@
 	}
 </script>
 
-{#if root}
+<!-- {#if root}
 	<TreeTable {root} app={plugin.app} {sourcePath} component={view} />
 {:else}
 	<div class="empty">Open a markdown file with headings to see its tree table.</div>
-{/if}
+{/if} -->
 
 <style>
 	.empty {

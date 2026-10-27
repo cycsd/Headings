@@ -1,5 +1,5 @@
 
-import { Effect } from "effect"
+import { Array, Effect } from "effect"
 import type { CachedMetadata, HeadingCache, ListItemCache, SectionCache, TFile } from "obsidian"
 import { heading } from "../util/parse"
 
@@ -15,11 +15,18 @@ export type ListItemTree = {
 export type HeadingTree = {
     heading: HeadingCache
     sections: SectionCache[]
-    children: (HeadingTree | ListItemTree)[]
+    children: HeadingTree[]
 }
 
 
-// type TreeNode = HeadingTree | ListItemTree
+
+
+export type TreeNode = Pick<HeadingTree, "sections"> & {
+    title: string,
+    text: string,
+    children: TreeNode[],
+    cached: HeadingCache | ListItemCache
+}
 
 
 export const createTreeNode = (cache: CachedMetadata, file: TFile) =>
@@ -80,6 +87,27 @@ export const createTreeNode = (cache: CachedMetadata, file: TFile) =>
             stack.push(curr);
         })
 
-        return root_tree;
+        return root_tree!;
     })
 
+export const pareTreeNode = (node: HeadingTree, getText: (from: number, to: number) => string): Effect.Effect<TreeNode> =>
+    Effect.gen(function* () {
+        const start = node.heading.position.start.offset;
+        const end = node.heading.position.end.offset;
+
+        const block_end = node.children.first()?.heading.position.start.offset ?? node.sections.last()?.position.end.offset ?? node.heading.position.end.offset;
+
+        const title = getText(start, end);
+        const text = getText(start, block_end);
+
+        const children = yield* Effect.all(node.children.map((child) => pareTreeNode(child, getText)));
+
+        return {
+            sections: node.sections,
+            title,
+            text,
+            children: children,
+            cached: node.heading
+        };
+
+    });

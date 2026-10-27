@@ -2,18 +2,22 @@
 	import { MarkdownRenderer, type App, type Component } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
-	import type { HeadingTree, ListItemTree } from "./tree";
+	import type { HeadingTree, ListItemTree,TreeNode } from "./tree";
 
 	interface Props {
-		root: HeadingTree;
-		app: App;
-		sourcePath: string;
-		component: Component;
+		// root: TreeNode;
+		// app: App;
+		// sourcePath: string;
+		// component: Component;
+		onRenderMarkdown: (text: string) => Attachment<HTMLElement>;
 	}
 
-	let { root, app, sourcePath, component }: Props = $props();
+	// let { root, app, sourcePath, component }: Props = $props();
+	let { onRenderMarkdown }: Props = $props();
+	let root: TreeNode|undefined = $state();
 
 	type Cell = {
+		title:string;
 		text: string;
 		depth: number;
 		row: number;
@@ -21,29 +25,21 @@
 		colSpan: number;
 	};
 
-	type TreeNode = HeadingTree | ListItemTree;
 
-	function isHeadingTree(node: TreeNode): node is HeadingTree {
-		return "heading" in node;
+	export function refresh(TreeNode: TreeNode) {
+		root = TreeNode;
 	}
+	
 
-	function nodeLabel(node: TreeNode): string {
-		// ListItemTree 目前 createTreeNode 尚未產出，先給予基本顯示文字
-		return isHeadingTree(node) ? `${"#".repeat(node.heading.level)}  ${node.heading.heading}` : `- ${node.listItem.id ?? ""}`;
-	}
-
-	function nodeChildren(node: TreeNode): TreeNode[] {
-		return node.children;
-	}
 
 	function countLeaves(node: TreeNode): number {
-		const children = nodeChildren(node);
+		const children = node.children;
 		if (children.length === 0) return 1;
 		return children.reduce((sum, child) => sum + countLeaves(child), 0);
 	}
 
 	function maxDepth(node: TreeNode, depth = 1): number {
-		const children = nodeChildren(node);
+		const children = node.children;
 		if (children.length === 0) return depth;
 		return Math.max(...children.map((child) => maxDepth(child, depth + 1)));
 	}
@@ -55,11 +51,11 @@
 
 		function place(node: TreeNode, depth: number, row: number): number {
 			const leaves = countLeaves(node);
-			const children = nodeChildren(node);
+			const children = node.children;
 			const isLeaf = children.length === 0;
 			const colSpan = isLeaf ? columns - depth : 1;
 
-			cells.push({ text: nodeLabel(node), depth, row, rowSpan: leaves, colSpan });
+			cells.push({title: node.title, text: node.text, depth, row, rowSpan: leaves, colSpan });
 
 			let childRow = row;
 			for (const child of children) {
@@ -78,42 +74,47 @@
 	}
 
 	let columns = $derived(
-		root.children.length > 0 ? Math.max(...root.children.map((child) => maxDepth(child))) : 1,
+		root!.children.length > 0 ? Math.max(...root!.children.map((child) => maxDepth(child))) : 1,
 	);
-	let cells = $derived(buildCells(root.children, columns));
+	let cells = $derived(buildCells(root!.children, columns));
 
-	function renderMarkdown(text: string): Attachment<HTMLElement> {
-		return (element) => {
-			element.replaceChildren();
-			MarkdownRenderer.render(app, text, element, sourcePath, component);
-		};
-	}
+	// function renderMarkdown(text: string): Attachment<HTMLElement> {
+	// 	return (element) => {
+	// 		element.replaceChildren();
+	// 		MarkdownRenderer.render(app, text, element, sourcePath, component);
+	// 	};
+	// }
 
 </script>
 
+{#if root}
 <PanZoom minZoom={0.1} maxZoom={5} zoomStep={0.05}>
 	{#snippet children()}
-		<div class="tree-table" style="grid-template-columns: repeat({columns}, minmax(0, 1fr));">
+		<div class="tree-table" style="grid-template-columns: repeat({columns}, minmax(0, 1fr));"
+		>
 			<div class="cell header grid-span" style="--col-start: 1; --col-span: {columns}; --row-start: 1; --row-span: 1;">
-				{root.heading.heading}
+				{root!.title}
 			</div>
 			{#each cells as cell (cell.row + "-" + cell.depth)}
+			{let fold =$state(true)}
 				<div
 					class="cell grid-span depth-{cell.depth % 6}"
 					style="--col-start: {cell.depth + 1}; --col-span: {cell.colSpan}; --row-start: {cell.row + 2}; --row-span: {cell.rowSpan};"
-					{@attach renderMarkdown(cell.text)}
+					onpointerdown={()=>{fold = !fold;console.log("fold:", fold)}}
+					{@attach onRenderMarkdown(	fold ? cell.title : cell.text)}
 				></div>
 			{/each}
 		</div>
 	{/snippet}
 </PanZoom>
+{/if}
 
 <style>
 	.tree-table {
 		display: grid;
 		width: 100%;
 		gap: 0;
-		background-color: var(--background-modifier-border);
+		/* background-color: var(--background-modifier-border); */
 	}
 	.grid-span {
 		grid-column: var(--col-start) / span var(--col-span);
@@ -121,7 +122,7 @@
 	}
 	.cell {
 		padding: 6px 10px;
-		display: flex;
+		/*display: flex;*/
 		align-items: center;
 		word-break: break-word;
 		box-sizing: border-box;
