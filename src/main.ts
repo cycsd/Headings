@@ -24,8 +24,9 @@ export default class HeadingsPlugin extends Plugin {
 		this.registerView(
 			VIEW_TYPE_TREETABLE,
 			(leaf: WorkspaceLeaf) => new TreeTableView(leaf, this));
-		this.addRibbonIcon(VIEW_ICON_TREETABLE, 'Open tree table view', () => {
-			this.activateTreeTableView();
+		this.addRibbonIcon(VIEW_ICON_TREETABLE, 'Toggle tree table view', async () => {
+			await Effect.runPromiseExit(
+				Effect.firstSuccessOf([this.activateTreeTableView(), this.turnOnMarkdownView(TreeTableView)]));
 		});
 
 		// todo 暫時不提供 heading view 功能
@@ -72,26 +73,22 @@ export default class HeadingsPlugin extends Plugin {
 	}
 
 
-	async activateTreeTableView() {
-		const { workspace } = this.app;
+	activateTreeTableView() {
+		return Effect.gen({ self: this }, function* () {
+			const { workspace } = this.app;
 
-		// const existing = workspace.getLeavesOfType(VIEW_TYPE_TREETABLE);
-		// if (existing.length > 0) {
-		// 	await workspace.revealLeaf(existing[0]!);
-		// 	return;
-		// }
-
-		const view = workspace.getActiveViewOfType(MarkdownView);
-		const leaf = view?.leaf;
-		const tree_table_view_state: TreeTableViewState = {
-			filePath: view?.file?.path || "",
-			file: view?.file || null,
-			doc: view?.editor.getValue() || null,
-		};
-		await leaf?.setViewState({ type: VIEW_TYPE_TREETABLE, active: true, state: tree_table_view_state });
-		if (leaf) {
-			await workspace.revealLeaf(leaf);
-		}
+			const view = yield* getActiveViewOfType(this.app.workspace, MarkdownView);
+			const leaf = view.leaf;
+			const tree_table_view_state: TreeTableViewState = {
+				filePath: view?.file?.path || "",
+				file: view?.file || null,
+				doc: view?.editor.getValue() || null,
+			};
+			yield* Effect.tryPromise(() => leaf?.setViewState({ type: VIEW_TYPE_TREETABLE, active: true, state: tree_table_view_state }));
+			if (leaf) {
+				yield* Effect.tryPromise(() => workspace.revealLeaf(leaf));
+			}
+		});
 	}
 
 	createMindMapViewCheckCallback(action: (view: HeadingsView) => void) {
@@ -184,25 +181,27 @@ export default class HeadingsPlugin extends Plugin {
 	);
 
 
-	turnOnMarkdownView = Effect.gen({ self: this }, function* () {
-		const view = yield* getActiveViewOfType(this.app.workspace, HeadingsView);
+	turnOnMarkdownView<V extends HeadingsView | TreeTableView>(type: Constructor<V>) {
+		return Effect.gen({ self: this }, function* () {
+			const view = yield* getActiveViewOfType(this.app.workspace, type);
 
-		const file = yield* pipe(
-			Effect.fromNullishOr(view.state?.file),
-			Effect.mapError(() => new Error(`No file associated with view: ${view}`))
-		);
+			const file = yield* pipe(
+				Effect.fromNullishOr(view.state?.file),
+				Effect.mapError(() => new Error(`No file associated with view: ${view}`))
+			);
 
-		yield* Effect.tryPromise(() => {
-			return view.leaf.openFile(file);
+			yield* Effect.tryPromise(() => {
+				return view.leaf.openFile(file);
+			});
 		});
-	});
+	}
 
 	async toggleMindMapMdView() {
 		const { workspace } = this.app;
 
 		Effect.runPromise(
 			this.turnOnMindMapMdView.pipe(
-				Effect.catchCause(() => this.turnOnMarkdownView),
+				Effect.catchCause(() => this.turnOnMarkdownView(HeadingsView)),
 				Effect.andThen((_) => getActiveViewOfType(workspace, MarkdownView)),
 			)
 		).catch((e) => { console.error(e) });

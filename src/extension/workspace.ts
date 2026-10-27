@@ -8,8 +8,7 @@ export const getActiveViewOfType = <View extends ObsidianView>(
     const activeView = workspace.getActiveViewOfType(type);
 
     return pipe(
-        Option.fromNullishOr(activeView),
-        Effect.fromOption,
+        Effect.fromNullishOr(activeView),
         Effect.mapError((message) => new Error(`No active view of type: ${type.name}. ${message}`)),
     );
 });
