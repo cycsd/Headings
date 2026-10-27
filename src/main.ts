@@ -159,7 +159,7 @@ export default class HeadingsPlugin extends Plugin {
 
 		const file = yield* pipe(
 			Effect.fromNullishOr(view.state?.file),
-			Effect.mapError(() => new Error(`No file associated with view: ${view}`))
+			Effect.mapError(() => new Error(`No file associated with view: ${view.getViewType()}`))
 		);
 
 		yield* Effect.tryPromise(() => {

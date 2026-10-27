@@ -6,12 +6,38 @@ https://github.com/taskgenius/taskgenius-plugin
 https://github.com/taskgenius/taskgenius-plugin/blob/ee821b0625de383a0ed0b4bfe155afd6e9ce4f33/src/editor-extensions/core/markdown-editor.ts#L31
 */
 
-import { App, TFile, Scope } from "obsidian";
-import type { MarkdownScrollableEditView, WidgetEditorView, WorkspaceLeaf } from "obsidian";
-import { EditorSelection, Prec } from "@codemirror/state";
-import { EditorView, keymap, placeholder, ViewUpdate } from "@codemirror/view";
+import { App, Scope } from "obsidian";
+import type { MarkdownFileInfo, MarkdownScrollableEditView, TFile, WorkspaceLeaf } from "obsidian";
+import { EditorSelection, Prec, type Extension } from "@codemirror/state";
+import { EditorView, keymap, placeholder, ViewUpdate, type KeyBinding } from "@codemirror/view";
 
 import { around } from "monkey-around";
+
+/**
+ * 模擬 MarkdownView 的最小 owner，ScrollableMarkdownEditor 需要它才能正確捲動
+ */
+interface EditorOwnerStub {
+    app: App;
+    onMarkdownScroll: () => void;
+    getMode: () => string;
+}
+
+interface MarkdownEditorPrototype {
+    buildLocalExtensions(this: MarkdownScrollableEditView): Extension[];
+}
+
+/**
+ * Obsidian 內部 ScrollableMarkdownEditor 類別 (未公開 API)
+ */
+interface MarkdownEditorConstructor {
+    new(app: App, container: HTMLElement, owner: EditorOwnerStub): MarkdownScrollableEditView;
+    prototype: MarkdownEditorPrototype;
+}
+
+/**
+ * owner 的 file 會被外部設定 (讓 Obsidian 的重新命名標題指令可以運作)，因此改為可寫入
+ */
+type EditorOwner = Omit<MarkdownFileInfo, "file"> & { file: TFile | null; editMode?: unknown };
 
 /**
  * Creates an embeddable markdown editor
@@ -35,27 +61,26 @@ export function createEmbeddableMarkdownEditor(
 /**
  * Resolves the markdown editor prototype from the app
  */
-export function resolveEditorPrototype(app: App): any {
+export function resolveEditorPrototype(app: App): MarkdownEditorConstructor {
     // Create a temporary editor to resolve the prototype of ScrollableMarkdownEditor
-    //@ts-ignore
     const widgetEditorView = app.embedRegistry.embedByExtension.md(
         { app, containerEl: createDiv() },
-        null as unknown as TFile,
+        null,
         ""
-    ) as WidgetEditorView;
+    );
 
     // Mark as editable to instantiate the editor
     widgetEditorView.editable = true;
     widgetEditorView.showEditor();
-    const MarkdownEditor = Object.getPrototypeOf(
-        Object.getPrototypeOf(widgetEditorView.editMode!)
+    const markdownEditorPrototype: unknown = Object.getPrototypeOf(
+        Object.getPrototypeOf(widgetEditorView.editMode)
     );
 
     // Unload to remove the temporary editor
     widgetEditorView.unload();
 
-    // Return the constructor, using 'any' type to bypass the abstract class check
-    return MarkdownEditor.constructor;
+    // Return the constructor of the (internal) ScrollableMarkdownEditor class
+    return (markdownEditorPrototype as { constructor: MarkdownEditorConstructor }).constructor;
 }
 
 interface MarkdownEditorProps {
@@ -115,7 +140,7 @@ export class EmbeddableMarkdownEditor {
     get app(): App {
         return this.editor.app;
     }
-    get owner(): any {
+    get owner(): EditorOwner {
         return this.editor.owner;
     }
     get _loaded(): boolean {
@@ -131,7 +156,7 @@ export class EmbeddableMarkdownEditor {
      */
     constructor(
         app: App,
-        EditorClass: any,
+        EditorClass: MarkdownEditorConstructor,
         container: HTMLElement,
         options: Partial<MarkdownEditorProps>
     ) {
@@ -143,117 +168,17 @@ export class EmbeddableMarkdownEditor {
         // Prevent Mod+Enter default behavior
         this.scope.register(["Mod"], "Enter", () => true);
 
-        // Store reference to self for the patched method BEFORE using it
-        const self = this;
-
-        // Use monkey-around to safely patch the method
+        // Use monkey-around to safely patch the method.
+        // The factory is an arrow function, so `this` is this EmbeddableMarkdownEditor,
+        // while the returned function's `this` is the editor instance being built.
         const uninstaller = around(EditorClass.prototype, {
-            buildLocalExtensions: (originalMethod: any) =>
-                function (this: any) {
-                    const extensions = originalMethod.call(this);
-
-                    // Only add our custom extensions if this is our editor instance
-                    if (this === self.editor) {
-                        // Add placeholder if configured
-                        if (self.options.placeholder) {
-                            extensions.push(
-                                placeholder(self.options.placeholder)
-                            );
-                        }
-
-                        // Add paste, blur, and focus event handlers
-                        extensions.push(
-                            EditorView.domEventHandlers({
-                                paste: (event) => {
-                                    self.options.onPaste(event, self);
-                                },
-                                blur: () => {
-                                    // Always trigger blur callback and let it handle the logic
-                                    app.keymap.popScope(self.scope);
-                                    if (self.options.onBlur) {
-                                        self.options.onBlur(self);
-                                    }
-                                },
-                                focusin: () => {
-                                    app.keymap.pushScope(self.scope);
-                                    app.workspace.activeEditor = self.owner;
-                                },
-                            })
-                        );
-
-                        // Add keyboard handlers
-                        const keyBindings = [
-                            {
-                                key: "Enter",
-                                run: () => {
-                                    return self.options.onEnter(
-                                        self,
-                                        false,
-                                        false
-                                    );
-                                },
-                                shift: () =>
-                                    self.options.onEnter(
-                                        self,
-                                        false,
-                                        true
-                                    ),
-                            },
-                            {
-                                key: "Mod-Enter",
-                                run: () =>
-                                    self.options.onEnter(
-                                        self,
-                                        true,
-                                        false
-                                    ),
-                                shift: () =>
-                                    self.options.onEnter(
-                                        self,
-                                        true,
-                                        true
-                                    ),
-                            },
-                            {
-                                key: "Escape",
-                                run: () => {
-                                    self.options.onEscape(self);
-                                    return true;
-                                },
-                                preventDefault: true,
-                            },
-                        ];
-
-                        // For single line mode, prevent Enter key from creating new lines
-                        if (self.options.singleLine) {
-                            keyBindings[0] = {
-                                key: "Enter",
-                                run: () => {
-                                    // In single line mode, Enter should trigger onEnter
-                                    return self.options.onEnter(
-                                        self,
-                                        false,
-                                        false
-                                    );
-                                },
-                                shift: () => {
-                                    // Even with shift, still call onEnter in single line mode
-                                    return self.options.onEnter(
-                                        self,
-                                        false,
-                                        true
-                                    );
-                                },
-                            };
-                        }
-
-                        extensions.push(
-                            Prec.highest(keymap.of(keyBindings))
-                        );
-                    }
-
-                    return extensions;
-                },
+            buildLocalExtensions: (originalMethod) => {
+                const extend = (view: MarkdownScrollableEditView, extensions: Extension[]) =>
+                    this.extendLocalExtensions(app, view, extensions);
+                return function (this: MarkdownScrollableEditView) {
+                    return extend(this, originalMethod.call(this));
+                };
+            },
         });
 
         // Create the editor with the app instance
@@ -280,10 +205,10 @@ export class EmbeddableMarkdownEditor {
         this.register(
             around(app.workspace, {
                 setActiveLeaf:
-                    (oldMethod: any) =>
-                        (leaf: WorkspaceLeaf, ...args: any[]) => {
+                    (oldMethod) =>
+                        (leaf: WorkspaceLeaf, ...args: unknown[]) => {
                             if (!this.activeCM?.hasFocus) {
-                                oldMethod.call(app.workspace, leaf, ...args);
+                                Reflect.apply(oldMethod, app.workspace, [leaf, ...args]);
                             }
                         },
             })
@@ -314,6 +239,82 @@ export class EmbeddableMarkdownEditor {
         };
     }
 
+    /**
+     * Add our custom extensions to the editor's local extensions,
+     * only when the editor being built is this instance's editor.
+     */
+    private extendLocalExtensions(
+        app: App,
+        view: MarkdownScrollableEditView,
+        extensions: Extension[]
+    ): Extension[] {
+        if (view !== this.editor) {
+            return extensions;
+        }
+
+        // Add placeholder if configured
+        if (this.options.placeholder) {
+            extensions.push(placeholder(this.options.placeholder));
+        }
+
+        // Add paste, blur, and focus event handlers
+        extensions.push(
+            EditorView.domEventHandlers({
+                paste: (event) => {
+                    this.options.onPaste(event, this);
+                },
+                blur: () => {
+                    // Always trigger blur callback and let it handle the logic
+                    app.keymap.popScope(this.scope);
+                    if (this.options.onBlur) {
+                        this.options.onBlur(this);
+                    }
+                },
+                focusin: () => {
+                    app.keymap.pushScope(this.scope);
+                    app.workspace.activeEditor = this.owner;
+                },
+            })
+        );
+
+        // Add keyboard handlers
+        const keyBindings: KeyBinding[] = [
+            {
+                key: "Enter",
+                run: () => this.options.onEnter(this, false, false),
+                shift: () => this.options.onEnter(this, false, true),
+            },
+            {
+                key: "Mod-Enter",
+                run: () => this.options.onEnter(this, true, false),
+                shift: () => this.options.onEnter(this, true, true),
+            },
+            {
+                key: "Escape",
+                run: () => {
+                    this.options.onEscape(this);
+                    return true;
+                },
+                preventDefault: true,
+            },
+        ];
+
+        // For single line mode, prevent Enter key from creating new lines
+        if (this.options.singleLine) {
+            keyBindings[0] = {
+                key: "Enter",
+                // In single line mode, Enter should trigger onEnter
+                run: () => this.options.onEnter(this, false, false),
+                // Even with shift, still call onEnter in single line mode
+                shift: () => this.options.onEnter(this, false, true),
+            };
+        }
+
+        extensions.push(Prec.highest(keymap.of(keyBindings)));
+
+        return extensions;
+    }
+
     // Get the current editor value
     get value(): string {
         return this.editor.editor?.cm?.state.doc.toString() || "";
@@ -325,7 +326,7 @@ export class EmbeddableMarkdownEditor {
     }
 
     // Register cleanup callback
-    register(cb: any): void {
+    register(cb: () => unknown): void {
         this.editor.register(cb);
     }
 
