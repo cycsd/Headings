@@ -1,6 +1,6 @@
 import { Editor, MarkdownView, Plugin, View, WorkspaceLeaf, type Constructor, type MarkdownFileInfo } from 'obsidian';
 import "./app.css";
-import { DEFAULT_SETTINGS, type HeadingsSettings as HeadingsSettings } from "./settings";
+import { DEFAULT_SETTINGS, HeadingsSettingTab, type HeadingsSettings as HeadingsSettings } from "./settings";
 import { HeadingsView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
 import { TreeTableView, VIEW_ICON_TREETABLE, VIEW_TYPE_TREETABLE, type TreeTableViewState } from "./view/TreeTableView";
 import { getActiveViewOfType } from "./extension/workspace";
@@ -24,8 +24,8 @@ export default class HeadingsPlugin extends Plugin {
 		this.registerView(
 			VIEW_TYPE_TREETABLE,
 			(leaf: WorkspaceLeaf) => new TreeTableView(leaf, this));
-		this.addRibbonIcon(VIEW_ICON_TREETABLE, 'Open tree table view', () => {
-			this.activateTreeTableView();
+		this.addRibbonIcon(VIEW_ICON_TREETABLE, 'Open tree table view', async() => {
+			await this.activateTreeTableView();
 		});
 
 		// todo 暫時不提供 heading view 功能
@@ -40,7 +40,7 @@ export default class HeadingsPlugin extends Plugin {
 		// });
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		// this.addSettingTab(new MindMapMdSettingTab(this.app, this));
+		this.addSettingTab(new HeadingsSettingTab(this.app, this));
 
 		//todo : open file with mind map md view from file explorer context menu
 		// 使用者有可能從左側 file explorer 開啟檔案的 context menu 來開啟 mind map md view，
@@ -153,6 +153,13 @@ export default class HeadingsPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	// 設定變更後重新渲染已開啟的 tree table view
+	async refreshTreeTableViews() {
+		const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_TREETABLE)
+			.flatMap(leaf => leaf.view instanceof TreeTableView ? [leaf.view] : []);
+		await Promise.all(views.map(view => view.refresh()));
 	}
 
 	//todo orElese get markdown view

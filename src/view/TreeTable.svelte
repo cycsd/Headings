@@ -28,8 +28,7 @@
 	}
 
 	function nodeLabel(node: TreeNode): string {
-		// ListItemTree 目前 createTreeNode 尚未產出，先給予基本顯示文字
-		return isHeadingTree(node) ? `${"#".repeat(node.heading.level)}  ${node.heading.heading}` : `- ${node.listItem.id ?? ""}`;
+		return isHeadingTree(node) ? `${"#".repeat(node.heading.level)}  ${node.heading.heading}` : node.text;
 	}
 
 	function nodeChildren(node: TreeNode): TreeNode[] {

@@ -82,7 +82,7 @@ export class TreeTableView extends ItemView {
     }
 
     // 依目前 active 的 markdown 檔案，將對應的 file/cache 推送給 TreeTableHost 顯示
-    private async refresh() {
+    async refresh() {
         const program = Effect.gen({ self: this }, function* () {
             console.log("Refreshing TreeTableView with file:", this.state);
             const { doc, cached } = yield* getFileCached(this.app, this.state.file!);
