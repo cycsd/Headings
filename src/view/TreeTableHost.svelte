@@ -4,7 +4,7 @@
 	import type { DocumentService } from "../service/document-service";
 	import type HeadingsPlugin from "../main";
 	import TreeTable from "./TreeTable.svelte";
-	import { createTreeNode, type HeadingTree } from "./tree";
+	import { createTreeNode, expandListNodes, type HeadingTree } from "./tree";
 
 	interface Props {
 		plugin: HeadingsPlugin;
@@ -18,14 +18,15 @@
 	let sourcePath = $state("");
 
 	docService.subscribe((file, doc, cached) => {
-		setTree(file, cached);
+		setTree(file, doc, cached);
 		return true;
 	});
 
-	function setTree(file: TFile, cached: CachedMetadata) {
+	function setTree(file: TFile, doc: string, cached: CachedMetadata) {
 		sourcePath = file.path;
 		root = pipe(
 			createTreeNode(cached, file),
+			Effect.map(expandListNodes(cached, doc, plugin.settings.listAsNode)),
 			Effect.orElseSucceed(() => null),
 			Effect.runSync,
 		) ?? null;

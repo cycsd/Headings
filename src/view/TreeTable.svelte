@@ -29,7 +29,10 @@
 	export function refresh(TreeNode: TreeNode) {
 		root = TreeNode;
 	}
-	
+
+	function nodeLabel(node: TreeNode): string {
+		return isHeadingTree(node) ? `${"#".repeat(node.heading.level)}  ${node.heading.heading}` : node.text;
+	}
 
 
 	function countLeaves(node: TreeNode): number {

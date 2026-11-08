@@ -123,7 +123,8 @@ export class TreeTableView extends ItemView {
         }
     }
 
-    private async refresh() {
+    // 依目前 active 的 markdown 檔案，將對應的 file/cache 推送給 TreeTableHost 顯示
+    async refresh() {
         const program = Effect.gen({ self: this }, function* () {
             const editor = yield* Effect.fromNullishOr(this.editor_view);
 
