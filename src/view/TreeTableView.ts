@@ -1,15 +1,16 @@
-import { type IconName, ItemView, MarkdownPreviewView, MarkdownRenderer, MarkdownView, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { type CachedMetadata, type IconName, ItemView, MarkdownRenderer, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import { Effect, pipe } from "effect";
 import type HeadingsPlugin from "../main";
-import TreeTableHost from "./TreeTableHost.svelte";
 import TreeTable from "./TreeTable.svelte";
 import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
 import { getActiveViewOfType } from "../extension/workspace";
 import { EditorView } from "@codemirror/view";
 import { history, redo, undo } from "@codemirror/commands";
-import { createTreeNode, pareTreeNode } from "./tree";
+import { buildTree } from "../adapter/obsidian-tree";
+import { promote, promoteNone, promoteTypes, type PromotePolicy } from "../core/tree";
+import { SECTION_TYPES } from "../core/section-types";
 
 
 export type TreeTableViewState = {
@@ -64,8 +65,17 @@ export class TreeTableView extends ItemView {
                     // const markdownPreviewView = new MarkdownPreviewView(element);
                     // markdownPreviewView.set(text, true);
 
-                }
+                },
+                getText: (from: number, to: number) => this.editor_view?.state.sliceDoc(from, to) ?? "",
             },
+        });
+
+        // 檔案變動時（metadataCache.changed → docService.send）重建目前檔案的樹
+        this.docService.subscribe((file, doc, cached) => {
+            if (file.path !== this.state.file?.path) return false;
+            this.setDocument(doc);
+            this.render(file, doc, cached);
+            return true;
         });
 
         let prev_save_action: number | null = null;
@@ -123,29 +133,36 @@ export class TreeTableView extends ItemView {
         }
     }
 
-    // 依目前 active 的 markdown 檔案，將對應的 file/cache 推送給 TreeTableHost 顯示
+    // 依 state.file 讀取 doc 與 cache，重建樹並交給 TreeTable 顯示（設定變更時也走這裡）
     async refresh() {
         const program = Effect.gen({ self: this }, function* () {
-            const editor = yield* Effect.fromNullishOr(this.editor_view);
-
-            const table = yield* Effect.fromNullishOr(this.treeTable);                           
-            const { doc, cached } = yield* getFileCached(this.app, this.state.file!);
-            // yield* Effect(() => {
-            // this.docService.send(this.state.file!, doc, cached)
-            // });
-            editor.dispatch({
-                changes: {
-                    from: 0,
-                    to: editor.state.doc.length,
-                    insert: doc,
-                }
-            }
-            )
-            const root = yield* createTreeNode(cached, this.state.file!);
-            const paredRoot = yield* pareTreeNode(root, (from, to) => this.editor_view!.state.sliceDoc(from, to));
-            table.refresh(paredRoot);
+            const file = yield* Effect.fromNullishOr(this.state.file);
+            const { doc, cached } = yield* getFileCached(this.app, file);
+            this.setDocument(doc);
+            this.render(file, doc, cached);
         });
 
         await Effect.runPromiseExit(program);
+    }
+
+    /** 把原文放進 editor，之後 TreeTable 透過 getText 取片段 */
+    private setDocument(doc: string) {
+        const editor = this.editor_view;
+        if (!editor || editor.state.doc.toString() === doc) return;
+        editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: doc },
+        });
+    }
+
+    /** 唯一的建樹路徑：adapter 建完整樹 → 依設定 promote → 交給 layout / view */
+    private render(file: TFile, doc: string, cached: CachedMetadata) {
+        if (!this.treeTable) return;
+        const tree = promote(buildTree(cached, doc, file.name), this.promotePolicy());
+        this.treeTable.refresh(tree);
+    }
+
+    /** 設定 → policy 的轉換只發生在 view 層，core 不認識 settings */
+    private promotePolicy(): PromotePolicy {
+        return this.plugin.settings.listAsNode ? promoteTypes([SECTION_TYPES.list]) : promoteNone;
     }
 }

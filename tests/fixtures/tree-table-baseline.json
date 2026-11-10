@@ -1,0 +1,180 @@
+{
+  "columns": 6,
+  "cells": [
+    {
+      "title": "# Obsidian Markdown 語法總覽",
+      "depth": 0,
+      "row": 0,
+      "rowSpan": 2,
+      "colSpan": 1
+    },
+    {
+      "title": "## 1. 文字格式",
+      "depth": 1,
+      "row": 0,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 2. 標題層級",
+      "depth": 1,
+      "row": 1,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "# H1",
+      "depth": 0,
+      "row": 2,
+      "rowSpan": 17,
+      "colSpan": 1
+    },
+    {
+      "title": "## H2",
+      "depth": 1,
+      "row": 2,
+      "rowSpan": 1,
+      "colSpan": 1
+    },
+    {
+      "title": "### H3",
+      "depth": 2,
+      "row": 2,
+      "rowSpan": 1,
+      "colSpan": 1
+    },
+    {
+      "title": "#### H4",
+      "depth": 3,
+      "row": 2,
+      "rowSpan": 1,
+      "colSpan": 1
+    },
+    {
+      "title": "##### H5",
+      "depth": 4,
+      "row": 2,
+      "rowSpan": 1,
+      "colSpan": 1
+    },
+    {
+      "title": "###### H6",
+      "depth": 5,
+      "row": 2,
+      "rowSpan": 1,
+      "colSpan": 1
+    },
+    {
+      "title": "## 3. 連結（Wikilink / Markdown Link）",
+      "depth": 1,
+      "row": 3,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 4. 清單",
+      "depth": 1,
+      "row": 4,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 5. 引用與水平線",
+      "depth": 1,
+      "row": 5,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 6. Callout",
+      "depth": 1,
+      "row": 6,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 7. 程式碼",
+      "depth": 1,
+      "row": 7,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 8. 表格",
+      "depth": 1,
+      "row": 8,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 9. 數學公式（LaTeX）",
+      "depth": 1,
+      "row": 9,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 10. Mermaid 圖",
+      "depth": 1,
+      "row": 10,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 11. 嵌入（Embeds）",
+      "depth": 1,
+      "row": 11,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 12. 區塊連結（Block ID）",
+      "depth": 1,
+      "row": 12,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 13. 腳註（Footnotes）",
+      "depth": 1,
+      "row": 13,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 14. 註解（Comments）",
+      "depth": 1,
+      "row": 14,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 15. 標籤（Tags）",
+      "depth": 1,
+      "row": 15,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 16. HTML 內嵌",
+      "depth": 1,
+      "row": 16,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 17. 查詢區塊（Query）",
+      "depth": 1,
+      "row": 17,
+      "rowSpan": 1,
+      "colSpan": 5
+    },
+    {
+      "title": "## 18. 參考範例（屬性與連結）",
+      "depth": 1,
+      "row": 18,
+      "rowSpan": 1,
+      "colSpan": 5
+    }
+  ]
+}

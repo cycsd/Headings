@@ -1,110 +1,62 @@
 <script lang="ts">
-	import { MarkdownRenderer, type App, type Component } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
-	import type { HeadingTree, ListItemTree,TreeNode } from "./tree";
+	import { contentRange, type TreeNode } from "../core/tree";
+	import { treeTableLayout } from "../layout/tree-table";
 
 	interface Props {
-		// root: TreeNode;
-		// app: App;
-		// sourcePath: string;
-		// component: Component;
 		onRenderMarkdown: (text: string) => Attachment<HTMLElement>;
+		/** 取出文件 [from, to) 的原文 */
+		getText: (from: number, to: number) => string;
 	}
 
-	// let { root, app, sourcePath, component }: Props = $props();
-	let { onRenderMarkdown }: Props = $props();
-	let root: TreeNode|undefined = $state();
+	let { onRenderMarkdown, getText }: Props = $props();
+	let root: TreeNode | undefined = $state();
 
-	type Cell = {
-		title:string;
-		text: string;
-		depth: number;
-		row: number;
-		rowSpan: number;
-		colSpan: number;
-	};
-
-
-	export function refresh(TreeNode: TreeNode) {
-		root = TreeNode;
+	export function refresh(node: TreeNode) {
+		root = node;
 	}
 
-	function nodeLabel(node: TreeNode): string {
-		return isHeadingTree(node) ? `${"#".repeat(node.heading.level)}  ${node.heading.heading}` : node.text;
+	let placement = $derived(root ? treeTableLayout(root) : undefined);
+	let rootTitle = $derived(root?.title ?? "");
+
+	/** heading 只顯示標題行；升級節點沒有標題，一律顯示全部內容 */
+	function titleText(node: TreeNode): string {
+		if (node.kind === "listItem") return node.text ?? "";
+		if (node.title === null) return getText(node.range.from, node.range.to);
+		return getText(node.range.from, node.range.to);
 	}
 
-
-	function countLeaves(node: TreeNode): number {
-		const children = node.children;
-		if (children.length === 0) return 1;
-		return children.reduce((sum, child) => sum + countLeaves(child), 0);
+	function contentText(node: TreeNode): string {
+		if (node.kind === "listItem") return node.text ?? "";
+		const { from, to } = contentRange(node);
+		return getText(from, to);
 	}
 
-	function maxDepth(node: TreeNode, depth = 1): number {
-		const children = node.children;
-		if (children.length === 0) return depth;
-		return Math.max(...children.map((child) => maxDepth(child, depth + 1)));
+	/** 只有 heading 類節點有「標題 / 內容」兩種狀態可以切換 */
+	function foldable(node: TreeNode): boolean {
+		return node.title !== null;
 	}
-
-	// 將樹狀結構攤平成一維 cell 清單，每個 cell 用 grid-column/grid-row 的起點與 span 定位，
-	// 沒有子節點的 node 則 colSpan 補滿剩餘欄位，讓每一列右側都能對齊到最後一欄
-	function buildCells(nodes: TreeNode[], columns: number): Cell[] {
-		const cells: Cell[] = [];
-
-		function place(node: TreeNode, depth: number, row: number): number {
-			const leaves = countLeaves(node);
-			const children = node.children;
-			const isLeaf = children.length === 0;
-			const colSpan = isLeaf ? columns - depth : 1;
-
-			cells.push({title: node.title, text: node.text, depth, row, rowSpan: leaves, colSpan });
-
-			let childRow = row;
-			for (const child of children) {
-				childRow = place(child, depth + 1, childRow);
-			}
-
-			return row + leaves;
-		}
-
-		let rowCursor = 0;
-		for (const node of nodes) {
-			rowCursor = place(node, 0, rowCursor);
-		}
-
-		return cells;
-	}
-
-	let columns = $derived(
-		root!.children.length > 0 ? Math.max(...root!.children.map((child) => maxDepth(child))) : 1,
-	);
-	let cells = $derived(buildCells(root!.children, columns));
-
-	// function renderMarkdown(text: string): Attachment<HTMLElement> {
-	// 	return (element) => {
-	// 		element.replaceChildren();
-	// 		MarkdownRenderer.render(app, text, element, sourcePath, component);
-	// 	};
-	// }
-
 </script>
 
-{#if root}
+{#if placement}
+{@const { columns, cells } = placement}
 <PanZoom minZoom={0.1} maxZoom={5} zoomStep={0.05}>
 	{#snippet children()}
 		<div class="tree-table" style="grid-template-columns: repeat({columns}, minmax(0, 1fr));"
 		>
 			<div class="cell header grid-span" style="--col-start: 1; --col-span: {columns}; --row-start: 1; --row-span: 1;">
-				{root!.title}
+				{rootTitle}
 			</div>
-			{#each cells as cell (cell.row + "-" + cell.depth)}
-			{let fold =$state(true)}
+			{#each cells as cell (cell.node.id)}
+			{let fold = $state(true)}
 				<div
+					role="gridcell"
+					tabindex="-1"
 					class="cell grid-span depth-{cell.depth % 6}"
 					style="--col-start: {cell.depth + 1}; --col-span: {cell.colSpan}; --row-start: {cell.row + 2}; --row-span: {cell.rowSpan};"
-					onpointerdown={()=>{fold = !fold;console.log("fold:", fold)}}
-					{@attach onRenderMarkdown(	fold ? cell.title : cell.text)}
+					onpointerdown={() => { if (foldable(cell.node)) fold = !fold; }}
+					{@attach onRenderMarkdown(fold && foldable(cell.node) ? titleText(cell.node) : contentText(cell.node))}
 				></div>
 			{/each}
 		</div>
@@ -117,7 +69,6 @@
 		display: grid;
 		width: 100%;
 		gap: 0;
-		/* background-color: var(--background-modifier-border); */
 	}
 	.grid-span {
 		grid-column: var(--col-start) / span var(--col-span);
@@ -125,12 +76,10 @@
 	}
 	.cell {
 		padding: 6px 10px;
-		/*display: flex;*/
 		align-items: center;
 		word-break: break-word;
 		box-sizing: border-box;
 		border: 1px solid var(--interactive-accent);
-		/* background-color: var(--background-primary); */
 	}
 	.cell.header {
 		justify-content: center;
@@ -138,22 +87,4 @@
 		color: var(--text-on-accent);
 		font-weight: 600;
 	}
-	/* .depth-0 {
-		background-color: #c9a86a;
-	}
-	.depth-1 {
-		background-color: #b6a23e;
-	}
-	.depth-2 {
-		background-color: #8fae7e;
-	}
-	.depth-3 {
-		background-color: #eef4ee;
-	}
-	.depth-4 {
-		background-color: #dce7f5;
-	}
-	.depth-5 {
-		background-color: var(--background-secondary);
-	} */
 </style>
