@@ -1,168 +1,219 @@
-import { type CachedMetadata, type IconName, ItemView, MarkdownRenderer, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { type CachedMetadata, type IconName, ItemView, MarkdownRenderer, Menu, Platform, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
-import { Effect, pipe } from "effect";
+import { Effect } from "effect";
 import type HeadingsPlugin from "../main";
-import TreeTable from "./TreeTable.svelte";
+import LayoutHost from "./LayoutHost.svelte";
+import { createHostState, type HostState } from "./host-state.svelte";
+import { LAYOUT_REGISTRY, availableLayoutIds } from "./layout-registry";
+import { FM_LAYOUT_KEY, FM_NODES_KEY, resolveLayoutId, resolveNodeTypes } from "./view-config";
 import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
-import { getActiveViewOfType } from "../extension/workspace";
-import { EditorView } from "@codemirror/view";
-import { history, redo, undo } from "@codemirror/commands";
 import { buildTree } from "../adapter/obsidian-tree";
-import { promote, promoteTypes, type PromotePolicy } from "../core/tree";
-import { enabledNodeTypes } from "../settings-model";
+import { promote, promoteTypes } from "../core/tree";
+import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
+import type { LayoutId } from "../layout/layout";
+import { layoutLabel, sectionTypeLabel } from "../labels";
+import { t } from "../i18n";
 
 
-export type TreeTableViewState = {
+export type HeadingsViewState = {
     filePath: string | null;
     file: TFile | null;
     doc: string | null;
 };
 
-export const VIEW_TYPE_TREETABLE = "tree-table-view";
+export const VIEW_TYPE_HEADINGS = "headings-view";
 
 //obsidian base 使用 list-tree 當作 icon
-export const VIEW_ICON_TREETABLE: IconName = "list-tree";
+export const VIEW_ICON_HEADINGS: IconName = "list-tree";
 
+type Loaded = { file: TFile; doc: string; cached: CachedMetadata };
 
-export class TreeTableView extends ItemView {
-    private treeTable: ReturnType<typeof TreeTable> | undefined;
+/**
+ * 統一的 Headings 視圖：一個 ItemView，依檔案 YAML 或全域設定挑佈局，
+ * 佈局元件透過 LayoutHost 動態切換。
+ */
+export class HeadingsView extends ItemView {
+    private host: ReturnType<typeof LayoutHost> | undefined;
+    private hostState: HostState = createHostState({
+        layoutId: availableLayoutIds[0] ?? "tree-table",
+        tree: null,
+        maxNodeWidth: this.plugin.settings.maxNodeWidth,
+    });
     private docService: PluginDocumentService = PluginDocumentService.create(this.plugin);
 
-    public state: TreeTableViewState = {
+    /** 目前顯示中的檔案內容；YAML 寫入後 metadataCache.changed 會再推一次新的 */
+    private loaded: Loaded | null = null;
+    /** 使用者在這個 view 上剛改過、尚未等到 cache 更新的 override */
+    private pendingLayout: LayoutId | null = null;
+    private pendingNodeTypes: PromotableSectionType[] | null = null;
+
+    public state: HeadingsViewState = {
         filePath: null,
         file: null,
         doc: null,
     };
-    private editor_view: EditorView | undefined;
 
     constructor(leaf: WorkspaceLeaf, private plugin: HeadingsPlugin) {
         super(leaf);
     }
 
     getViewType(): string {
-        return VIEW_TYPE_TREETABLE;
+        return VIEW_TYPE_HEADINGS;
     }
 
     getDisplayText(): string {
-        return "Tree table";
+        return this.state.file ? `${t("viewHeadings")}: ${this.state.file.basename}` : t("viewHeadings");
     }
 
     getIcon(): IconName {
-        return VIEW_ICON_TREETABLE;
+        return VIEW_ICON_HEADINGS;
     }
 
     async onOpen() {
-        this.treeTable = mount(TreeTable, {
+        this.host = mount(LayoutHost, {
             target: this.contentEl,
             props: {
-                // plugin: this.plugin,
-                // view: this,
-                // docService: this.docService,
-                onRenderMarkdown: (text: string) => (element) => {
+                state: this.hostState,
+                getText: (from: number, to: number) => this.loaded?.doc.slice(from, to) ?? "",
+                onRenderMarkdown: (text: string) => (element: HTMLElement) => {
                     element.replaceChildren();
-                    MarkdownRenderer.render(this.plugin.app, text, element, this.state.file!.path, this);
-                    // const markdownPreviewView = new MarkdownPreviewView(element);
-                    // markdownPreviewView.set(text, true);
-
+                    void MarkdownRenderer.render(this.plugin.app, text, element, this.state.file?.path ?? "", this);
                 },
-                getText: (from: number, to: number) => this.editor_view?.state.sliceDoc(from, to) ?? "",
             },
         });
+
+        // 只有一種佈局時不顯示切換按鈕，第二種加進 registry 後自然出現
+        if (LAYOUT_REGISTRY.length > 1) {
+            this.addAction("layout-dashboard", t("menuLayout"), (evt) => this.showLayoutMenu(evt));
+        }
+        this.addAction("blocks", t("menuNodeTypes"), (evt) => this.showNodeTypesMenu(evt));
 
         // 檔案變動時（metadataCache.changed → docService.send）重建目前檔案的樹
         this.docService.subscribe((file, doc, cached) => {
             if (file.path !== this.state.file?.path) return false;
-            this.setDocument(doc);
-            this.render(file, doc, cached);
+            this.applyLoaded({ file, doc, cached });
             return true;
         });
 
-        let prev_save_action: number | null = null;
-        this.editor_view = new EditorView({
-            doc: "",
-            extensions: [
-                history(),
-                EditorView.updateListener.of((update) => {
-                    // if (
-                    //     !update.docChanged ||
-                    //     update.transactions.some((tr) =>
-                    //         tr.annotation(external_edit_annotation),
-                    //     )
-                    // ) {
-                    //     return;
-                    // }
-                    if (prev_save_action !== null) {
-                        cancelAnimationFrame(prev_save_action);
-                    }
-                    prev_save_action = requestAnimationFrame(async () => {
-                        // await docService.save(
-                        //     getfile()!,
-                        //     update.state.doc.toString(),
-                        // );
-                    });
-                }),
-            ],
-        });
-
-        // this.registerEvent(
-        //     this.app.workspace.on("active-leaf-change", () => {
-        //         this.refresh();
-        //     }),
-        // );
-
         this.registerEvent(
             this.app.metadataCache.on("changed", (file, doc, cached) => {
-                this.docService.send(file, doc, cached);
+                void this.docService.send(file, doc, cached);
             }),
         );
 
         await this.refresh();
     }
 
-    async setState(state: TreeTableViewState, result: ViewStateResult) {
+    async setState(state: HeadingsViewState, result: ViewStateResult) {
         if (state) {
             this.state = state;
+            this.pendingLayout = null;
+            this.pendingNodeTypes = null;
             await this.refresh();
         }
     }
 
     async onClose() {
-        if (this.treeTable) {
-            await unmount(this.treeTable);
+        if (this.host) {
+            await unmount(this.host);
         }
     }
 
-    // 依 state.file 讀取 doc 與 cache，重建樹並交給 TreeTable 顯示（設定變更時也走這裡）
+    // 依 state.file 讀取 doc 與 cache 重新渲染（設定變更時也走這裡）
     async refresh() {
         const program = Effect.gen({ self: this }, function* () {
             const file = yield* Effect.fromNullishOr(this.state.file);
             const { doc, cached } = yield* getFileCached(this.app, file);
-            this.setDocument(doc);
-            this.render(file, doc, cached);
+            this.applyLoaded({ file, doc, cached });
         });
 
         await Effect.runPromiseExit(program);
     }
 
-    /** 把原文放進 editor，之後 TreeTable 透過 getText 取片段 */
-    private setDocument(doc: string) {
-        const editor = this.editor_view;
-        if (!editor || editor.state.doc.toString() === doc) return;
-        editor.dispatch({
-            changes: { from: 0, to: editor.state.doc.length, insert: doc },
-        });
+    /** 名字避開 Component.load() */
+    private applyLoaded(loaded: Loaded) {
+        this.loaded = loaded;
+        // cache 更新後 YAML 已經是新值，pending 可以放掉
+        this.pendingLayout = null;
+        this.pendingNodeTypes = null;
+        this.render();
     }
 
-    /** 唯一的建樹路徑：adapter 建完整樹 → 依設定 promote → 交給 layout / view */
-    private render(file: TFile, doc: string, cached: CachedMetadata) {
-        if (!this.treeTable) return;
-        const tree = promote(buildTree(cached, doc, file.name), this.promotePolicy());
-        this.treeTable.refresh(tree);
+    /** 唯一的建樹路徑：adapter 建完整樹 → 依 YAML / 設定 promote → 交給 LayoutHost */
+    private render() {
+        if (!this.loaded) return;
+        const { file, doc, cached } = this.loaded;
+        this.hostState.layoutId = this.currentLayoutId();
+        this.hostState.maxNodeWidth = this.plugin.settings.maxNodeWidth;
+        this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()));
     }
 
-    /** 設定 → policy 的轉換只發生在 view 層，core 不認識 settings */
-    private promotePolicy(): PromotePolicy {
-        return promoteTypes(enabledNodeTypes(this.plugin.settings));
+    private currentLayoutId(): LayoutId {
+        return this.pendingLayout
+            ?? resolveLayoutId(this.loaded?.cached.frontmatter, this.plugin.settings, Platform.isMobile, availableLayoutIds);
+    }
+
+    private currentNodeTypes(): PromotableSectionType[] {
+        return this.pendingNodeTypes ?? resolveNodeTypes(this.loaded?.cached.frontmatter, this.plugin.settings);
+    }
+
+    private showLayoutMenu(evt: MouseEvent) {
+        const current = this.currentLayoutId();
+        const menu = new Menu();
+        for (const entry of LAYOUT_REGISTRY) {
+            menu.addItem((item) =>
+                item
+                    .setTitle(layoutLabel[entry.id]())
+                    .setIcon(entry.icon)
+                    .setChecked(entry.id === current)
+                    .onClick(() => this.chooseLayout(entry.id)),
+            );
+        }
+        menu.showAtMouseEvent(evt);
+    }
+
+    private showNodeTypesMenu(evt: MouseEvent) {
+        const current = new Set(this.currentNodeTypes());
+        const menu = new Menu();
+        for (const type of PROMOTABLE_SECTION_TYPES) {
+            menu.addItem((item) =>
+                item
+                    .setTitle(sectionTypeLabel[type]())
+                    .setChecked(current.has(type))
+                    .onClick(() => {
+                        const next = new Set(current);
+                        if (next.has(type)) next.delete(type); else next.add(type);
+                        this.chooseNodeTypes(PROMOTABLE_SECTION_TYPES.filter((t) => next.has(t)));
+                    }),
+            );
+        }
+        menu.showAtMouseEvent(evt);
+    }
+
+    /** 先立即套用，再寫進 YAML；cache 更新後會以 YAML 的值重算 */
+    private chooseLayout(id: LayoutId) {
+        this.pendingLayout = id;
+        this.render();
+        void this.writeFrontmatter(FM_LAYOUT_KEY, id);
+    }
+
+    private chooseNodeTypes(types: PromotableSectionType[]) {
+        this.pendingNodeTypes = types;
+        this.render();
+        void this.writeFrontmatter(FM_NODES_KEY, types);
+    }
+
+    /** 只在使用者實際改動時寫入；沒有 frontmatter 的檔案會被建立一個 */
+    private async writeFrontmatter(key: string, value: unknown) {
+        const file = this.state.file;
+        if (!file) return;
+        try {
+            await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+                fm[key] = value;
+            });
+        } catch (error) {
+            console.error("headings: failed to write frontmatter", error);
+        }
     }
 }

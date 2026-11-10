@@ -1,29 +1,12 @@
 import { App, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
 import HeadingsPlugin from "./main";
 import { t } from "./i18n";
-import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "./core/section-types";
-import { LAYOUT_IDS, type LayoutId } from "./layout/layout";
+import { PROMOTABLE_SECTION_TYPES } from "./core/section-types";
+import { LAYOUT_IDS } from "./layout/layout";
 import { DEFAULT_SETTINGS, MAX_NODE_WIDTH_RANGE } from "./settings-model";
+import { layoutLabel, sectionTypeLabel } from "./labels";
 
 export { DEFAULT_SETTINGS, type HeadingsSettings } from "./settings-model";
-
-export const sectionTypeLabel: Record<PromotableSectionType, () => string> = {
-	paragraph: () => t("sectionTypeParagraph"),
-	list: () => t("sectionTypeList"),
-	blockquote: () => t("sectionTypeBlockquote"),
-	callout: () => t("sectionTypeCallout"),
-	code: () => t("sectionTypeCode"),
-	table: () => t("sectionTypeTable"),
-	math: () => t("sectionTypeMath"),
-	html: () => t("sectionTypeHtml"),
-	footnoteDefinition: () => t("sectionTypeFootnoteDefinition"),
-};
-
-export const layoutLabel: Record<LayoutId, () => string> = {
-	mindmap: () => t("layoutMindmap"),
-	"tree-table": () => t("layoutTreeTable"),
-	outline: () => t("layoutOutline"),
-};
 
 const layoutOptions = (): Record<string, string> =>
 	Object.fromEntries(LAYOUT_IDS.map((id) => [id, layoutLabel[id]()]));
@@ -144,6 +127,6 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	private async applySetting(key: string, value: unknown) {
 		setPath(this.plugin.settings as unknown as Record<string, unknown>, key, value);
 		await this.plugin.saveSettings();
-		await this.plugin.refreshTreeTableViews();
+		await this.plugin.refreshHeadingsViews();
 	}
 }

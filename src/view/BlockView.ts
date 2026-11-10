@@ -1,27 +1,27 @@
 import { type EventRef, type IconName, ItemView, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
 import type HeadingsPlugin from "../main";
-import MindMapEditorView from "./MindMapEditorView.svelte";
+import BlockViewEditor from "./BlockViewEditor.svelte";
 import { mount, unmount } from "svelte";
-import type { MindMapMdViewState, MindMapMdViewStateSave } from "./MindMapMd"
+import type { BlockViewState, BlockViewStateSave } from "./BlockViewState"
 import { Effect } from "effect";
 import { getFileByPath } from "../extension/vault";
 import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
 
-export const VIEW_TYPE_MINDMAPMD = "mindmap-md-view";
+export const VIEW_TYPE_BLOCKVIEW = "block-view";
 
 //obsidian base 使用 layout-list 當作 icon
-export const VIEW_ICON_MINDMAPMD: IconName = "layout-panel-left";
+export const VIEW_ICON_BLOCKVIEW: IconName = "layout-panel-left";
 
-export class HeadingsView extends ItemView {
-    private mindMapEditorView: ReturnType<typeof MindMapEditorView> | undefined;
+export class BlockView extends ItemView {
+    private mindMapEditorView: ReturnType<typeof BlockViewEditor> | undefined;
 
     public get component() {
         return this.mindMapEditorView;
     }
     public file: TFile | undefined | null;
     // public fileCache: CachedMetadata | null | undefined;
-    public state: MindMapMdViewState = {
+    public state: BlockViewState = {
         filePath: null,
         file: null,
         doc: null,
@@ -32,14 +32,14 @@ export class HeadingsView extends ItemView {
     private cacheChagedEventRef: EventRef | null = null;
 
     getViewType(): string {
-        return VIEW_TYPE_MINDMAPMD;
+        return VIEW_TYPE_BLOCKVIEW;
     }
     getDisplayText(): string {
         return this.state.file?.basename ?? "Mind Map MD";
     }
 
     getIcon(): IconName {
-        return VIEW_ICON_MINDMAPMD;
+        return VIEW_ICON_BLOCKVIEW;
     }
     constructor(leaf: WorkspaceLeaf, private plugin: HeadingsPlugin) {
         super(leaf);
@@ -55,7 +55,7 @@ export class HeadingsView extends ItemView {
         // obsidian 一打開執行 onOpen 時 leaf.getViewState() 中的 state 是 undefined 的，所以在 onOpen 時無法取得之前存在 workspace.json 中的 state 資訊。
 
         // console.log("on obsidian open", this.leaf.getViewState(), this.contentEl);
-        this.mindMapEditorView = mount(MindMapEditorView, {
+        this.mindMapEditorView = mount(BlockViewEditor, {
             target: this.contentEl,
             props: {
                 plugin: this.plugin,
@@ -87,7 +87,7 @@ export class HeadingsView extends ItemView {
     async onClose() {
         try {
             if (this.mindMapEditorView) {
-            // Remove the MindMapEditorView from the ItemView.
+            // Remove the BlockViewEditor from the ItemView.
                 await unmount(this.mindMapEditorView);
             }
             if (this.cacheChagedEventRef) {
@@ -99,7 +99,7 @@ export class HeadingsView extends ItemView {
     }
 
     //如果想要 refresh 畫面可能可以藉由這個來控制
-    async setState(state: MindMapMdViewState, result: ViewStateResult) {
+    async setState(state: BlockViewState, result: ViewStateResult) {
         // 如果是 obsidian 一開始開啟 vault 會找 workspace.json ，如果看到 view type 是這個 plugin
         // 會先執行 onOpen
         // 才會再來執行 setState ，將之前存在 workspace.json 中的 state 取出來，並 setState 給 view
@@ -140,7 +140,7 @@ export class HeadingsView extends ItemView {
         return this.stateMapping2Save(this.state);
     }
 
-    getComponentState(state: MindMapMdViewState) {
+    getComponentState(state: BlockViewState) {
         return Effect.gen({ self: this }, function* () {
             const file = yield* Effect.fromNullishOr(state.file)
                 .pipe(
@@ -154,7 +154,7 @@ export class HeadingsView extends ItemView {
         });
     }
 
-    stateMapping2Save(state: MindMapMdViewState): MindMapMdViewStateSave {
+    stateMapping2Save(state: BlockViewState): BlockViewStateSave {
         return {
             filePath: state.filePath,
         }

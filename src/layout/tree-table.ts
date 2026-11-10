@@ -8,6 +8,8 @@ export type TreeTableCell = {
     row: number;
     rowSpan: number;
     colSpan: number;
+    /** 所屬頂層分支的序號，用來決定顏色 */
+    branch: number;
 };
 
 export type TreeTablePlacement = {
@@ -38,24 +40,24 @@ export const treeTableLayout: Layout<TreeTablePlacement> = (root, options) => {
     const columns = topLevel.length > 0 ? Math.max(...topLevel.map((child) => maxDepth(child, options))) : 1;
     const cells: TreeTableCell[] = [];
 
-    const place = (node: TreeNode, depth: number, row: number): number => {
+    const place = (node: TreeNode, depth: number, row: number, branch: number): number => {
         const leaves = countLeaves(node, options);
         const children = visibleChildren(node, options);
         const colSpan = children.length === 0 ? columns - depth : 1;
 
-        cells.push({ node, depth, row, rowSpan: leaves, colSpan });
+        cells.push({ node, depth, row, rowSpan: leaves, colSpan, branch });
 
         let childRow = row;
         for (const child of children) {
-            childRow = place(child, depth + 1, childRow);
+            childRow = place(child, depth + 1, childRow, branch);
         }
         return row + leaves;
     };
 
     let rowCursor = 0;
-    for (const node of topLevel) {
-        rowCursor = place(node, 0, rowCursor);
-    }
+    topLevel.forEach((node, branch) => {
+        rowCursor = place(node, 0, rowCursor, branch);
+    });
 
     return { columns, cells };
 };

@@ -24,8 +24,8 @@
 		type RootBlock,
 	} from "../util/block-level";
 	import { range } from "effect/Array";
-	import type { HeadingsView } from "./MindMapMdView";
-	import type { Position, Selected } from "./MindMapMd";
+	import type { BlockView as BlockItemView } from "./BlockView";
+	import type { Position, Selected } from "./BlockViewState";
 	import type { Attachment } from "svelte/attachments";
 	import VirtualColumn from "./VirtualColumn.svelte";
 	import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
@@ -52,7 +52,7 @@
 	//search/find ?
 	interface Props {
 		plugin: HeadingsPlugin;
-		view: HeadingsView;
+		view: BlockItemView;
 		docService: DocumentService;
 		isActive: () => boolean;
 	}

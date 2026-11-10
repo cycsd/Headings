@@ -2,11 +2,11 @@ import { Editor, MarkdownView, Plugin, View, WorkspaceLeaf, type Constructor, ty
 import "./app.css";
 import { DEFAULT_SETTINGS, HeadingsSettingTab, type HeadingsSettings as HeadingsSettings } from "./settings";
 import { migrateSettings } from "./settings-model";
-import { HeadingsView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
-import { TreeTableView, VIEW_ICON_TREETABLE, VIEW_TYPE_TREETABLE, type TreeTableViewState } from "./view/TreeTableView";
+import { BlockView, VIEW_TYPE_BLOCKVIEW } from "./view/BlockView";
+import { HeadingsView, VIEW_ICON_HEADINGS, VIEW_TYPE_HEADINGS, type HeadingsViewState } from "./view/HeadingsView";
 import { getActiveViewOfType } from "./extension/workspace";
 import { Context, Effect, Layer, pipe } from "effect";
-import type { MindMapMdViewState } from './view/MindMapMd';
+import type { BlockViewState } from "./view/BlockViewState";
 import { HeadingSuggester, HeadingSuggesterService, type Heading } from './handlers/HeadingSuggester';
 import { HeadingHandlers, HeadingHandlersLive, } from './handlers/HeadingHandlers';
 import { EditorService } from './service/editor-service';
@@ -23,22 +23,22 @@ export default class HeadingsPlugin extends Plugin {
 		await this.loadSettings();
 
 		this.registerView(
-			VIEW_TYPE_TREETABLE,
-			(leaf: WorkspaceLeaf) => new TreeTableView(leaf, this));
-		this.addRibbonIcon(VIEW_ICON_TREETABLE, 'Toggle tree table view', async () => {
+			VIEW_TYPE_HEADINGS,
+			(leaf: WorkspaceLeaf) => new HeadingsView(leaf, this));
+		this.addRibbonIcon(VIEW_ICON_HEADINGS, t('commandOpenHeadingsView'), async () => {
 			await Effect.runPromiseExit(
-				Effect.firstSuccessOf([this.activateTreeTableView(), this.turnOnMarkdownView(TreeTableView)]));
+				Effect.firstSuccessOf([this.activateHeadingsView(), this.turnOnMarkdownView(HeadingsView)]));
 		});
 
 		// todo 暫時不提供 heading view 功能
 		// this.registerView(
-		// 	VIEW_TYPE_MINDMAPMD,
-		// 	(leaf: WorkspaceLeaf) => new MindMapMdView(leaf, this));
+		// 	VIEW_TYPE_BLOCKVIEW,
+		// 	(leaf: WorkspaceLeaf) => new BlockView(leaf, this));
 		// // This creates an icon in the left ribbon.
-		// this.addRibbonIcon(VIEW_ICON_MINDMAPMD, 'Toggle Mind Map MD View', (evt: MouseEvent) => {
+		// this.addRibbonIcon(VIEW_ICON_BLOCKVIEW, 'Toggle Mind Map MD View', (evt: MouseEvent) => {
 		// 	// Called when the user clicks the icon.
 		// 	// new Notice('This is a notice! just kidding');
-		// 	this.toggleMindMapMdView();
+		// 	this.toggleBlockView();
 		// });
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
@@ -50,9 +50,9 @@ export default class HeadingsPlugin extends Plugin {
 		// this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
 		// 	menu.addItem((item) => {
 		// 		item.setTitle('Mind Map MD View')
-		// 			.setIcon(VIEW_ICON_MINDMAPMD)
+		// 			.setIcon(VIEW_ICON_BLOCKVIEW)
 		// 			.onClick(async () => {
-		// 				Effect.runPromise(this.turnOnMindMapMdView);
+		// 				Effect.runPromise(this.turnOnBlockView);
 		// 			});
 		// 	})
 		// }));
@@ -64,9 +64,9 @@ export default class HeadingsPlugin extends Plugin {
 		// this.app.workspace.on('editor-menu', (menu, editor, view) => {
 		// 	menu.addItem((item) => {
 		// 		item.setTitle('Mind Map MD View')
-		// 			.setIcon(VIEW_ICON_MINDMAPMD)
+		// 			.setIcon(VIEW_ICON_BLOCKVIEW)
 		// 			.onClick(async () => {
-		// 				Effect.runPromise(this.turnOnMindMapMdView);
+		// 				Effect.runPromise(this.turnOnBlockView);
 		// 			});
 		// 	})
 		// });
@@ -74,30 +74,30 @@ export default class HeadingsPlugin extends Plugin {
 	}
 
 
-	activateTreeTableView() {
+	activateHeadingsView() {
 		return Effect.gen({ self: this }, function* () {
 			const { workspace } = this.app;
 
 			const view = yield* getActiveViewOfType(this.app.workspace, MarkdownView);
 			const leaf = view.leaf;
-			const tree_table_view_state: TreeTableViewState = {
+			const headings_view_state: HeadingsViewState = {
 				filePath: view?.file?.path || "",
 				file: view?.file || null,
 				doc: view?.editor.getValue() || null,
 			};
-			yield* Effect.tryPromise(() => leaf?.setViewState({ type: VIEW_TYPE_TREETABLE, active: true, state: tree_table_view_state }));
+			yield* Effect.tryPromise(() => leaf?.setViewState({ type: VIEW_TYPE_HEADINGS, active: true, state: headings_view_state }));
 			if (leaf) {
 				yield* Effect.tryPromise(() => workspace.revealLeaf(leaf));
 			}
 		});
 	}
 
-	createMindMapViewCheckCallback(action: (view: HeadingsView) => void) {
+	createBlockViewCheckCallback(action: (view: BlockView) => void) {
 		return (checking: boolean) => {
 			//checking 為 true, 代表使用者正在使用 Ctrl + P 開啟 obsidian command palette ，
 			//回傳值為 true or false 決定是否顯示這個 command (true-顯示, false-不顯示)。
 			if (checking) {
-				const is_view_esist = getActiveViewOfType(this.app.workspace, HeadingsView)
+				const is_view_esist = getActiveViewOfType(this.app.workspace, BlockView)
 					.pipe(Effect.map(v => {
 						return true;
 					}),
@@ -108,7 +108,7 @@ export default class HeadingsPlugin extends Plugin {
 			//使用者選取這個 command 或直接按下 hotkey，checking 為 false。
 			else {
 				const program = Effect.gen({ self: this }, function* () {
-					const view = yield* getActiveViewOfType(this.app.workspace, HeadingsView);
+					const view = yield* getActiveViewOfType(this.app.workspace, BlockView);
 					action(view);
 					return true;
 				})
@@ -159,9 +159,9 @@ export default class HeadingsPlugin extends Plugin {
 	}
 
 	// 設定變更後重新渲染已開啟的 tree table view
-	async refreshTreeTableViews() {
-		const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_TREETABLE)
-			.flatMap(leaf => leaf.view instanceof TreeTableView ? [leaf.view] : []);
+	async refreshHeadingsViews() {
+		const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_HEADINGS)
+			.flatMap(leaf => leaf.view instanceof HeadingsView ? [leaf.view] : []);
 		await Promise.all(views.map(view => view.refresh()));
 	}
 
@@ -171,14 +171,14 @@ export default class HeadingsPlugin extends Plugin {
 	// 所以如果 active view 沒有找到，可能需要查看一下所有 leaf 中，是否有 active 的 markdown view。
 	// 如果主畫面有分割視窗，分頁 workspace-tab-header 的 class 都會顯示 is-active ，但似乎最後一個失焦的分頁會有 mod-active 的標記
 	// 先抓這個來判斷就好
-	//this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAPMD)
+	//this.app.workspace.getLeavesOfType(VIEW_TYPE_BLOCKVIEW)
 	// const workspace_leaf = this.containerEl.parentElement;
 	// if (workspace_leaf?.classList.contains("mod-active"))
-	turnOnMindMapMdView = pipe(
+	turnOnBlockView = pipe(
 		getActiveViewOfType(this.app.workspace, MarkdownView),
 		Effect.andThen(v => Effect.tryPromise(() => {
 			//state 存入 workspace.json 中的內容
-			const mind_map_view_state: MindMapMdViewState = {
+			const mind_map_view_state: BlockViewState = {
 				filePath: v.file?.path || "",
 				file: v.file,
 				doc: v.editor.getValue(),
@@ -186,7 +186,7 @@ export default class HeadingsPlugin extends Plugin {
 
 			return v.leaf.setViewState(
 				{
-					type: VIEW_TYPE_MINDMAPMD,
+					type: VIEW_TYPE_BLOCKVIEW,
 					active: true,
 					state: mind_map_view_state,
 				});
@@ -194,7 +194,7 @@ export default class HeadingsPlugin extends Plugin {
 	);
 
 
-	turnOnMarkdownView<V extends HeadingsView | TreeTableView>(type: Constructor<V>) {
+	turnOnMarkdownView<V extends BlockView | HeadingsView>(type: Constructor<V>) {
 		return Effect.gen({ self: this }, function* () {
 			const view = yield* getActiveViewOfType(this.app.workspace, type);
 
@@ -209,12 +209,12 @@ export default class HeadingsPlugin extends Plugin {
 		});
 	}
 
-	async toggleMindMapMdView() {
+	async toggleBlockView() {
 		const { workspace } = this.app;
 
 		Effect.runPromise(
-			this.turnOnMindMapMdView.pipe(
-				Effect.catchCause(() => this.turnOnMarkdownView(HeadingsView)),
+			this.turnOnBlockView.pipe(
+				Effect.catchCause(() => this.turnOnMarkdownView(BlockView)),
 				Effect.andThen((_) => getActiveViewOfType(workspace, MarkdownView)),
 			)
 		).catch((e) => { console.error(e) });
@@ -403,7 +403,7 @@ export default class HeadingsPlugin extends Plugin {
 		// 	id: 'edit-block',
 		// 	name: 'Edit Block',
 		// 	hotkeys: [{ modifiers: ["Shift"], key: "F2", }],
-		// 	checkCallback: this.createMindMapViewCheckCallback((view) => {
+		// 	checkCallback: this.createBlockViewCheckCallback((view) => {
 		// 		view.component?.edit_block();
 		// 	})
 		// })

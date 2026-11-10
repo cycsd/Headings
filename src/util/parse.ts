@@ -2,7 +2,7 @@
 import type { Pos, CachedMetadata, HeadingCache, SectionCache } from "obsidian";
 import { unselected, type Block, type BlockView, type LevelSection, type BaseBlock, type ColumnLayout, fork, path, upper_path, lower_path, sibling } from "./block-level";
 import { Match, Option, pipe } from "effect";
-import type { Position } from "../view/MindMapMd";
+import type { Position } from "../view/BlockViewState";
 import { hash } from "effect/Hash";
 
 export const blockquote = 'blockquote';

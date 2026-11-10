@@ -1,29 +1,17 @@
 <script lang="ts">
-	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
 	import { contentRange, type TreeNode } from "../core/tree";
 	import { treeTableLayout } from "../layout/tree-table";
+	import type { LayoutProps } from "./layout-props";
+	import { branchStyle } from "./branch-color";
 
-	interface Props {
-		onRenderMarkdown: (text: string) => Attachment<HTMLElement>;
-		/** 取出文件 [from, to) 的原文 */
-		getText: (from: number, to: number) => string;
-	}
+	let { tree, getText, onRenderMarkdown }: LayoutProps = $props();
 
-	let { onRenderMarkdown, getText }: Props = $props();
-	let root: TreeNode | undefined = $state();
-
-	export function refresh(node: TreeNode) {
-		root = node;
-	}
-
-	let placement = $derived(root ? treeTableLayout(root) : undefined);
-	let rootTitle = $derived(root?.title ?? "");
+	let placement = $derived(treeTableLayout(tree));
 
 	/** heading 只顯示標題行；升級節點沒有標題，一律顯示全部內容 */
 	function titleText(node: TreeNode): string {
 		if (node.kind === "listItem") return node.text ?? "";
-		if (node.title === null) return getText(node.range.from, node.range.to);
 		return getText(node.range.from, node.range.to);
 	}
 
@@ -39,22 +27,20 @@
 	}
 </script>
 
-{#if placement}
-{@const { columns, cells } = placement}
 <PanZoom minZoom={0.1} maxZoom={5} zoomStep={0.05}>
 	{#snippet children()}
-		<div class="tree-table" style="grid-template-columns: repeat({columns}, minmax(0, 1fr));"
+		<div class="tree-table" style="grid-template-columns: repeat({placement.columns}, minmax(0, 1fr));"
 		>
-			<div class="cell header grid-span" style="--col-start: 1; --col-span: {columns}; --row-start: 1; --row-span: 1;">
-				{rootTitle}
+			<div class="cell header grid-span" style="--col-start: 1; --col-span: {placement.columns}; --row-start: 1; --row-span: 1;">
+				{tree.title}
 			</div>
-			{#each cells as cell (cell.node.id)}
+			{#each placement.cells as cell (cell.node.id)}
 			{let fold = $state(true)}
 				<div
 					role="gridcell"
 					tabindex="-1"
-					class="cell grid-span depth-{cell.depth % 6}"
-					style="--col-start: {cell.depth + 1}; --col-span: {cell.colSpan}; --row-start: {cell.row + 2}; --row-span: {cell.rowSpan};"
+					class="cell grid-span"
+					style="--col-start: {cell.depth + 1}; --col-span: {cell.colSpan}; --row-start: {cell.row + 2}; --row-span: {cell.rowSpan}; {branchStyle(cell.branch)}"
 					onpointerdown={() => { if (foldable(cell.node)) fold = !fold; }}
 					{@attach onRenderMarkdown(fold && foldable(cell.node) ? titleText(cell.node) : contentText(cell.node))}
 				></div>
@@ -62,7 +48,6 @@
 		</div>
 	{/snippet}
 </PanZoom>
-{/if}
 
 <style>
 	.tree-table {
@@ -79,12 +64,14 @@
 		align-items: center;
 		word-break: break-word;
 		box-sizing: border-box;
-		border: 1px solid var(--interactive-accent);
+		border: 1px solid var(--branch);
+		background-color: color-mix(in srgb, var(--branch) 22%, transparent);
 	}
 	.cell.header {
 		justify-content: center;
-		background-color: var(--interactive-accent);
-		color: var(--text-on-accent);
+		border-color: var(--background-modifier-border);
+		background-color: var(--background-secondary);
+		color: var(--text-normal);
 		font-weight: 600;
 	}
 </style>
