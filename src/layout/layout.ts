@@ -1,5 +1,9 @@
 import type { TreeNode } from "../core/tree";
 
+/** 可選的佈局；也是 YAML `headings-layout` 的值 */
+export const LAYOUT_IDS = ["mindmap", "tree-table", "outline"] as const;
+export type LayoutId = (typeof LAYOUT_IDS)[number];
+
 /** 所有佈局共用的輸入選項 */
 export type LayoutOptions = {
     /** 子樹被收合的節點 id；收合的節點在佈局中視為葉節點 */

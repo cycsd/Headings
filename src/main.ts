@@ -1,6 +1,7 @@
 import { Editor, MarkdownView, Plugin, View, WorkspaceLeaf, type Constructor, type MarkdownFileInfo } from 'obsidian';
 import "./app.css";
 import { DEFAULT_SETTINGS, HeadingsSettingTab, type HeadingsSettings as HeadingsSettings } from "./settings";
+import { migrateSettings } from "./settings-model";
 import { HeadingsView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
 import { TreeTableView, VIEW_ICON_TREETABLE, VIEW_TYPE_TREETABLE, type TreeTableViewState } from "./view/TreeTableView";
 import { getActiveViewOfType } from "./extension/workspace";
@@ -145,7 +146,12 @@ export default class HeadingsPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<HeadingsSettings>);
+		const { settings, migrated } = migrateSettings(await this.loadData());
+		this.settings = settings;
+		// 舊版欄位 (ex: listAsNode) 遷移後立刻寫回，data.json 只保留目前的結構
+		if (migrated) {
+			await this.saveData(settings);
+		}
 	}
 
 	async saveSettings() {

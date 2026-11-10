@@ -9,8 +9,8 @@ import { getActiveViewOfType } from "../extension/workspace";
 import { EditorView } from "@codemirror/view";
 import { history, redo, undo } from "@codemirror/commands";
 import { buildTree } from "../adapter/obsidian-tree";
-import { promote, promoteNone, promoteTypes, type PromotePolicy } from "../core/tree";
-import { SECTION_TYPES } from "../core/section-types";
+import { promote, promoteTypes, type PromotePolicy } from "../core/tree";
+import { enabledNodeTypes } from "../settings-model";
 
 
 export type TreeTableViewState = {
@@ -163,6 +163,6 @@ export class TreeTableView extends ItemView {
 
     /** 設定 → policy 的轉換只發生在 view 層，core 不認識 settings */
     private promotePolicy(): PromotePolicy {
-        return this.plugin.settings.listAsNode ? promoteTypes([SECTION_TYPES.list]) : promoteNone;
+        return promoteTypes(enabledNodeTypes(this.plugin.settings));
     }
 }
