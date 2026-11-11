@@ -22,11 +22,29 @@ describe("migrateSettings", () => {
             defaultLitTypes: { ...DEFAULT_SETTINGS.defaultLitTypes, code: true, yaml: true },
             defaultLayout: { desktop: "tree-table", mobile: "outline" },
             maxNodeWidth: 400,
+            maxNodeHeight: 0,
+            defaultExpandDepth: 2,
             nodeStyle: { branchBorder: true, branchBackground: false },
         };
         const result = migrateSettings(input);
         expect(result.migrated).toBe(false);
         expect(result.settings).toEqual(input);
+    });
+
+    it("maxNodeHeight 0 為不限制，介於 0 與下限之間拉到下限，非數字退回預設", () => {
+        expect(migrateSettings({ maxNodeHeight: 0 }).settings.maxNodeHeight).toBe(0);
+        expect(migrateSettings({ maxNodeHeight: 0 }).migrated).toBe(false);
+        expect(migrateSettings({ maxNodeHeight: 50 }).settings.maxNodeHeight).toBe(120);
+        expect(migrateSettings({ maxNodeHeight: 50 }).migrated).toBe(true);
+        expect(migrateSettings({ maxNodeHeight: "tall" }).settings.maxNodeHeight).toBe(320);
+        expect(migrateSettings({}).settings.maxNodeHeight).toBe(320);
+    });
+
+    it("defaultExpandDepth 夾在 0–10，預設 0", () => {
+        expect(migrateSettings({}).settings.defaultExpandDepth).toBe(0);
+        expect(migrateSettings({ defaultExpandDepth: 3 }).settings.defaultExpandDepth).toBe(3);
+        expect(migrateSettings({ defaultExpandDepth: 99 }).settings.defaultExpandDepth).toBe(10);
+        expect(migrateSettings({ defaultExpandDepth: -1 }).settings.defaultExpandDepth).toBe(0);
     });
 
     it("nodeStyle 缺少時預設都套用分支顏色，型別錯的欄位退回預設並標記 migrated", () => {

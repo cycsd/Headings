@@ -17,6 +17,16 @@ import type { LayoutId } from "../layout/layout";
 import { layoutLabel, sectionTypeLabel } from "../labels";
 import { defaultLitTypes } from "../settings-model";
 import { t } from "../i18n";
+import {
+    applyCollapseOthers,
+    applyCollapseSubtree,
+    applyDepth,
+    applyExpandSubtree,
+    setFocus,
+    stepExpandDepth,
+    visibleMaxDepth,
+    visibleRoot,
+} from "./tree-state";
 
 
 export type HeadingsViewState = {
@@ -42,6 +52,7 @@ export class HeadingsView extends ItemView {
         layoutId: availableLayoutIds[0] ?? "tree-table",
         tree: null,
         maxNodeWidth: this.plugin.settings.maxNodeWidth,
+        maxNodeHeight: this.plugin.settings.maxNodeHeight,
         defaultLit: new Set(defaultLitTypes(this.plugin.settings)),
         branchBorder: this.plugin.settings.nodeStyle.branchBorder,
         branchBackground: this.plugin.settings.nodeStyle.branchBackground,
@@ -50,6 +61,8 @@ export class HeadingsView extends ItemView {
 
     /** 目前顯示中的檔案內容；YAML 寫入後 metadataCache.changed 會再推一次新的 */
     private loaded: Loaded | null = null;
+    /** 開檔或換檔後第一次建樹時套用設定的預設展開深度 */
+    private applyDefaultDepth = true;
     /** 使用者在這個 view 上剛改過、尚未等到 cache 更新的 override */
     private pendingLayout: LayoutId | null = null;
     private pendingNodeTypes: PromotableSectionType[] | null = null;
@@ -87,6 +100,7 @@ export class HeadingsView extends ItemView {
                 state: this.hostState,
                 actions: {
                     showLinks: (node: TreeNode, evt: MouseEvent) => this.showLinksMenu(node, evt),
+                    showNodeMenu: (node: TreeNode, evt: MouseEvent) => this.showNodeMenu(node, evt),
                     // YAML 區塊畫成屬性面板；不是合法 frontmatter 就退回 markdown 渲染
                     renderFrontmatter: (text: string) => (element: HTMLElement) => {
                         element.replaceChildren();
@@ -108,6 +122,7 @@ export class HeadingsView extends ItemView {
             this.addAction("layout-dashboard", t("menuLayout"), (evt) => this.showLayoutMenu(evt));
         }
         this.addAction("blocks", t("menuNodeTypes"), (evt) => this.showNodeTypesMenu(evt));
+        this.addAction("layers", t("menuExpandDepth"), (evt) => this.showExpandDepthMenu(evt));
         const iconsAction = this.addAction("tags", t("menuShowIcons"), () => {
             this.hostState.showIcons = !this.hostState.showIcons;
             iconsAction.toggleClass("is-active", this.hostState.showIcons);
@@ -136,7 +151,10 @@ export class HeadingsView extends ItemView {
             this.pendingLayout = null;
             this.pendingNodeTypes = null;
             // 節點 id 只在同一個檔案內穩定，換檔案就清掉
-            if (fileChanged) resetNodeState(this.hostState);
+            if (fileChanged) {
+                resetNodeState(this.hostState);
+                this.applyDefaultDepth = true;
+            }
             await this.refresh();
         }
     }
@@ -176,7 +194,73 @@ export class HeadingsView extends ItemView {
         this.hostState.defaultLit = new Set(defaultLitTypes(this.plugin.settings));
         this.hostState.branchBorder = this.plugin.settings.nodeStyle.branchBorder;
         this.hostState.branchBackground = this.plugin.settings.nodeStyle.branchBackground;
+        this.hostState.maxNodeHeight = this.plugin.settings.maxNodeHeight;
         this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()), buildLinks(cached));
+        if (this.applyDefaultDepth) {
+            this.applyDefaultDepth = false;
+            applyDepth(this.hostState, this.plugin.settings.defaultExpandDepth);
+        }
+    }
+
+    /** 指令「展開一層 / 收合一層」 */
+    stepExpandDepth(delta: 1 | -1) {
+        stepExpandDepth(this.hostState, delta);
+    }
+
+    /** header 的「展開層級」選單：1 層 … 最大深度、全部 */
+    private showExpandDepthMenu(evt: MouseEvent) {
+        const max = visibleMaxDepth(this.hostState);
+        const current = this.hostState.expandDepth;
+        const menu = new Menu();
+        for (let depth = 1; depth < max; depth++) {
+            menu.addItem((item) =>
+                item
+                    .setTitle(t("menuExpandDepthLevel").replace("{n}", String(depth)))
+                    .setChecked(current === depth)
+                    .onClick(() => applyDepth(this.hostState, depth)),
+            );
+        }
+        menu.addItem((item) =>
+            item
+                .setTitle(t("menuExpandDepthAll"))
+                .setChecked(current === 0)
+                .onClick(() => applyDepth(this.hostState, 0)),
+        );
+        menu.showAtMouseEvent(evt);
+    }
+
+    /** 節點右鍵 / 「…」選單：收合其他、以此為根、展開 / 收合子樹 */
+    private showNodeMenu(node: TreeNode, evt: MouseEvent) {
+        const state = this.hostState;
+        const isVisibleRoot = visibleRoot(state)?.id === node.id;
+        const menu = new Menu();
+        menu.addItem((item) =>
+            item.setTitle(t("nodeMenuCollapseOthers")).setIcon("fold-vertical").onClick(() => applyCollapseOthers(state, node.id)),
+        );
+        menu.addItem((item) =>
+            item
+                .setTitle(t("nodeMenuFocus"))
+                .setIcon("crosshair")
+                // 葉節點當根沒東西可畫；已經是根就沒必要
+                .setDisabled(node.children.length === 0 || isVisibleRoot)
+                .onClick(() => setFocus(state, node.id)),
+        );
+        menu.addSeparator();
+        menu.addItem((item) =>
+            item
+                .setTitle(t("nodeMenuExpandSubtree"))
+                .setIcon("chevrons-up-down")
+                .setDisabled(node.children.length === 0)
+                .onClick(() => applyExpandSubtree(state, node.id)),
+        );
+        menu.addItem((item) =>
+            item
+                .setTitle(t("nodeMenuCollapseSubtree"))
+                .setIcon("chevrons-down-up")
+                .setDisabled(node.children.length === 0)
+                .onClick(() => applyCollapseSubtree(state, node.id)),
+        );
+        menu.showAtMouseEvent(evt);
     }
 
     /**

@@ -22,6 +22,10 @@ export interface HeadingsSettings {
 	};
 	/** 節點最大寬度 (px)，超過的 code / table 在節點內橫向捲動 */
 	maxNodeWidth: number;
+	/** 節點內容區最大高度 (px)，超過在節點內垂直捲動；0 為不限制 */
+	maxNodeHeight: number;
+	/** 開檔時展開到第幾層（root 為 0 層）；0 為全部展開 */
+	defaultExpandDepth: number;
 	/** 節點的邊框與背景是否套用分支顏色；關閉就用主題預設的邊框與背景 */
 	nodeStyle: Record<NodeStyleKey, boolean>;
 }
@@ -37,10 +41,25 @@ export const DEFAULT_SETTINGS: HeadingsSettings = {
 		mobile: "outline",
 	},
 	maxNodeWidth: 320,
+	maxNodeHeight: 320,
+	defaultExpandDepth: 0,
 	nodeStyle: { branchBorder: true, branchBackground: true },
 };
 
 export const MAX_NODE_WIDTH_RANGE = { min: 160, max: 1200, step: 20 } as const;
+/** 0 代表不限制；滑桿從 0 跳到 120 */
+export const MAX_NODE_HEIGHT_RANGE = { min: 0, max: 1200, step: 20, minLimit: 120 } as const;
+/** 0 代表全部展開 */
+export const EXPAND_DEPTH_RANGE = { min: 0, max: 10, step: 1 } as const;
+
+/** 讀一個整數欄位並夾進範圍；不是數字就用預設值。回傳是否需要改寫 */
+const readClamped = (value: unknown, fallback: number, min: number, max: number): { value: number; migrated: boolean } => {
+	if (typeof value === "number" && Number.isFinite(value)) {
+		const clamped = Math.min(max, Math.max(min, Math.round(value)));
+		return { value: clamped, migrated: clamped !== value };
+	}
+	return { value: fallback, migrated: value !== undefined };
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
@@ -106,14 +125,26 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 		migrated = true;
 	}
 
+	const height = readClamped(data.maxNodeHeight, DEFAULT_SETTINGS.maxNodeHeight, MAX_NODE_HEIGHT_RANGE.min, MAX_NODE_HEIGHT_RANGE.max);
+	// 0 以上、下限以下的值沒有意義，拉到下限
+	const maxNodeHeight = height.value > 0 && height.value < MAX_NODE_HEIGHT_RANGE.minLimit ? MAX_NODE_HEIGHT_RANGE.minLimit : height.value;
+	if (height.migrated || maxNodeHeight !== height.value) migrated = true;
+
+	const depth = readClamped(data.defaultExpandDepth, DEFAULT_SETTINGS.defaultExpandDepth, EXPAND_DEPTH_RANGE.min, EXPAND_DEPTH_RANGE.max);
+	const defaultExpandDepth = depth.value;
+	if (depth.migrated) migrated = true;
+
 	const nodeStyle = readToggles(data.nodeStyle, NODE_STYLE_KEYS, DEFAULT_SETTINGS.nodeStyle);
 
-	const known = new Set(["nodeTypes", "defaultLitTypes", "defaultLayout", "maxNodeWidth", "nodeStyle"]);
+	const known = new Set(["nodeTypes", "defaultLitTypes", "defaultLayout", "maxNodeWidth", "maxNodeHeight", "defaultExpandDepth", "nodeStyle"]);
 	for (const key of Object.keys(data)) {
 		if (!known.has(key)) migrated = true;
 	}
 
-	return { settings: { nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, nodeStyle }, migrated };
+	return {
+		settings: { nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, maxNodeHeight, defaultExpandDepth, nodeStyle },
+		migrated,
+	};
 };
 
 /** 設定中被勾選的 section 型別 */

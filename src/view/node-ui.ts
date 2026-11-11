@@ -14,10 +14,12 @@ export type NodeUi = {
 	showLinks(node: TreeNode, evt: MouseEvent): void;
 	/** 把 YAML 區塊畫成屬性面板；解析不了時退回一般 markdown */
 	renderFrontmatter(text: string): Attachment<HTMLElement>;
+	/** 節點選單（右鍵或「…」按鈕）：收合其他、以此為根、展開 / 收合子樹，由 view 實作 */
+	showNodeMenu(node: TreeNode, evt: MouseEvent): void;
 };
 
 /** view 提供、需要 Obsidian app 的動作 */
-export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter">;
+export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter" | "showNodeMenu">;
 
 export const NODE_UI = Symbol("headings-node-ui");
 
@@ -42,4 +44,5 @@ export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => 
 	},
 	showLinks: actions.showLinks,
 	renderFrontmatter: actions.renderFrontmatter,
+	showNodeMenu: actions.showNodeMenu,
 });

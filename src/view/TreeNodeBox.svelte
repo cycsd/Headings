@@ -66,9 +66,30 @@
 	function stop(evt: Event) {
 		evt.stopPropagation();
 	}
+
+	/** 右鍵與「…」按鈕開同一個節點選單 */
+	function openMenu(evt: MouseEvent) {
+		evt.preventDefault();
+		evt.stopPropagation();
+		ui.showNodeMenu(node, evt);
+	}
+
+	/** heading 有內容型別或連結時才有 icon 列；沒有的話「…」直接放在標題列 */
+	let hasIconRow = $derived(isHeading && (types.length > 0 || hasLinks));
+	/** 內容區最大高度，0 為不限制 */
+	let maxNodeHeight = $derived(ui.state.maxNodeHeight > 0 ? `${ui.state.maxNodeHeight}px` : "none");
 </script>
 
-<div class="node" class:root class:flat class:branch-border={ui.state.branchBorder} class:branch-bg={ui.state.branchBackground} style="--max-node-width: {maxNodeWidth}px; {branchStyle(branch)}">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	class="node"
+	class:root
+	class:flat
+	class:branch-border={ui.state.branchBorder}
+	class:branch-bg={ui.state.branchBackground}
+	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}"
+	oncontextmenu={openMenu}
+>
 	<div class="head">
 		{#if hasChildren}
 			<button
@@ -119,6 +140,9 @@
 							<span class="ico" {@attach icon(allLit ? "fold-vertical" : "unfold-vertical")}></span>
 						</button>
 					{/if}
+					<button type="button" class="ctl" aria-label={t("tooltipNodeMenu")} title={t("tooltipNodeMenu")} onpointerdown={stop} onclick={openMenu}>
+						<span class="ico" {@attach icon("ellipsis")}></span>
+					</button>
 					{#if !ui.state.showIcons}
 						<button type="button" class="ctl" aria-label={t("tooltipToggleContent")} onpointerdown={stop} onclick={() => ui.toggleIcons(node.id)}>
 							<span class="ico" {@attach icon("x")}></span>
@@ -137,6 +161,11 @@
 		{:else if !isHeading && hasLinks}
 			<button type="button" class="ctl" aria-label={t("tooltipLinks")} title={t("tooltipLinks")} onpointerdown={stop} onclick={(evt) => ui.showLinks(node, evt)}>
 				<span class="ico" {@attach icon(LINK_ICON)}></span>
+			</button>
+		{/if}
+		{#if !hasIconRow}
+			<button type="button" class="ctl" aria-label={t("tooltipNodeMenu")} title={t("tooltipNodeMenu")} onpointerdown={stop} onclick={openMenu}>
+				<span class="ico" {@attach icon("ellipsis")}></span>
 			</button>
 		{/if}
 	</div>
@@ -265,11 +294,13 @@
 		width: 16px;
 		height: 16px;
 	}
+	/* 超過最大高度的內容在節點內垂直捲動；PanZoom 不吃無修飾鍵的垂直滾輪，所以不衝突 */
 	.content {
 		margin-top: 4px;
 		padding: 4px 4px 0;
 		border-top: 1px solid color-mix(in srgb, var(--branch) 40%, transparent);
-		overflow-x: auto;
+		max-height: var(--max-node-height);
+		overflow: auto;
 		font-weight: normal;
 	}
 	.section + .section {

@@ -397,6 +397,24 @@ export default class HeadingsPlugin extends Plugin {
 			name: t('commandSelectHeadingContent'),
 			editorCallback: openHeadingSuggester(handler => handler.selectContent)
 		});
+
+		// Headings 視圖的展開層級：只在目前 active 的 leaf 是 Headings 視圖時可用
+		const headingsViewCommand = (delta: 1 | -1) => (checking: boolean) => {
+			const view = this.app.workspace.getActiveViewOfType(HeadingsView);
+			if (!view) return false;
+			if (!checking) view.stepExpandDepth(delta);
+			return true;
+		};
+		this.addCommand({
+			id: 'expand-one-level',
+			name: t('commandExpandLevel'),
+			checkCallback: headingsViewCommand(1),
+		});
+		this.addCommand({
+			id: 'collapse-one-level',
+			name: t('commandCollapseLevel'),
+			checkCallback: headingsViewCommand(-1),
+		});
 		// todo export hotkey
 		// 暫時不提供 heading view 的 hotkey。
 		// this.addCommand({

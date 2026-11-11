@@ -3,10 +3,14 @@ import HeadingsPlugin from "./main";
 import { t } from "./i18n";
 import { CONTENT_SECTION_TYPES, PROMOTABLE_SECTION_TYPES } from "./core/section-types";
 import { LAYOUT_IDS } from "./layout/layout";
-import { DEFAULT_SETTINGS, MAX_NODE_WIDTH_RANGE, NODE_STYLE_KEYS } from "./settings-model";
+import { DEFAULT_SETTINGS, EXPAND_DEPTH_RANGE, MAX_NODE_HEIGHT_RANGE, MAX_NODE_WIDTH_RANGE, NODE_STYLE_KEYS } from "./settings-model";
 import { contentTypeLabel, layoutLabel, nodeStyleLabel, sectionTypeLabel } from "./labels";
 
 export { DEFAULT_SETTINGS, type HeadingsSettings } from "./settings-model";
+
+/** 滑桿 0 為不限制，0 到下限之間的值拉到下限 */
+const normalizeHeight = (value: number): number =>
+	value > 0 && value < MAX_NODE_HEIGHT_RANGE.minLimit ? MAX_NODE_HEIGHT_RANGE.minLimit : value;
 
 const layoutOptions = (): Record<string, string> =>
 	Object.fromEntries(LAYOUT_IDS.map((id) => [id, layoutLabel[id]()]));
@@ -84,6 +88,28 @@ export class HeadingsSettingTab extends PluginSettingTab {
 					.onChange((value) => this.applySetting("maxNodeWidth", value)),
 			);
 
+		new Setting(containerEl)
+			.setName(t("settingMaxNodeHeightName"))
+			.setDesc(t("settingMaxNodeHeightDescription"))
+			.addSlider((slider) =>
+				slider
+					.setLimits(MAX_NODE_HEIGHT_RANGE.min, MAX_NODE_HEIGHT_RANGE.max, MAX_NODE_HEIGHT_RANGE.step)
+					.setValue(this.plugin.settings.maxNodeHeight)
+					.setDynamicTooltip()
+					.onChange((value) => this.applySetting("maxNodeHeight", normalizeHeight(value))),
+			);
+
+		new Setting(containerEl)
+			.setName(t("settingDefaultExpandDepthName"))
+			.setDesc(t("settingDefaultExpandDepthDescription"))
+			.addSlider((slider) =>
+				slider
+					.setLimits(EXPAND_DEPTH_RANGE.min, EXPAND_DEPTH_RANGE.max, EXPAND_DEPTH_RANGE.step)
+					.setValue(this.plugin.settings.defaultExpandDepth)
+					.setDynamicTooltip()
+					.onChange((value) => this.applySetting("defaultExpandDepth", value)),
+			);
+
 		new Setting(containerEl).setName(t("settingNodeStyleHeading")).setHeading();
 		for (const key of NODE_STYLE_KEYS) {
 			new Setting(containerEl)
@@ -139,6 +165,30 @@ export class HeadingsSettingTab extends PluginSettingTab {
 							displayFormat: (value: number) => `${value}px`,
 						},
 					},
+					{
+						name: t("settingMaxNodeHeightName"),
+						desc: t("settingMaxNodeHeightDescription"),
+						control: {
+							type: "slider",
+							key: "maxNodeHeight",
+							min: MAX_NODE_HEIGHT_RANGE.min,
+							max: MAX_NODE_HEIGHT_RANGE.max,
+							step: MAX_NODE_HEIGHT_RANGE.step,
+							defaultValue: DEFAULT_SETTINGS.maxNodeHeight,
+							displayFormat: (value: number) => (value === 0 ? t("settingUnlimited") : `${value}px`),
+						},
+					},
+					{
+						name: t("settingDefaultExpandDepthName"),
+						desc: t("settingDefaultExpandDepthDescription"),
+						control: {
+							type: "slider",
+							key: "defaultExpandDepth",
+							...EXPAND_DEPTH_RANGE,
+							defaultValue: DEFAULT_SETTINGS.defaultExpandDepth,
+							displayFormat: (value: number) => (value === 0 ? t("settingExpandAll") : String(value)),
+						},
+					},
 				],
 			},
 			{
@@ -158,7 +208,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	}
 
 	async setControlValue(key: string, value: unknown) {
-		await this.applySetting(key, value);
+		await this.applySetting(key, key === "maxNodeHeight" && typeof value === "number" ? normalizeHeight(value) : value);
 	}
 
 	private async applySetting(key: string, value: unknown) {

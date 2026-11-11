@@ -17,6 +17,12 @@ export type HostState = {
 	/** 全域設定：節點邊框 / 背景是否套用分支顏色 */
 	branchBorder: boolean;
 	branchBackground: boolean;
+	/** 全域設定：內容區最大高度 (px)，0 為不限制 */
+	maxNodeHeight: number;
+	/** 聚焦中的節點 id；null 為完整樹 */
+	focusId: string | null;
+	/** 最後一次套用的展開層數（0 = 全部），「展開一層 / 收合一層」的基準 */
+	expandDepth: number;
 	/** 子樹被收合的節點 */
 	collapsed: SvelteSet<string>;
 	/** 點開 icon 列的節點 */
@@ -26,11 +32,13 @@ export type HostState = {
 };
 
 export function createHostState(
-	init: Pick<HostState, "layoutId" | "tree" | "maxNodeWidth" | "defaultLit" | "branchBorder" | "branchBackground">,
+	init: Pick<HostState, "layoutId" | "tree" | "maxNodeWidth" | "maxNodeHeight" | "defaultLit" | "branchBorder" | "branchBackground">,
 ): HostState {
 	const state = $state<HostState>({
 		...init,
 		showIcons: false,
+		focusId: null,
+		expandDepth: 0,
 		collapsed: new SvelteSet<string>(),
 		iconsOpen: new SvelteSet<string>(),
 		litTypes: new SvelteMap<string, ReadonlySet<string>>(),
@@ -43,4 +51,6 @@ export function resetNodeState(state: HostState) {
 	state.collapsed.clear();
 	state.iconsOpen.clear();
 	state.litTypes.clear();
+	state.focusId = null;
+	state.expandDepth = 0;
 }
