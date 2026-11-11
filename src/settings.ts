@@ -1,10 +1,10 @@
 import { App, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
 import HeadingsPlugin from "./main";
 import { t } from "./i18n";
-import { PROMOTABLE_SECTION_TYPES } from "./core/section-types";
+import { CONTENT_SECTION_TYPES, PROMOTABLE_SECTION_TYPES } from "./core/section-types";
 import { LAYOUT_IDS } from "./layout/layout";
-import { DEFAULT_SETTINGS, MAX_NODE_WIDTH_RANGE } from "./settings-model";
-import { layoutLabel, sectionTypeLabel } from "./labels";
+import { DEFAULT_SETTINGS, MAX_NODE_WIDTH_RANGE, NODE_STYLE_KEYS } from "./settings-model";
+import { contentTypeLabel, layoutLabel, nodeStyleLabel, sectionTypeLabel } from "./labels";
 
 export { DEFAULT_SETTINGS, type HeadingsSettings } from "./settings-model";
 
@@ -51,6 +51,15 @@ export class HeadingsSettingTab extends PluginSettingTab {
 				);
 		}
 
+		new Setting(containerEl).setName(t("settingDefaultLitHeading")).setDesc(t("settingDefaultLitDescription")).setHeading();
+		for (const type of CONTENT_SECTION_TYPES) {
+			new Setting(containerEl)
+				.setName(contentTypeLabel(type))
+				.addToggle((toggle) =>
+					toggle.setValue(this.plugin.settings.defaultLitTypes[type]).onChange((value) => this.applySetting(`defaultLitTypes.${type}`, value)),
+				);
+		}
+
 		new Setting(containerEl).setName(t("settingLayoutHeading")).setHeading();
 		for (const platform of ["desktop", "mobile"] as const) {
 			new Setting(containerEl)
@@ -74,6 +83,16 @@ export class HeadingsSettingTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange((value) => this.applySetting("maxNodeWidth", value)),
 			);
+
+		new Setting(containerEl).setName(t("settingNodeStyleHeading")).setHeading();
+		for (const key of NODE_STYLE_KEYS) {
+			new Setting(containerEl)
+				.setName(nodeStyleLabel[key]())
+				.setDesc(t("settingNodeStyleDescription"))
+				.addToggle((toggle) =>
+					toggle.setValue(this.plugin.settings.nodeStyle[key]).onChange((value) => this.applySetting(`nodeStyle.${key}`, value)),
+				);
+		}
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
@@ -84,6 +103,15 @@ export class HeadingsSettingTab extends PluginSettingTab {
 				items: PROMOTABLE_SECTION_TYPES.map((type) => ({
 					name: sectionTypeLabel[type](),
 					control: { type: "toggle", key: `nodeTypes.${type}`, defaultValue: DEFAULT_SETTINGS.nodeTypes[type] },
+				})),
+			},
+			{
+				type: "group",
+				heading: t("settingDefaultLitHeading"),
+				items: CONTENT_SECTION_TYPES.map((type) => ({
+					name: contentTypeLabel(type),
+					desc: t("settingDefaultLitDescription"),
+					control: { type: "toggle", key: `defaultLitTypes.${type}`, defaultValue: DEFAULT_SETTINGS.defaultLitTypes[type] },
 				})),
 			},
 			{
@@ -112,6 +140,15 @@ export class HeadingsSettingTab extends PluginSettingTab {
 						},
 					},
 				],
+			},
+			{
+				type: "group",
+				heading: t("settingNodeStyleHeading"),
+				items: NODE_STYLE_KEYS.map((key) => ({
+					name: nodeStyleLabel[key](),
+					desc: t("settingNodeStyleDescription"),
+					control: { type: "toggle", key: `nodeStyle.${key}`, defaultValue: DEFAULT_SETTINGS.nodeStyle[key] },
+				})),
 			},
 		];
 	}

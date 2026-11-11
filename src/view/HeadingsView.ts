@@ -7,6 +7,7 @@ import { createHostState, resetNodeState, type HostState } from "./host-state.sv
 import { LAYOUT_REGISTRY, availableLayoutIds } from "./layout-registry";
 import { FM_LAYOUT_KEY, FM_NODES_KEY, resolveLayoutId, resolveNodeTypes } from "./view-config";
 import { EMBED_ICON, LINK_ICON } from "./section-icons";
+import { parseFrontmatter, renderProperties } from "./frontmatter-properties";
 import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
 import { buildLinks, buildTree } from "../adapter/obsidian-tree";
@@ -14,6 +15,7 @@ import { promote, promoteTypes, type TreeNode } from "../core/tree";
 import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
 import type { LayoutId } from "../layout/layout";
 import { layoutLabel, sectionTypeLabel } from "../labels";
+import { defaultLitTypes } from "../settings-model";
 import { t } from "../i18n";
 
 
@@ -40,6 +42,9 @@ export class HeadingsView extends ItemView {
         layoutId: availableLayoutIds[0] ?? "tree-table",
         tree: null,
         maxNodeWidth: this.plugin.settings.maxNodeWidth,
+        defaultLit: new Set(defaultLitTypes(this.plugin.settings)),
+        branchBorder: this.plugin.settings.nodeStyle.branchBorder,
+        branchBackground: this.plugin.settings.nodeStyle.branchBackground,
     });
     private docService: PluginDocumentService = PluginDocumentService.create(this.plugin);
 
@@ -72,11 +77,24 @@ export class HeadingsView extends ItemView {
     }
 
     async onOpen() {
+        // 佈局元件靠 flex 吃滿內容區的高度，不依賴 height: 100% 的百分比解析
+        this.contentEl.addClass("headings-view-content");
+        this.contentEl.setCssProps({ display: "flex", "flex-direction": "column", overflow: "hidden" });
+
         this.host = mount(LayoutHost, {
             target: this.contentEl,
             props: {
                 state: this.hostState,
-                actions: { showLinks: (node: TreeNode, evt: MouseEvent) => this.showLinksMenu(node, evt) },
+                actions: {
+                    showLinks: (node: TreeNode, evt: MouseEvent) => this.showLinksMenu(node, evt),
+                    // YAML 區塊畫成屬性面板；不是合法 frontmatter 就退回 markdown 渲染
+                    renderFrontmatter: (text: string) => (element: HTMLElement) => {
+                        element.replaceChildren();
+                        const frontmatter = parseFrontmatter(text);
+                        if (frontmatter) renderProperties(this.app, element, frontmatter);
+                        else void MarkdownRenderer.render(this.plugin.app, text, element, this.state.file?.path ?? "", this);
+                    },
+                },
                 getText: (from: number, to: number) => this.loaded?.doc.slice(from, to) ?? "",
                 onRenderMarkdown: (text: string) => (element: HTMLElement) => {
                     element.replaceChildren();
@@ -155,6 +173,9 @@ export class HeadingsView extends ItemView {
         const { file, doc, cached } = this.loaded;
         this.hostState.layoutId = this.currentLayoutId();
         this.hostState.maxNodeWidth = this.plugin.settings.maxNodeWidth;
+        this.hostState.defaultLit = new Set(defaultLitTypes(this.plugin.settings));
+        this.hostState.branchBorder = this.plugin.settings.nodeStyle.branchBorder;
+        this.hostState.branchBackground = this.plugin.settings.nodeStyle.branchBackground;
         this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()), buildLinks(cached));
     }
 

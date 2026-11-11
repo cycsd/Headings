@@ -2,13 +2,13 @@
 	import { getContext } from "svelte";
 	import { setIcon, type IconName } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
-	import { countNodes, sectionTypesOf, type TreeNode } from "../core/tree";
-	import { PROMOTABLE_SECTION_TYPES } from "../core/section-types";
+	import { countNodes, sectionTypesOf, type SectionNode, type TreeNode } from "../core/tree";
+	import { SECTION_TYPES } from "../core/section-types";
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
 	import { NODE_UI, type NodeUi } from "./node-ui";
-	import { LINK_ICON, sectionIcon } from "./section-icons";
-	import { sectionTypeLabel } from "../labels";
+	import { CONTENT_SECTION_TYPES, LINK_ICON, sectionIcon } from "./section-icons";
+	import { contentTypeLabel } from "../labels";
 	import { t } from "../i18n";
 
 	/**
@@ -30,13 +30,12 @@
 	let { node, branch, root = false, flat = false, getText, onRenderMarkdown, maxNodeWidth }: Props = $props();
 
 	const ui = getContext<NodeUi>(NODE_UI);
-	const EMPTY: ReadonlySet<string> = new Set();
-	const promotable: readonly string[] = PROMOTABLE_SECTION_TYPES;
 
 	let isHeading = $derived(node.title !== null);
-	/** 內容區裡可以顯示的型別（thematicBreak、comment 等永遠不顯示） */
-	let types = $derived(sectionTypesOf(node).filter((type) => promotable.includes(type)));
-	let lit = $derived(ui.state.litTypes.get(node.id) ?? EMPTY);
+	/** 內容區裡可以顯示的型別（thematicBreak、comment 等永遠不顯示；yaml 只會出現在 root） */
+	let types = $derived(sectionTypesOf(node).filter((type) => (CONTENT_SECTION_TYPES as readonly string[]).includes(type)));
+	/** 使用者點過就用節點自己的狀態，否則用全域設定的預設 */
+	let lit = $derived(ui.state.litTypes.get(node.id) ?? ui.state.defaultLit);
 	let litSections = $derived(node.sections.filter((s) => lit.has(s.type)));
 	let allLit = $derived(types.length > 0 && types.every((type) => lit.has(type)));
 	let iconsOpen = $derived(ui.state.showIcons || ui.state.iconsOpen.has(node.id));
@@ -45,12 +44,17 @@
 	let hasLinks = $derived(node.links.length > 0);
 	let hasChildren = $derived(node.children.length > 0);
 
-	/** heading 顯示標題文字（不含 # 符號）；升級節點顯示全部內容 */
+	/** 標題列直接顯示原文（heading 含 # 符號、list item 含 - 符號），不另外整理；只有 root 沒有範圍，顯示檔名 */
 	let headText = $derived.by(() => {
 		if (node.kind === "listItem") return node.text ?? "";
-		if (node.title !== null) return node.title;
-		return getText(node.range.from, node.range.to);
+		const raw = getText(node.range.from, node.range.to);
+		return raw !== "" ? raw : (node.title ?? "");
 	});
+
+	/** 內容區也顯示原文，不改寫 */
+	function sectionText(section: SectionNode): string {
+		return getText(section.range.from, section.range.to);
+	}
 
 	function icon(name: IconName): Attachment<HTMLElement> {
 		return (el) => {
@@ -64,7 +68,7 @@
 	}
 </script>
 
-<div class="node" class:root class:flat style="--max-node-width: {maxNodeWidth}px; {branchStyle(branch)}">
+<div class="node" class:root class:flat class:branch-border={ui.state.branchBorder} class:branch-bg={ui.state.branchBackground} style="--max-node-width: {maxNodeWidth}px; {branchStyle(branch)}">
 	<div class="head">
 		{#if hasChildren}
 			<button
@@ -90,8 +94,8 @@
 							type="button"
 							class="ctl"
 							class:lit={lit.has(type)}
-							aria-label={sectionTypeLabel[type as keyof typeof sectionTypeLabel]()}
-							title={sectionTypeLabel[type as keyof typeof sectionTypeLabel]()}
+							aria-label={contentTypeLabel(type)}
+							title={contentTypeLabel(type)}
 							onpointerdown={stop}
 							onclick={() => ui.toggleLit(node.id, type)}
 						>
@@ -140,22 +144,33 @@
 	{#if isHeading && litSections.length > 0}
 		<div class="content">
 			{#each litSections as section (section.id)}
-				<div class="section" {@attach onRenderMarkdown(getText(section.range.from, section.range.to))}></div>
+				{#if section.type === SECTION_TYPES.yaml}
+					<div class="section" {@attach ui.renderFrontmatter(sectionText(section))}></div>
+				{:else}
+					<div class="section" {@attach onRenderMarkdown(sectionText(section))}></div>
+				{/if}
 			{/each}
 		</div>
 	{/if}
 </div>
 
 <style>
+	/* 預設用主題的邊框與背景；分支顏色由設定決定要不要套上，root 永遠中性 */
 	.node {
 		box-sizing: border-box;
 		width: max-content;
 		max-width: var(--max-node-width);
 		padding: 4px 6px 4px 8px;
-		border: 1px solid var(--branch);
+		border: 1px solid var(--background-modifier-border);
 		border-radius: 8px;
-		background: color-mix(in srgb, var(--branch) 22%, transparent);
+		background: var(--background-primary);
 		color: var(--text-normal);
+	}
+	.node.branch-border {
+		border-color: var(--branch);
+	}
+	.node.branch-bg {
+		background: color-mix(in srgb, var(--branch) 22%, transparent);
 	}
 	.node.root {
 		border-color: var(--background-modifier-border);
@@ -188,6 +203,12 @@
 	.title :global(p),
 	.section :global(p) {
 		margin: 0;
+	}
+	/* 標題列保留 heading 原本的字級，但不要有段落間距 */
+	.title :global(:is(h1, h2, h3, h4, h5, h6)),
+	.section :global(:is(h1, h2, h3, h4, h5, h6)) {
+		margin: 0;
+		line-height: 1.3;
 	}
 	.title :global(pre),
 	.title :global(table),

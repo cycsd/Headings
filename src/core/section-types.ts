@@ -36,3 +36,8 @@ export const PROMOTABLE_SECTION_TYPES = [
 ] as const;
 
 export type PromotableSectionType = (typeof PROMOTABLE_SECTION_TYPES)[number];
+
+/** 可以在節點內容區顯示的型別：可升級的 9 種加上 root 的 frontmatter */
+export const CONTENT_SECTION_TYPES = [...PROMOTABLE_SECTION_TYPES, SECTION_TYPES.yaml] as const;
+
+export type ContentSectionType = (typeof CONTENT_SECTION_TYPES)[number];

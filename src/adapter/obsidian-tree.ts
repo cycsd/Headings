@@ -129,11 +129,19 @@ const buildListItems = (items: ListItemCache[], doc: string): ListItemNode[] => 
     return roots;
 };
 
-const dedent = (text: string): string =>
-    text
+/**
+ * 只去掉 item 第一行的縮排量（巢狀 item 的 position 從行首算起），其餘行扣掉同樣寬度，
+ * 保留原文的相對縮排；不處理的話 4 格以上的縮排會被 MarkdownRenderer 當成程式碼區塊。
+ */
+const dedent = (text: string): string => {
+    const indent = /^[ \t]*/.exec(text)?.[0].length ?? 0;
+    if (indent === 0) return text;
+    const leading = new RegExp(`^[ \\t]{0,${indent}}`);
+    return text
         .split("\n")
-        .map((line) => line.trimStart())
+        .map((line) => line.replace(leading, ""))
         .join("\n");
+};
 
 /**
  * 穩定 id：

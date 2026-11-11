@@ -12,6 +12,11 @@ export type HostState = {
 	maxNodeWidth: number;
 	/** view 層級：永遠顯示 icon 列，跳過徽章 */
 	showIcons: boolean;
+	/** 全域設定：節點還沒被手動切換前預設點亮的型別 */
+	defaultLit: ReadonlySet<string>;
+	/** 全域設定：節點邊框 / 背景是否套用分支顏色 */
+	branchBorder: boolean;
+	branchBackground: boolean;
 	/** 子樹被收合的節點 */
 	collapsed: SvelteSet<string>;
 	/** 點開 icon 列的節點 */
@@ -20,7 +25,9 @@ export type HostState = {
 	litTypes: SvelteMap<string, ReadonlySet<string>>;
 };
 
-export function createHostState(init: Pick<HostState, "layoutId" | "tree" | "maxNodeWidth">): HostState {
+export function createHostState(
+	init: Pick<HostState, "layoutId" | "tree" | "maxNodeWidth" | "defaultLit" | "branchBorder" | "branchBackground">,
+): HostState {
 	const state = $state<HostState>({
 		...init,
 		showIcons: false,

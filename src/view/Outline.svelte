@@ -26,7 +26,10 @@
 </div>
 
 <style>
+	/* 父層是 flex column，大綱自己捲動 */
 	.outline {
+		flex: 1 1 auto;
+		min-height: 0;
 		padding: 8px 12px;
 		overflow: auto;
 	}

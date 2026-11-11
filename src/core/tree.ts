@@ -114,17 +114,20 @@ const sectionToTreeNode = (section: SectionNode): TreeNode => ({
  * 將完整樹依 policy 轉成 layout 用的 TreeNode。
  * 升級的 sections 排在子 heading 之前（因為 sections 在原文中位於子 heading 之前），
  * 其餘 sections 留在 node.sections 當作內容。
- * links 依位置分配：落在節點內容範圍內、但不在任何直接子節點範圍內的連結屬於該節點。
+ * list 升級時沒有「清單」這個中間節點：list item 直接成為 heading 的子節點（子 item 再往下掛）。
+ * links 依位置分配：落在節點內容範圍內、但不在任何後代範圍內的連結屬於該節點。
  */
 export const promote = (root: HeadingNode, policy: PromotePolicy, links: readonly LinkRef[] = []): TreeNode => {
     const convert = (node: HeadingNode): TreeNode => {
         const promoted: TreeNode[] = [];
         const kept: SectionNode[] = [];
         for (const section of node.sections) {
-            if (policy(section)) {
-                promoted.push(sectionToTreeNode(section));
-            } else {
+            if (!policy(section)) {
                 kept.push(section);
+            } else if (section.children.length > 0) {
+                promoted.push(...section.children.map(listItemToTreeNode));
+            } else {
+                promoted.push(sectionToTreeNode(section));
             }
         }
         return {

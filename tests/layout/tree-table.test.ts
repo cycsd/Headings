@@ -29,16 +29,16 @@ describe("treeTableLayout", () => {
         ).toEqual(baseline.cells);
     });
 
-    it("升級 list 後，list 節點與 list item 排在子 heading 前並佔用新的欄位", () => {
+    it("升級 list 後，list item 直接排在 heading 底下的下一欄，沒有「清單」中間節點", () => {
         const tree = promote(buildTree(metadata, doc, fileName), promoteTypes(["list"]));
         const { cells } = treeTableLayout(tree);
 
         const listHeading = cells.find((c) => c.node.title === "4. 清單")!;
         const under = cells.filter((c) => c.node.id.startsWith(listHeading.node.id + ":"));
         expect(under.length).toBeGreaterThan(0);
-        expect(under.every((c) => c.depth > listHeading.depth)).toBe(true);
-        expect(under[0]!.node.kind).toBe("section");
-        expect(under[0]!.node.sectionType).toBe("list");
+        expect(under.every((c) => c.node.kind === "listItem")).toBe(true);
+        expect(under[0]!.depth).toBe(listHeading.depth + 1);
+        expect(under[0]!.node.text).toBe("- 項目 A");
     });
 
     it("收合的節點視為葉節點，colSpan 補滿右側，子孫不出現", () => {

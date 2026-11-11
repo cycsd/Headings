@@ -4,8 +4,13 @@
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
+	import { getContext } from "svelte";
+	import { NODE_UI, type NodeUi } from "./node-ui";
 
 	let { tree, getText, onRenderMarkdown, maxNodeWidth, collapsed }: LayoutProps = $props();
+
+	/* cell 的邊框與背景跟 TreeNodeBox 一樣依設定決定要不要套分支顏色 */
+	const ui = getContext<NodeUi>(NODE_UI);
 
 	let placement = $derived(treeTableLayout(tree, { collapsed }));
 </script>
@@ -19,6 +24,8 @@
 			{#each placement.cells as cell (cell.node.id)}
 				<div
 					class="cell grid-span"
+					class:branch-border={ui.state.branchBorder}
+					class:branch-bg={ui.state.branchBackground}
 					style="--col-start: {cell.depth + 1}; --col-span: {cell.colSpan}; --row-start: {cell.row + 2}; --row-span: {cell.rowSpan}; {branchStyle(cell.branch)}"
 				>
 					<TreeNodeBox node={cell.node} branch={cell.branch} flat {getText} {onRenderMarkdown} {maxNodeWidth} />
@@ -42,7 +49,13 @@
 		padding: 4px 6px;
 		word-break: break-word;
 		box-sizing: border-box;
-		border: 1px solid var(--branch);
+		border: 1px solid var(--background-modifier-border);
+		background-color: var(--background-primary);
+	}
+	.cell.branch-border {
+		border-color: var(--branch);
+	}
+	.cell.branch-bg {
 		background-color: color-mix(in srgb, var(--branch) 22%, transparent);
 	}
 	.cell.header {

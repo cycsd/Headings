@@ -1,3 +1,4 @@
+import type { Attachment } from "svelte/attachments";
 import type { TreeNode } from "../core/tree";
 import type { HostState } from "./host-state.svelte";
 
@@ -11,10 +12,12 @@ export type NodeUi = {
 	setLit(id: string, types: readonly string[]): void;
 	/** 顯示節點內連結的選單，由 view 實作（需要 app） */
 	showLinks(node: TreeNode, evt: MouseEvent): void;
+	/** 把 YAML 區塊畫成屬性面板；解析不了時退回一般 markdown */
+	renderFrontmatter(text: string): Attachment<HTMLElement>;
 };
 
 /** view 提供、需要 Obsidian app 的動作 */
-export type NodeActions = Pick<NodeUi, "showLinks">;
+export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter">;
 
 export const NODE_UI = Symbol("headings-node-ui");
 
@@ -38,4 +41,5 @@ export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => 
 		state.litTypes.set(id, new Set(types));
 	},
 	showLinks: actions.showLinks,
+	renderFrontmatter: actions.renderFrontmatter,
 });

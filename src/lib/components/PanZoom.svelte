@@ -158,6 +158,20 @@
 		}
 	}
 
+	/** 讓內容座標 (x, y) 落在視口正中央 */
+	export function centerOn(x: number, y: number) {
+		if (!viewport) return;
+		const bounds = viewport.getBoundingClientRect();
+		panX = bounds.width / 2 - x * zoom;
+		panY = bounds.height / 2 - y * zoom;
+	}
+
+	/** 內容座標整體移動了 (dx, dy) 時呼叫，反向調整平移量，讓畫面上的東西不動 */
+	export function shiftContent(dx: number, dy: number) {
+		panX -= dx * zoom;
+		panY -= dy * zoom;
+	}
+
 	function renderIcon(iconName: string): Attachment<HTMLElement> {
 		return (element) => {
 			element.replaceChildren();
@@ -200,13 +214,21 @@
 </div>
 
 <style>
+	/*
+	 * 填滿 view 的內容區，視口吃掉工具列以外的高度；否則視口高度只會等於未縮放的內容高度，平移後就被裁掉。
+	 * 父層（view 的 contentEl）是 flex column，所以用 flex: 1 撐滿，不靠 height: 100%。
+	 */
 	.pan-zoom-container {
 		position: relative;
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		min-height: 0;
 		width: 100%;
+		height: 100%;
 	}
 	.pan-zoom-toolbar {
-		position: sticky;
-		top: 0;
+		flex: none;
 		z-index: 1;
 		display: flex;
 		justify-content: flex-end;
@@ -248,8 +270,8 @@
 	}
 	.pan-zoom-viewport {
 		position: relative;
-		height: 100%;
-		min-height: 320px;
+		flex: 1 1 auto;
+		min-height: 0;
 		overflow: hidden;
 		max-width: 100%;
 		cursor: grab;

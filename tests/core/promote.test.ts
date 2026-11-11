@@ -76,23 +76,25 @@ describe("promote", () => {
         expect(a.children.map((c) => c.id)).toEqual(["root/A/A1"]);
     });
 
-    it("升級的 sections 排在子 heading 之前，並從 sections 移除", () => {
+    it("升級的 sections 排在子 heading 之前，並從 sections 移除；list 直接展開成 item", () => {
         const tree = promote(fixture(), promoteTypes(["list", "code"]));
         const a = tree.children[0]!;
         expect(a.sections.map((s) => s.type)).toEqual(["paragraph"]);
-        expect(a.children.map((c) => c.id)).toEqual(["root/A:list:0", "root/A:code:0", "root/A/A1"]);
-        expect(a.children[0]!.kind).toBe("section");
-        expect(a.children[0]!.sectionType).toBe("list");
-        expect(a.children[0]!.title).toBeNull();
+        expect(a.children.map((c) => c.id)).toEqual(["root/A:list:0:0", "root/A:code:0", "root/A/A1"]);
+        expect(a.children[0]!.kind).toBe("listItem");
+        expect(a.children[1]!.kind).toBe("section");
+        expect(a.children[1]!.sectionType).toBe("code");
+        expect(a.children[1]!.title).toBeNull();
     });
 
-    it("list 升級後保留巢狀 list item 為子節點", () => {
+    it("list 升級後沒有「清單」中間節點，item 直接掛在 heading 底下並保留巢狀子 item", () => {
         const tree = promote(fixture(), promoteTypes(["list"]));
-        const list = tree.children[0]!.children[0]!;
-        const item = list.children[0]!;
+        const item = tree.children[0]!.children[0]!;
         expect(item.kind).toBe("listItem");
         expect(item.text).toBe("- item");
+        expect(item.title).toBeNull();
         expect(item.children.map((c) => c.id)).toEqual(["root/A:list:0:0:0"]);
+        expect(tree.children[0]!.children.some((c) => c.sectionType === "list")).toBe(false);
     });
 
     it("policy 不影響 id，所以切換設定時節點狀態可以沿用", () => {
@@ -140,14 +142,13 @@ describe("promote 的連結分配", () => {
         expect(tree.links).toEqual([]);
     });
 
-    it("升級的 section 帶走自己範圍內的連結，list 的連結屬於 item 而不是 list 節點", () => {
+    it("升級的 section 帶走自己範圍內的連結，list item 的連結屬於各自的 item", () => {
         const tree = promote(fixture(), promoteTypes(["list", "code"]), links);
         const a = tree.children[0]!;
         expect(a.links.map((l) => l.target)).toEqual(["p"]);
-        const [list, code] = a.children;
-        expect(list!.links).toEqual([]);
-        expect(list!.children[0]!.links.map((l) => l.target)).toEqual(["item"]);
-        expect(list!.children[0]!.children[0]!.links.map((l) => l.target)).toEqual(["sub"]);
+        const [item, code] = a.children;
+        expect(item!.links.map((l) => l.target)).toEqual(["item"]);
+        expect(item!.children[0]!.links.map((l) => l.target)).toEqual(["sub"]);
         expect(code!.links.map((l) => l.target)).toEqual(["code"]);
     });
 
