@@ -1,5 +1,5 @@
-import type { CachedMetadata, HeadingCache, ListItemCache, Pos, SectionCache } from "obsidian";
-import type { HeadingNode, ListItemNode, Range, SectionNode } from "../core/tree";
+import type { CachedMetadata, HeadingCache, ListItemCache, Pos, ReferenceCache, SectionCache } from "obsidian";
+import type { HeadingNode, LinkRef, ListItemNode, Range, SectionNode } from "../core/tree";
 import { SECTION_TYPES } from "../core/section-types";
 
 /**
@@ -62,6 +62,25 @@ export const buildTree = (cache: CachedMetadata, doc: string, fileName: string):
 export const ROOT_ID = "root";
 
 const toRange = (pos: Pos): Range => ({ from: pos.start.offset, to: pos.end.offset });
+
+/** 有 scheme 的（http://、obsidian://、mailto:）不是 vault 內的檔案，開不了心智圖 */
+const hasScheme = (target: string) => /^[a-z][a-z0-9+.-]*:/i.test(target);
+
+const toLinkRef = (ref: ReferenceCache, embed: boolean): LinkRef => ({
+    target: ref.link,
+    display: ref.displayText || ref.link,
+    range: toRange(ref.position),
+    embed,
+});
+
+/** 文件內所有內部連結與 embed，依位置排序；交給 promote 分配到節點 */
+export const buildLinks = (cache: CachedMetadata): LinkRef[] =>
+    [
+        ...(cache.links ?? []).map((ref) => toLinkRef(ref, false)),
+        ...(cache.embeds ?? []).map((ref) => toLinkRef(ref, true)),
+    ]
+        .filter((link) => !hasScheme(link.target))
+        .sort((a, b) => a.range.from - b.range.from);
 
 const headingToNode = (h: HeadingCache): HeadingNode => ({
     kind: "heading",

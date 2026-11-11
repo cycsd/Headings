@@ -7,11 +7,11 @@
 	import { branchStyle } from "./branch-color";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
 
-	let { tree, getText, onRenderMarkdown, maxNodeWidth }: LayoutProps = $props();
+	let { tree, getText, onRenderMarkdown, maxNodeWidth, collapsed }: LayoutProps = $props();
 
 	/** 量測到的節點尺寸；第一次渲染用預設尺寸，ResizeObserver 回報後重排 */
 	const sizes = new SvelteMap<string, Size>();
-	let placement = $derived(mindmapLayout(tree, { sizes }));
+	let placement = $derived(mindmapLayout(tree, { sizes, collapsed }));
 
 	function measure(id: string): Attachment<HTMLElement> {
 		return (el) => {

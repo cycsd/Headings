@@ -10,4 +10,6 @@ export type LayoutProps = {
 	onRenderMarkdown: (text: string) => Attachment<HTMLElement>;
 	/** 節點最大寬度 (px) */
 	maxNodeWidth: number;
+	/** 子樹被收合的節點 id，交給 layout 當作葉節點 */
+	collapsed: ReadonlySet<string>;
 };

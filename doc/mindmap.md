@@ -69,6 +69,15 @@ heading 節點標題用 markdown inline 渲染；升級節點渲染完整內容�
 - PanZoom 補雙指縮放與雙指平移。
 - MindMapMdView 只改名為 BlockView（view type `block-view`），維持未註冊狀態。
 
+## 進度 (2026-11-11)
+設計共識的 8 個步驟都已實作：分層重構、設定遷移、統一 view 與 YAML、三種佈局、節點互動、升級節點、PanZoom 雙指、BlockView 改名。
+以 vitest 與 svelte-check 驗證，尚未在 Obsidian 內手動測試，第一次實際開啟時要看的點：
+- mindmap 兩段式量測是否會抖動（ResizeObserver 回報後重排）。
+- `color-mix` 與 `--color-*` 在目前使用的 Obsidian 版本是否有效。
+- header 的佈局 / 節點型別選單寫入 YAML 後，cache 更新是否正確重算且不丟節點狀態。
+- 手機上雙指縮放與按鈕點擊範圍。
+已知未處理：tests/util/parse.test.ts 的 import 路徑在重構前就已失效；eslint 缺 `@eslint/json` 模組跑不起來。
+
 ## 延後項目
 - 文件內段落連結畫虛線：只畫目標解析為同一檔案且有 `#` 片段的連結，起點是含連結的節點，終點是包含目標位置的節點。
   label 取含連結那一句的開頭 10 字，點擊展開全文。SVG overlay 放 PanZoom 內容層內，ResizeObserver 重算。

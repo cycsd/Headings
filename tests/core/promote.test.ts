@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { contentRange, promote, promoteNone, promoteTypes, type HeadingNode, type SectionNode } from "../../src/core/tree";
+import {
+    contentRange,
+    promote,
+    promoteNone,
+    promoteTypes,
+    sectionTypesOf,
+    type HeadingNode,
+    type LinkRef,
+    type SectionNode,
+} from "../../src/core/tree";
 
 const section = (id: string, type: string, from: number, to: number, children: SectionNode["children"] = []): SectionNode => ({
     kind: "section",
@@ -115,5 +124,47 @@ describe("contentRange", () => {
     it("升級節點的內容區間就是自身", () => {
         const tree = promote(fixture(), promoteTypes(["code"]));
         expect(contentRange(tree.children[0]!.children[0]!)).toEqual({ from: 32, to: 40 });
+    });
+});
+
+describe("promote 的連結分配", () => {
+    const link = (target: string, from: number, to: number, embed = false): LinkRef => ({ target, display: target, range: { from, to }, embed });
+    // 連結位置：A 的段落 (6-9)、A 的 list item (13-18)、A 的子 item (23-28)、A 的 code (33-38)、A1 的段落 (50-55)
+    const links = [link("p", 6, 9), link("item", 13, 18), link("sub", 23, 28), link("code", 33, 38), link("a1", 50, 55)];
+
+    it("不升級時連結都屬於內容所在的 heading，子 heading 的連結不算進父節點", () => {
+        const tree = promote(fixture(), promoteNone, links);
+        const a = tree.children[0]!;
+        expect(a.links.map((l) => l.target)).toEqual(["p", "item", "sub", "code"]);
+        expect(a.children[0]!.links.map((l) => l.target)).toEqual(["a1"]);
+        expect(tree.links).toEqual([]);
+    });
+
+    it("升級的 section 帶走自己範圍內的連結，list 的連結屬於 item 而不是 list 節點", () => {
+        const tree = promote(fixture(), promoteTypes(["list", "code"]), links);
+        const a = tree.children[0]!;
+        expect(a.links.map((l) => l.target)).toEqual(["p"]);
+        const [list, code] = a.children;
+        expect(list!.links).toEqual([]);
+        expect(list!.children[0]!.links.map((l) => l.target)).toEqual(["item"]);
+        expect(list!.children[0]!.children[0]!.links.map((l) => l.target)).toEqual(["sub"]);
+        expect(code!.links.map((l) => l.target)).toEqual(["code"]);
+    });
+
+    it("沒有傳 links 時每個節點的 links 是空陣列", () => {
+        const tree = promote(fixture(), promoteTypes(["list"]));
+        expect(tree.children[0]!.links).toEqual([]);
+        expect(tree.children[0]!.children[0]!.children[0]!.links).toEqual([]);
+    });
+});
+
+describe("sectionTypesOf", () => {
+    it("依原文順序去重", () => {
+        const tree = promote(fixture(), promoteNone);
+        expect(sectionTypesOf(tree.children[0]!)).toEqual(["paragraph", "list", "code"]);
+    });
+    it("升級後的型別不再出現", () => {
+        const tree = promote(fixture(), promoteTypes(["list"]));
+        expect(sectionTypesOf(tree.children[0]!)).toEqual(["paragraph", "code"]);
     });
 });

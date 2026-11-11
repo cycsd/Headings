@@ -4,9 +4,9 @@
 	import { branchStyle } from "./branch-color";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
 
-	let { tree, getText, onRenderMarkdown, maxNodeWidth }: LayoutProps = $props();
+	let { tree, getText, onRenderMarkdown, maxNodeWidth, collapsed }: LayoutProps = $props();
 
-	let placement = $derived(outlineLayout(tree));
+	let placement = $derived(outlineLayout(tree, { collapsed }));
 </script>
 
 <div class="outline" style="--indent: {OUTLINE_INDENT}px; --stem: {OUTLINE_STEM}px; --bend: {OUTLINE_BEND}px;">

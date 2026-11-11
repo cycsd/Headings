@@ -3,13 +3,14 @@ import { mount, unmount } from "svelte";
 import { Effect } from "effect";
 import type HeadingsPlugin from "../main";
 import LayoutHost from "./LayoutHost.svelte";
-import { createHostState, type HostState } from "./host-state.svelte";
+import { createHostState, resetNodeState, type HostState } from "./host-state.svelte";
 import { LAYOUT_REGISTRY, availableLayoutIds } from "./layout-registry";
 import { FM_LAYOUT_KEY, FM_NODES_KEY, resolveLayoutId, resolveNodeTypes } from "./view-config";
+import { EMBED_ICON, LINK_ICON } from "./section-icons";
 import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
-import { buildTree } from "../adapter/obsidian-tree";
-import { promote, promoteTypes } from "../core/tree";
+import { buildLinks, buildTree } from "../adapter/obsidian-tree";
+import { promote, promoteTypes, type TreeNode } from "../core/tree";
 import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
 import type { LayoutId } from "../layout/layout";
 import { layoutLabel, sectionTypeLabel } from "../labels";
@@ -75,6 +76,7 @@ export class HeadingsView extends ItemView {
             target: this.contentEl,
             props: {
                 state: this.hostState,
+                actions: { showLinks: (node: TreeNode, evt: MouseEvent) => this.showLinksMenu(node, evt) },
                 getText: (from: number, to: number) => this.loaded?.doc.slice(from, to) ?? "",
                 onRenderMarkdown: (text: string) => (element: HTMLElement) => {
                     element.replaceChildren();
@@ -88,6 +90,10 @@ export class HeadingsView extends ItemView {
             this.addAction("layout-dashboard", t("menuLayout"), (evt) => this.showLayoutMenu(evt));
         }
         this.addAction("blocks", t("menuNodeTypes"), (evt) => this.showNodeTypesMenu(evt));
+        const iconsAction = this.addAction("tags", t("menuShowIcons"), () => {
+            this.hostState.showIcons = !this.hostState.showIcons;
+            iconsAction.toggleClass("is-active", this.hostState.showIcons);
+        });
 
         // 檔案變動時（metadataCache.changed → docService.send）重建目前檔案的樹
         this.docService.subscribe((file, doc, cached) => {
@@ -107,9 +113,12 @@ export class HeadingsView extends ItemView {
 
     async setState(state: HeadingsViewState, result: ViewStateResult) {
         if (state) {
+            const fileChanged = state.file?.path !== this.state.file?.path;
             this.state = state;
             this.pendingLayout = null;
             this.pendingNodeTypes = null;
+            // 節點 id 只在同一個檔案內穩定，換檔案就清掉
+            if (fileChanged) resetNodeState(this.hostState);
             await this.refresh();
         }
     }
@@ -146,7 +155,40 @@ export class HeadingsView extends ItemView {
         const { file, doc, cached } = this.loaded;
         this.hostState.layoutId = this.currentLayoutId();
         this.hostState.maxNodeWidth = this.plugin.settings.maxNodeWidth;
-        this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()));
+        this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()), buildLinks(cached));
+    }
+
+    /**
+     * 節點內連結的選單：同檔案的 #片段 連結開不了別的心智圖所以略過，
+     * 解析不到檔案的顯示但不可點，點了在新的分割 leaf 開該檔的 Headings 視圖。
+     */
+    private showLinksMenu(node: TreeNode, evt: MouseEvent) {
+        const sourcePath = this.state.file?.path ?? "";
+        const menu = new Menu();
+        let count = 0;
+        for (const link of node.links) {
+            const linkpath = link.target.split("#")[0] ?? "";
+            if (linkpath === "") continue;
+            const target = this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+            count += 1;
+            menu.addItem((item) => {
+                item.setTitle(link.display).setIcon(link.embed ? EMBED_ICON : LINK_ICON);
+                if (target) {
+                    item.onClick(() => void this.openInSplit(target));
+                } else {
+                    item.setDisabled(true);
+                }
+            });
+        }
+        if (count === 0) return;
+        menu.showAtMouseEvent(evt);
+    }
+
+    private async openInSplit(file: TFile) {
+        const leaf = this.app.workspace.getLeaf("split");
+        const state: HeadingsViewState = { filePath: file.path, file, doc: null };
+        await leaf.setViewState({ type: VIEW_TYPE_HEADINGS, active: true, state });
+        await this.app.workspace.revealLeaf(leaf);
     }
 
     private currentLayoutId(): LayoutId {

@@ -27,9 +27,54 @@
 	let panStartX = 0;
 	let panStartY = 0;
 
+	/** 目前按下的指標（滑鼠 / 手指），用來分辨單指平移與雙指縮放 */
+	const pointers = new Map<number, { x: number; y: number }>();
+	/** 雙指手勢開始時的基準 */
+	let pinch: { distance: number; zoom: number; contentX: number; contentY: number } | null = null;
+
 	function setZoom(value: number): number {
-		zoom = Math.min(maxZoom, Math.max(minZoom, Math.round(value * 100) / 100));
+		zoom = Math.min(maxZoom, Math.max(minZoom, Math.round(value * 1000) / 1000));
 		return zoom;
+	}
+
+	function localPoint(clientX: number, clientY: number) {
+		const bounds = viewport.getBoundingClientRect();
+		return { x: clientX - bounds.left, y: clientY - bounds.top };
+	}
+
+	function pinchGeometry() {
+		const [a, b] = [...pointers.values()];
+		if (!a || !b) return null;
+		const mid = localPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+		return { distance: Math.hypot(a.x - b.x, a.y - b.y), midX: mid.x, midY: mid.y };
+	}
+
+	function beginPinch() {
+		const geometry = pinchGeometry();
+		if (!geometry) return;
+		pinch = {
+			distance: Math.max(geometry.distance, 1),
+			zoom,
+			// 兩指中點底下的內容座標，縮放時要讓它一直留在中點底下
+			contentX: (geometry.midX - panX) / zoom,
+			contentY: (geometry.midY - panY) / zoom,
+		};
+	}
+
+	function updatePinch() {
+		const geometry = pinchGeometry();
+		if (!pinch || !geometry) return;
+		const nextZoom = setZoom(pinch.zoom * (geometry.distance / pinch.distance));
+		panX = geometry.midX - pinch.contentX * nextZoom;
+		panY = geometry.midY - pinch.contentY * nextZoom;
+	}
+
+	/** 單指平移的基準點：開始平移或從雙指退回單指時重設，避免跳動 */
+	function beginPan(x: number, y: number) {
+		pointerStartX = x;
+		pointerStartY = y;
+		panStartX = panX;
+		panStartY = panY;
 	}
 
 	function zoomAtPoint(value: number, clientX: number, clientY: number) {
@@ -70,26 +115,47 @@
 	}
 
 	function handlePointerDown(event: PointerEvent) {
-		if (event.button !== 0 && event.button !== 1) return;
+		if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 1) return;
 		event.preventDefault();
-		isPanning = true;
-		pointerStartX = event.clientX;
-		pointerStartY = event.clientY;
-		panStartX = panX;
-		panStartY = panY;
+		pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 		viewport.setPointerCapture(event.pointerId);
+		isPanning = true;
+		if (pointers.size >= 2) {
+			beginPinch();
+		} else {
+			beginPan(event.clientX, event.clientY);
+		}
 	}
 
 	function handlePointerMove(event: PointerEvent) {
-		if (!isPanning) return;
+		if (!pointers.has(event.pointerId)) return;
+		pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+		if (pointers.size >= 2) {
+			if (!pinch) beginPinch();
+			updatePinch();
+			return;
+		}
 		panX = panStartX + event.clientX - pointerStartX;
 		panY = panStartY + event.clientY - pointerStartY;
 	}
 
 	function handlePointerUp(event: PointerEvent) {
-		if (!isPanning) return;
-		isPanning = false;
-		viewport.releasePointerCapture(event.pointerId);
+		if (!pointers.has(event.pointerId)) return;
+		pointers.delete(event.pointerId);
+		if (viewport.hasPointerCapture(event.pointerId)) {
+			viewport.releasePointerCapture(event.pointerId);
+		}
+		if (pointers.size >= 2) {
+			beginPinch();
+			return;
+		}
+		pinch = null;
+		const remaining = [...pointers.values()][0];
+		if (remaining) {
+			beginPan(remaining.x, remaining.y);
+		} else {
+			isPanning = false;
+		}
 	}
 
 	function renderIcon(iconName: string): Attachment<HTMLElement> {

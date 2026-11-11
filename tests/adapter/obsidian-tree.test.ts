@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CachedMetadata } from "obsidian";
-import { buildTree, ROOT_ID } from "../../src/adapter/obsidian-tree";
+import { buildLinks, buildTree, ROOT_ID } from "../../src/adapter/obsidian-tree";
 import type { HeadingNode } from "../../src/core/tree";
 import {
     obsidianMarkdownAllSyntaxExampleDoc as doc,
@@ -123,5 +123,43 @@ describe("buildTree", () => {
         const tree = buildTree({}, "", "empty.md");
         expect(tree.children).toEqual([]);
         expect(tree.sections).toEqual([]);
+    });
+});
+
+describe("buildLinks", () => {
+    const links = buildLinks(metadata);
+
+    it("links 與 embeds 合併並依位置排序", () => {
+        expect(links.length).toBe((metadata.links?.length ?? 0) + (metadata.embeds?.length ?? 0));
+        for (let i = 1; i < links.length; i++) {
+            expect(links[i]!.range.from).toBeGreaterThanOrEqual(links[i - 1]!.range.from);
+        }
+    });
+
+    it("embed 標記為 true，一般連結為 false", () => {
+        expect(links.find((l) => l.target === "image.png")?.embed).toBe(true);
+        expect(links.find((l) => l.target === "Another Note")?.embed).toBe(false);
+    });
+
+    it("顯示文字沒有時用 target", () => {
+        const custom = links.find((l) => l.display === "自訂顯示名稱")!;
+        expect(custom.target).toBe("Another Note");
+        const plain = links.find((l) => l.target === "demo.mp3")!;
+        expect(plain.display).toBe("demo.mp3");
+    });
+
+    it("有 scheme 的目標會被濾掉", () => {
+        const cache: CachedMetadata = {
+            links: [
+                { link: "https://example.com", original: "", displayText: "x", position: { start: { line: 0, col: 0, offset: 0 }, end: { line: 0, col: 1, offset: 1 } } },
+                { link: "obsidian://open?vault=v", original: "", displayText: "y", position: { start: { line: 0, col: 2, offset: 2 }, end: { line: 0, col: 3, offset: 3 } } },
+                { link: "Note", original: "", displayText: "z", position: { start: { line: 0, col: 4, offset: 4 }, end: { line: 0, col: 5, offset: 5 } } },
+            ],
+        };
+        expect(buildLinks(cache).map((l) => l.target)).toEqual(["Note"]);
+    });
+
+    it("沒有 links 與 embeds 時回傳空陣列", () => {
+        expect(buildLinks({})).toEqual([]);
     });
 });

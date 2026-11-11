@@ -46,6 +46,16 @@ export type HeadingNode = {
     children: HeadingNode[];
 };
 
+/** 文件內的一個內部連結或 embed（外部網址在 adapter 就濾掉） */
+export type LinkRef = {
+    /** 連結目標，例如 "Another Note#Section A"、"#heading"、"image.png" */
+    target: string;
+    /** 顯示文字，沒有就等於 target */
+    display: string;
+    range: Range;
+    embed: boolean;
+};
+
 /** promote 之後給 layout 用的節點 */
 export type TreeNode = {
     id: string;
@@ -62,6 +72,8 @@ export type TreeNode = {
     text?: string;
     /** 留在內容區（未升級）的 sections，只有 heading / root 會有 */
     sections: SectionNode[];
+    /** 落在節點自身範圍內（不含子節點範圍）的連結 */
+    links: LinkRef[];
     children: TreeNode[];
 };
 
@@ -83,6 +95,7 @@ const listItemToTreeNode = (item: ListItemNode): TreeNode => ({
     range: item.range,
     text: item.text,
     sections: [],
+    links: [],
     children: item.children.map(listItemToTreeNode),
 });
 
@@ -93,6 +106,7 @@ const sectionToTreeNode = (section: SectionNode): TreeNode => ({
     range: section.range,
     sectionType: section.type,
     sections: [],
+    links: [],
     children: section.children.map(listItemToTreeNode),
 });
 
@@ -100,8 +114,9 @@ const sectionToTreeNode = (section: SectionNode): TreeNode => ({
  * 將完整樹依 policy 轉成 layout 用的 TreeNode。
  * 升級的 sections 排在子 heading 之前（因為 sections 在原文中位於子 heading 之前），
  * 其餘 sections 留在 node.sections 當作內容。
+ * links 依位置分配：落在節點內容範圍內、但不在任何直接子節點範圍內的連結屬於該節點。
  */
-export const promote = (root: HeadingNode, policy: PromotePolicy): TreeNode => {
+export const promote = (root: HeadingNode, policy: PromotePolicy, links: readonly LinkRef[] = []): TreeNode => {
     const convert = (node: HeadingNode): TreeNode => {
         const promoted: TreeNode[] = [];
         const kept: SectionNode[] = [];
@@ -119,10 +134,35 @@ export const promote = (root: HeadingNode, policy: PromotePolicy): TreeNode => {
             title: node.title,
             range: node.range,
             sections: kept,
+            links: [],
             children: [...promoted, ...node.children.map(convert)],
         };
     };
-    return convert(root);
+    const tree = convert(root);
+    if (links.length > 0) assignLinks(tree, links);
+    return tree;
+};
+
+const within = (inner: Range, outer: Range) => inner.from >= outer.from && inner.to <= outer.to;
+
+/** 連結是否落在某個後代節點自己的範圍內（list item 的範圍不含子 item，所以要看整個子樹） */
+const claimedByDescendant = (node: TreeNode, link: LinkRef): boolean =>
+    node.children.some((child) => within(link.range, child.range) || claimedByDescendant(child, link));
+
+const assignLinks = (node: TreeNode, links: readonly LinkRef[]) => {
+    const own = contentRange(node);
+    node.links = links.filter((link) => within(link.range, own) && !claimedByDescendant(node, link));
+    // 子 heading 與升級出去的 section 都在父節點的 contentRange 之外，所以每層都用完整清單再篩
+    for (const child of node.children) {
+        assignLinks(child, links);
+    }
+};
+
+/** 節點內容區裡出現過的 section 型別，依原文順序去重 */
+export const sectionTypesOf = (node: TreeNode): string[] => {
+    const seen = new Set<string>();
+    for (const section of node.sections) seen.add(section.type);
+    return [...seen];
 };
 
 /**
