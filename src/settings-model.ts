@@ -24,7 +24,9 @@ export interface HeadingsSettings {
 	maxNodeWidth: number;
 	/** 節點內容區最大高度 (px)，超過在節點內垂直捲動；0 為不限制 */
 	maxNodeHeight: number;
-	/** 開檔時展開到第幾層（root 為 0 層）；0 為全部展開 */
+	/** 開檔時是否只展開到固定層數；關閉就全部展開 */
+	defaultExpandEnabled: boolean;
+	/** 開檔時 root 以下展開幾層；0 為只展開 root、其他全部收合 */
 	defaultExpandDepth: number;
 	/** 節點的邊框與背景是否套用分支顏色；關閉就用主題預設的邊框與背景 */
 	nodeStyle: Record<NodeStyleKey, boolean>;
@@ -42,15 +44,16 @@ export const DEFAULT_SETTINGS: HeadingsSettings = {
 	},
 	maxNodeWidth: 320,
 	maxNodeHeight: 320,
-	defaultExpandDepth: 0,
+	defaultExpandEnabled: false,
+	defaultExpandDepth: 1,
 	nodeStyle: { branchBorder: true, branchBackground: true },
 };
 
 export const MAX_NODE_WIDTH_RANGE = { min: 160, max: 1200, step: 20 } as const;
 /** 0 代表不限制；滑桿從 0 跳到 120 */
 export const MAX_NODE_HEIGHT_RANGE = { min: 0, max: 1200, step: 20, minLimit: 120 } as const;
-/** 0 代表全部展開 */
-export const EXPAND_DEPTH_RANGE = { min: 0, max: 10, step: 1 } as const;
+/** root 以下展開幾層；0 代表只展開 root */
+export const EXPAND_DEPTH_RANGE = { min: 0, max: 9, step: 1 } as const;
 
 /** 讀一個整數欄位並夾進範圍；不是數字就用預設值。回傳是否需要改寫 */
 const readClamped = (value: unknown, fallback: number, min: number, max: number): { value: number; migrated: boolean } => {
@@ -130,19 +133,34 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 	const maxNodeHeight = height.value > 0 && height.value < MAX_NODE_HEIGHT_RANGE.minLimit ? MAX_NODE_HEIGHT_RANGE.minLimit : height.value;
 	if (height.migrated || maxNodeHeight !== height.value) migrated = true;
 
-	const depth = readClamped(data.defaultExpandDepth, DEFAULT_SETTINGS.defaultExpandDepth, EXPAND_DEPTH_RANGE.min, EXPAND_DEPTH_RANGE.max);
+	let defaultExpandEnabled = DEFAULT_SETTINGS.defaultExpandEnabled;
+	let rawDepth = data.defaultExpandDepth;
+	if (typeof data.defaultExpandEnabled === "boolean") {
+		defaultExpandEnabled = data.defaultExpandEnabled;
+	} else if (data.defaultExpandEnabled !== undefined) {
+		migrated = true;
+	} else if (typeof rawDepth === "number") {
+		// 舊格式：depth 0 = 全部展開、N = 展開到第 N 層（含 root）。轉成開關 + root 以下層數
+		migrated = true;
+		defaultExpandEnabled = rawDepth > 0;
+		rawDepth = rawDepth > 0 ? rawDepth - 1 : DEFAULT_SETTINGS.defaultExpandDepth;
+	}
+	const depth = readClamped(rawDepth, DEFAULT_SETTINGS.defaultExpandDepth, EXPAND_DEPTH_RANGE.min, EXPAND_DEPTH_RANGE.max);
 	const defaultExpandDepth = depth.value;
 	if (depth.migrated) migrated = true;
 
 	const nodeStyle = readToggles(data.nodeStyle, NODE_STYLE_KEYS, DEFAULT_SETTINGS.nodeStyle);
 
-	const known = new Set(["nodeTypes", "defaultLitTypes", "defaultLayout", "maxNodeWidth", "maxNodeHeight", "defaultExpandDepth", "nodeStyle"]);
+	const known = new Set([
+		"nodeTypes", "defaultLitTypes", "defaultLayout", "maxNodeWidth", "maxNodeHeight",
+		"defaultExpandEnabled", "defaultExpandDepth", "nodeStyle",
+	]);
 	for (const key of Object.keys(data)) {
 		if (!known.has(key)) migrated = true;
 	}
 
 	return {
-		settings: { nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, maxNodeHeight, defaultExpandDepth, nodeStyle },
+		settings: { nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, maxNodeHeight, defaultExpandEnabled, defaultExpandDepth, nodeStyle },
 		migrated,
 	};
 };

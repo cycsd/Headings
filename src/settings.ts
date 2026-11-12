@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, type SettingDefinitionItem } from "obsidian";
+import { App, PluginSettingTab, Setting, type SettingDefinitionItem, type SettingGroupItem } from "obsidian";
 import HeadingsPlugin from "./main";
 import { t } from "./i18n";
 import { CONTENT_SECTION_TYPES, PROMOTABLE_SECTION_TYPES } from "./core/section-types";
@@ -7,6 +7,15 @@ import { DEFAULT_SETTINGS, EXPAND_DEPTH_RANGE, MAX_NODE_HEIGHT_RANGE, MAX_NODE_W
 import { contentTypeLabel, layoutLabel, nodeStyleLabel, sectionTypeLabel } from "./labels";
 
 export { DEFAULT_SETTINGS, type HeadingsSettings } from "./settings-model";
+
+/** 有「全部開啟 / 關閉」開關的兩組型別；虛擬 key `<group>.*` 代表整組 */
+const TOGGLE_GROUPS = [
+	{ key: "nodeTypes", types: PROMOTABLE_SECTION_TYPES as readonly string[] },
+	{ key: "defaultLitTypes", types: CONTENT_SECTION_TYPES as readonly string[] },
+] as const;
+
+const allOn = (settings: Record<string, unknown>, group: (typeof TOGGLE_GROUPS)[number]): boolean =>
+	group.types.every((type) => getPath(settings, `${group.key}.${type}`) === true);
 
 /** 滑桿 0 為不限制，0 到下限之間的值拉到下限 */
 const normalizeHeight = (value: number): number =>
@@ -47,6 +56,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl).setName(t("settingNodeTypesHeading")).setDesc(t("settingNodeTypesDescription")).setHeading();
+		this.displayToggleAll(containerEl, TOGGLE_GROUPS[0]);
 		for (const type of PROMOTABLE_SECTION_TYPES) {
 			new Setting(containerEl)
 				.setName(sectionTypeLabel[type]())
@@ -56,6 +66,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 		}
 
 		new Setting(containerEl).setName(t("settingDefaultLitHeading")).setDesc(t("settingDefaultLitDescription")).setHeading();
+		this.displayToggleAll(containerEl, TOGGLE_GROUPS[1]);
 		for (const type of CONTENT_SECTION_TYPES) {
 			new Setting(containerEl)
 				.setName(contentTypeLabel(type))
@@ -100,6 +111,13 @@ export class HeadingsSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName(t("settingDefaultExpandEnabledName"))
+			.setDesc(t("settingDefaultExpandEnabledDescription"))
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.defaultExpandEnabled).onChange((value) => this.applySetting("defaultExpandEnabled", value)),
+			);
+
+		new Setting(containerEl)
 			.setName(t("settingDefaultExpandDepthName"))
 			.setDesc(t("settingDefaultExpandDepthDescription"))
 			.addSlider((slider) =>
@@ -121,24 +139,47 @@ export class HeadingsSettingTab extends PluginSettingTab {
 		}
 	}
 
+	/** 舊版設定頁的「全部開啟 / 關閉」列 */
+	private displayToggleAll(containerEl: HTMLElement, group: (typeof TOGGLE_GROUPS)[number]) {
+		new Setting(containerEl)
+			.setName(t("settingToggleAllName"))
+			.setDesc(t("settingToggleAllDescription"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(allOn(this.plugin.settings as unknown as Record<string, unknown>, group))
+					.onChange((value) => this.applySetting(`${group.key}.*`, value)),
+			);
+	}
+
 	getSettingDefinitions(): SettingDefinitionItem[] {
+		const toggleAll = (group: (typeof TOGGLE_GROUPS)[number]): SettingGroupItem => ({
+			name: t("settingToggleAllName"),
+			desc: t("settingToggleAllDescription"),
+			control: { type: "toggle", key: `${group.key}.*`, defaultValue: false },
+		});
 		return [
 			{
 				type: "group",
 				heading: t("settingNodeTypesHeading"),
-				items: PROMOTABLE_SECTION_TYPES.map((type) => ({
-					name: sectionTypeLabel[type](),
-					control: { type: "toggle", key: `nodeTypes.${type}`, defaultValue: DEFAULT_SETTINGS.nodeTypes[type] },
-				})),
+				items: [
+					toggleAll(TOGGLE_GROUPS[0]),
+					...PROMOTABLE_SECTION_TYPES.map((type): SettingGroupItem => ({
+						name: sectionTypeLabel[type](),
+						control: { type: "toggle", key: `nodeTypes.${type}`, defaultValue: DEFAULT_SETTINGS.nodeTypes[type] },
+					})),
+				],
 			},
 			{
 				type: "group",
 				heading: t("settingDefaultLitHeading"),
-				items: CONTENT_SECTION_TYPES.map((type) => ({
-					name: contentTypeLabel(type),
-					desc: t("settingDefaultLitDescription"),
-					control: { type: "toggle", key: `defaultLitTypes.${type}`, defaultValue: DEFAULT_SETTINGS.defaultLitTypes[type] },
-				})),
+				items: [
+					toggleAll(TOGGLE_GROUPS[1]),
+					...CONTENT_SECTION_TYPES.map((type): SettingGroupItem => ({
+						name: contentTypeLabel(type),
+						desc: t("settingDefaultLitDescription"),
+						control: { type: "toggle", key: `defaultLitTypes.${type}`, defaultValue: DEFAULT_SETTINGS.defaultLitTypes[type] },
+					})),
+				],
 			},
 			{
 				type: "group",
@@ -179,6 +220,11 @@ export class HeadingsSettingTab extends PluginSettingTab {
 						},
 					},
 					{
+						name: t("settingDefaultExpandEnabledName"),
+						desc: t("settingDefaultExpandEnabledDescription"),
+						control: { type: "toggle", key: "defaultExpandEnabled", defaultValue: DEFAULT_SETTINGS.defaultExpandEnabled },
+					},
+					{
 						name: t("settingDefaultExpandDepthName"),
 						desc: t("settingDefaultExpandDepthDescription"),
 						control: {
@@ -186,7 +232,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 							key: "defaultExpandDepth",
 							...EXPAND_DEPTH_RANGE,
 							defaultValue: DEFAULT_SETTINGS.defaultExpandDepth,
-							displayFormat: (value: number) => (value === 0 ? t("settingExpandAll") : String(value)),
+							displayFormat: (value: number) => (value === 0 ? t("expandDepthRootOnly") : String(value)),
 						},
 					},
 				],
@@ -204,6 +250,8 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	}
 
 	getControlValue(key: string): unknown {
+		const group = TOGGLE_GROUPS.find((g) => key === `${g.key}.*`);
+		if (group) return allOn(this.plugin.settings as unknown as Record<string, unknown>, group);
 		return getPath(this.plugin.settings, key);
 	}
 
@@ -212,8 +260,24 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	}
 
 	private async applySetting(key: string, value: unknown) {
-		setPath(this.plugin.settings as unknown as Record<string, unknown>, key, value);
+		const group = TOGGLE_GROUPS.find((g) => key === `${g.key}.*`);
+		if (group) {
+			// 一鍵全開 / 全關：寫入該組所有型別
+			for (const type of group.types) {
+				setPath(this.plugin.settings as unknown as Record<string, unknown>, `${group.key}.${type}`, value === true);
+			}
+		} else {
+			setPath(this.plugin.settings as unknown as Record<string, unknown>, key, value);
+		}
 		await this.plugin.saveSettings();
 		await this.plugin.refreshHeadingsViews();
+		// 這兩組的個別開關與「全部」開關互相影響，改了就重畫整個設定頁讓它們同步
+		if (TOGGLE_GROUPS.some((g) => key.startsWith(`${g.key}.`))) this.rerender();
+	}
+
+	/** 1.13 以後用 update() 重畫宣告式設定；舊版重跑 display() */
+	private rerender() {
+		if (typeof this.update === "function") this.update();
+		else this.display();
 	}
 }

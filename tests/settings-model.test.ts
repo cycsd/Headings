@@ -23,6 +23,7 @@ describe("migrateSettings", () => {
             defaultLayout: { desktop: "tree-table", mobile: "outline" },
             maxNodeWidth: 400,
             maxNodeHeight: 0,
+            defaultExpandEnabled: true,
             defaultExpandDepth: 2,
             nodeStyle: { branchBorder: true, branchBackground: false },
         };
@@ -40,11 +41,24 @@ describe("migrateSettings", () => {
         expect(migrateSettings({}).settings.maxNodeHeight).toBe(320);
     });
 
-    it("defaultExpandDepth 夾在 0–10，預設 0", () => {
-        expect(migrateSettings({}).settings.defaultExpandDepth).toBe(0);
-        expect(migrateSettings({ defaultExpandDepth: 3 }).settings.defaultExpandDepth).toBe(3);
-        expect(migrateSettings({ defaultExpandDepth: 99 }).settings.defaultExpandDepth).toBe(10);
-        expect(migrateSettings({ defaultExpandDepth: -1 }).settings.defaultExpandDepth).toBe(0);
+    it("defaultExpandEnabled 預設關閉，defaultExpandDepth 夾在 0–9、預設 1", () => {
+        const { settings } = migrateSettings({});
+        expect(settings.defaultExpandEnabled).toBe(false);
+        expect(settings.defaultExpandDepth).toBe(1);
+        const explicit = migrateSettings({ defaultExpandEnabled: true, defaultExpandDepth: 99 }).settings;
+        expect(explicit.defaultExpandEnabled).toBe(true);
+        expect(explicit.defaultExpandDepth).toBe(9);
+        expect(migrateSettings({ defaultExpandEnabled: true, defaultExpandDepth: -1 }).settings.defaultExpandDepth).toBe(0);
+    });
+
+    it("舊格式 defaultExpandDepth（0 = 全部、N = 含 root 的層數）轉成開關 + root 以下層數", () => {
+        const off = migrateSettings({ defaultExpandDepth: 0 });
+        expect(off.migrated).toBe(true);
+        expect(off.settings.defaultExpandEnabled).toBe(false);
+        expect(off.settings.defaultExpandDepth).toBe(1);
+        const on = migrateSettings({ defaultExpandDepth: 3 });
+        expect(on.settings.defaultExpandEnabled).toBe(true);
+        expect(on.settings.defaultExpandDepth).toBe(2);
     });
 
     it("nodeStyle 缺少時預設都套用分支顏色，型別錯的欄位退回預設並標記 migrated", () => {

@@ -198,7 +198,9 @@ export class HeadingsView extends ItemView {
         this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()), buildLinks(cached));
         if (this.applyDefaultDepth) {
             this.applyDefaultDepth = false;
-            applyDepth(this.hostState, this.plugin.settings.defaultExpandDepth);
+            // 設定的層數是 root 以下幾層；內部 depth 從 root 算起且 0 = 全部，所以加 1
+            const { defaultExpandEnabled, defaultExpandDepth } = this.plugin.settings;
+            applyDepth(this.hostState, defaultExpandEnabled ? defaultExpandDepth + 1 : 0);
         }
     }
 
@@ -212,10 +214,11 @@ export class HeadingsView extends ItemView {
         const max = visibleMaxDepth(this.hostState);
         const current = this.hostState.expandDepth;
         const menu = new Menu();
+        // 選單上的數字是 root 以下幾層，與設定一致；內部 depth 1 = 只展開 root
         for (let depth = 1; depth < max; depth++) {
             menu.addItem((item) =>
                 item
-                    .setTitle(t("menuExpandDepthLevel").replace("{n}", String(depth)))
+                    .setTitle(depth === 1 ? t("expandDepthRootOnly") : t("menuExpandDepthLevel").replace("{n}", String(depth - 1)))
                     .setChecked(current === depth)
                     .onClick(() => applyDepth(this.hostState, depth)),
             );
