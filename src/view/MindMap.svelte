@@ -119,7 +119,15 @@
 			</svg>
 			{#each placement.nodes as placed (placed.node.id)}
 				<div class="placed" style="left: {placed.x}px; top: {placed.y}px;" {@attach measure(placed.node.id)}>
-					<TreeNodeBox node={placed.node} branch={placed.branch} root={placed.depth === 0} {getText} {onRenderMarkdown} {maxNodeWidth} />
+					<TreeNodeBox
+						node={placed.node}
+						branch={placed.branch}
+						root={placed.depth === 0}
+						handleSide={placed.depth === 0 ? "none" : placed.side === 1 ? "right" : "left"}
+						{getText}
+						{onRenderMarkdown}
+						{maxNodeWidth}
+					/>
 				</div>
 			{/each}
 		</div>

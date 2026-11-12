@@ -41,7 +41,7 @@
 					class:branch-bg={ui.state.branchBackground}
 					style="--col-start: {cell.depth + 1}; --col-span: {cell.colSpan}; --row-start: {cell.row + 2}; --row-span: {cell.rowSpan}; {branchStyle(cell.branch)}"
 				>
-					<TreeNodeBox node={cell.node} branch={cell.branch} flat {getText} {onRenderMarkdown} {maxNodeWidth} />
+					<TreeNodeBox node={cell.node} branch={cell.branch} flat handleSide="right" {getText} {onRenderMarkdown} {maxNodeWidth} />
 				</div>
 			{/each}
 		</div>

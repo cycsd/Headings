@@ -25,9 +25,11 @@
 		getText: LayoutProps["getText"];
 		onRenderMarkdown: LayoutProps["onRenderMarkdown"];
 		maxNodeWidth: number;
+		/** 收合把手貼在哪一邊：子節點長出來的那一側。root 傳 none */
+		handleSide?: "left" | "right" | "none";
 	}
 
-	let { node, branch, root = false, flat = false, getText, onRenderMarkdown, maxNodeWidth }: Props = $props();
+	let { node, branch, root = false, flat = false, getText, onRenderMarkdown, maxNodeWidth, handleSide = "none" }: Props = $props();
 
 	const ui = getContext<NodeUi>(NODE_UI);
 
@@ -126,19 +128,6 @@
 	oncontextmenu={openMenu}
 >
 	<div class="head">
-		{#if hasChildren}
-			<button
-				type="button"
-				class="ctl chevron"
-				aria-label={t("tooltipToggleChildren")}
-				title={t("tooltipToggleChildren")}
-				onpointerdown={stop}
-				onclick={() => ui.toggleCollapsed(node.id)}
-			>
-				<span class="ico" {@attach icon(collapsed ? "chevron-right" : "chevron-down")}></span>
-				{#if hiddenCount > 0}<span class="count">{hiddenCount}</span>{/if}
-			</button>
-		{/if}
 
 		<div class="title" class:plain={!isHeading} {@attach onRenderMarkdown(headText)}></div>
 
@@ -216,11 +205,30 @@
 			{/each}
 		</div>
 	{/if}
+
+	{#if hasChildren && handleSide !== "none"}
+		<!-- 收合把手：壓在子節點那一側的邊緣中央，也就是連線接到節點的地方；收合時顯示隱藏的後代數 -->
+		<button
+			type="button"
+			class="fork {handleSide}"
+			class:collapsed
+			aria-label={t("tooltipToggleChildren")}
+			title={t("tooltipToggleChildren")}
+			onpointerdown={stop}
+			onclick={(evt) => {
+				evt.stopPropagation();
+				ui.toggleCollapsed(node.id);
+			}}
+		>
+			<span class="dot">{#if collapsed}{hiddenCount}{/if}</span>
+		</button>
+	{/if}
 </div>
 
 <style>
 	/* 預設用主題的邊框與背景；分支顏色由設定決定要不要套上，root 永遠中性 */
 	.node {
+		position: relative;
 		box-sizing: border-box;
 		width: max-content;
 		max-width: var(--max-node-width);
@@ -353,8 +361,60 @@
 		border-color: var(--background-modifier-border);
 		background: var(--background-primary);
 	}
-	.ctl .count {
-		font-size: var(--font-ui-smaller);
+	/* 收合把手：24px 點擊範圍，中間 14px 空心圓；圓心壓在邊框上（邊框 1px，所以位移 8px 而不是 7px） */
+	.fork {
+		position: absolute;
+		top: 50%;
+		z-index: 2;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: none;
+		background: transparent;
+		box-shadow: none;
+		cursor: pointer;
+		transform: translateY(-50%);
+	}
+	.fork.right {
+		right: -13px;
+	}
+	.fork.left {
+		left: -13px;
+	}
+	/* flat 節點沒有邊框與 padding，cell 的 6px 水平 padding 要補回去，把手才會壓在 cell 邊緣 */
+	.node.flat .fork.right {
+		right: -19px;
+	}
+	.node.flat .fork.left {
+		left: -19px;
+	}
+	.dot {
+		box-sizing: border-box;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 14px;
+		height: 14px;
+		border: 1.5px solid var(--branch);
+		border-radius: 999px;
+		background: var(--background-primary);
+		color: var(--branch);
+		font-size: 10px;
+		line-height: 1;
+		font-weight: 600;
+	}
+	/* 收合時圓裡放數字，多位數拉成膠囊 */
+	.fork.collapsed .dot {
+		min-width: 16px;
+		height: 16px;
+		padding: 0 4px;
+	}
+	.fork:hover .dot {
+		background: var(--branch);
+		color: var(--background-primary);
 	}
 	.ico {
 		display: inline-flex;

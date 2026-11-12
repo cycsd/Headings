@@ -33,7 +33,15 @@
 				<div class="col elbow" class:continue={!row.isLast}></div>
 			{/if}
 			<div class="box">
-				<TreeNodeBox node={row.node} branch={row.branch} root={row.depth === 0} {getText} {onRenderMarkdown} {maxNodeWidth} />
+				<TreeNodeBox
+					node={row.node}
+					branch={row.branch}
+					root={row.depth === 0}
+					handleSide={row.depth === 0 ? "none" : "left"}
+					{getText}
+					{onRenderMarkdown}
+					{maxNodeWidth}
+				/>
 			</div>
 		</div>
 	{/each}
