@@ -83,6 +83,28 @@
 
 	let selected = $derived(ui.state.selectedId === node.id);
 
+	/**
+	 * 從麵包屑定位到這個節點時閃一下光暈。reveal.seq 變了就重播；
+	 * 等兩個 frame 讓佈局先置中完再開始，先關再開是為了讓 CSS 動畫重新播放。
+	 */
+	let flashing = $state(false);
+	$effect(() => {
+		const request = ui.state.reveal;
+		if (!request || request.id !== node.id) return;
+		flashing = false;
+		let timer: number | undefined;
+		const frame = requestAnimationFrame(() =>
+			requestAnimationFrame(() => {
+				flashing = true;
+				timer = window.setTimeout(() => (flashing = false), 1100);
+			}),
+		);
+		return () => {
+			cancelAnimationFrame(frame);
+			if (timer !== undefined) clearTimeout(timer);
+		};
+	});
+
 	/** heading 有內容型別或連結時才有 icon 列；沒有的話「…」直接放在標題列 */
 	let hasIconRow = $derived(isHeading && (types.length > 0 || hasLinks));
 	/** 內容區最大高度，0 為不限制 */
@@ -97,6 +119,7 @@
 	class:branch-border={ui.state.branchBorder}
 	class:branch-bg={ui.state.branchBackground}
 	class:selected
+	class:flash={flashing}
 	data-node-id={node.id}
 	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}"
 	onclick={handleClick}
@@ -234,6 +257,34 @@
 	}
 	.node.flat.selected {
 		outline-offset: -2px;
+	}
+	/* 從麵包屑定位到的節點：強調色光暈由濃轉淡閃兩下，flat 節點向內發光避免被鄰近 cell 蓋住 */
+	.node.flash {
+		animation: node-flash 0.5s ease-out 2;
+	}
+	.node.flat.flash {
+		animation-name: node-flash-inset;
+	}
+	@keyframes node-flash {
+		from {
+			box-shadow: 0 0 0 0 color-mix(in srgb, var(--interactive-accent) 80%, transparent);
+		}
+		to {
+			box-shadow: 0 0 0 10px transparent;
+		}
+	}
+	@keyframes node-flash-inset {
+		from {
+			box-shadow: inset 0 0 0 0 color-mix(in srgb, var(--interactive-accent) 80%, transparent);
+		}
+		to {
+			box-shadow: inset 0 0 0 10px transparent;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.node.flash {
+			animation: none;
+		}
 	}
 	.head {
 		display: flex;

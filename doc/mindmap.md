@@ -100,6 +100,8 @@ heading 節點標題用 markdown inline 渲染；升級節點渲染完整內容�
   檔名那段列第一層節點。不做搜尋與巢狀。
 - 選了之後：祖先全部展開，設為選取，再帶到畫面上（心智圖與樹狀表格 PanZoom.centerOnElement 置中、大綱 scrollIntoView，不改縮放）。
   目標在聚焦子樹之外就先離開聚焦。實作：HostState.reveal = { id, seq }，各佈局在下一個 frame 以 data-node-id 找到元素。
+- 定位到的節點閃兩下強調色光暈（box-shadow 0 → 10px 淡出，共約 1 秒），置中後的下一個 frame 才開始；直接點選不閃；
+  flat 節點向內發光；prefers-reduced-motion 時不播。
 
 ### 收合其他節點
 - 路徑上的節點（祖先與被點節點）保持展開，其他有子節點的全部收合，包含被點節點的後代，所以結果是只看到它的直接子節點。
