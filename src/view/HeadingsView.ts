@@ -244,8 +244,8 @@ export class HeadingsView extends ItemView {
             item
                 .setTitle(t("nodeMenuFocus"))
                 .setIcon("crosshair")
-                // 葉節點當根沒東西可畫；已經是根就沒必要
-                .setDisabled(node.children.length === 0 || isVisibleRoot)
+                // heading 與 list item 都能當根（葉節點也可以，用來單獨看一段內容）；升級的一般段落不行；已經是根就沒必要
+                .setDisabled(!(node.kind === "heading" || node.kind === "root" || node.kind === "listItem") || isVisibleRoot)
                 .onClick(() => setFocus(state, node.id)),
         );
         menu.addSeparator();

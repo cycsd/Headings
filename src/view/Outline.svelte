@@ -1,15 +1,29 @@
 <script lang="ts">
+	import { getContext } from "svelte";
 	import { OUTLINE_BEND, OUTLINE_INDENT, OUTLINE_STEM, outlineLayout } from "../layout/outline";
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
+	import { NODE_UI, type NodeUi } from "./node-ui";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
 
 	let { tree, getText, onRenderMarkdown, maxNodeWidth, collapsed }: LayoutProps = $props();
 
 	let placement = $derived(outlineLayout(tree, { collapsed }));
+
+	/** 麵包屑選到節點後捲到它；等下一個 frame 讓剛展開的列先渲染出來 */
+	const ui = getContext<NodeUi>(NODE_UI);
+	let container: HTMLElement | undefined = $state();
+	$effect(() => {
+		const request = ui.state.reveal;
+		if (!request) return;
+		const frame = requestAnimationFrame(() => {
+			container?.querySelector(`[data-node-id="${CSS.escape(request.id)}"]`)?.scrollIntoView({ block: "center" });
+		});
+		return () => cancelAnimationFrame(frame);
+	});
 </script>
 
-<div class="outline" style="--indent: {OUTLINE_INDENT}px; --stem: {OUTLINE_STEM}px; --bend: {OUTLINE_BEND}px;">
+<div class="outline" bind:this={container} style="--indent: {OUTLINE_INDENT}px; --stem: {OUTLINE_STEM}px; --bend: {OUTLINE_BEND}px;">
 	{#each placement.rows as row (row.node.id)}
 		<div class="row" style={branchStyle(row.branch)}>
 			{#each row.trunks as trunk, i (i)}

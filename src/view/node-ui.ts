@@ -1,6 +1,7 @@
 import type { Attachment } from "svelte/attachments";
 import type { TreeNode } from "../core/tree";
 import type { HostState } from "./host-state.svelte";
+import { selectNode } from "./tree-state";
 
 /** 節點元件透過 Svelte context 拿到的操作介面，由 LayoutHost 建立 */
 export type NodeUi = {
@@ -16,6 +17,8 @@ export type NodeUi = {
 	renderFrontmatter(text: string): Attachment<HTMLElement>;
 	/** 節點選單（右鍵或「…」按鈕）：收合其他、以此為根、展開 / 收合子樹，由 view 實作 */
 	showNodeMenu(node: TreeNode, evt: MouseEvent): void;
+	/** 點選節點：麵包屑顯示它的路徑 */
+	select(id: string): void;
 };
 
 /** view 提供、需要 Obsidian app 的動作 */
@@ -45,4 +48,7 @@ export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => 
 	showLinks: actions.showLinks,
 	renderFrontmatter: actions.renderFrontmatter,
 	showNodeMenu: actions.showNodeMenu,
+	select(id) {
+		selectNode(state, id);
+	},
 });

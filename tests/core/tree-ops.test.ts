@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src/core/tree";
-import { collapseOthers, collapseSubtree, expandSubtree, findNode, maxDepth, pathTo, stepDepth, withDepth } from "../../src/core/tree-ops";
+import { collapseOthers, collapseSubtree, expandPath, expandSubtree, findNode, maxDepth, pathTo, stepDepth, withDepth } from "../../src/core/tree-ops";
 
 const node = (id: string, children: TreeNode[] = []): TreeNode => ({
     id,
@@ -105,5 +105,18 @@ describe("stepDepth", () => {
     it("樹只有一層時永遠是全部", () => {
         expect(stepDepth(0, -1, 1)).toBe(0);
         expect(stepDepth(0, 1, 0)).toBe(0);
+    });
+});
+
+describe("expandPath", () => {
+    it("祖先全部展開，目標自己與其他節點不變", () => {
+        const next = expandPath(tree(), "A1a", new Set(["A", "A1", "B"]));
+        expect([...next]).toEqual(["B"]);
+        const keep = expandPath(tree(), "A1", new Set(["A1", "B"]));
+        expect([...keep].sort()).toEqual(["A1", "B"]);
+    });
+
+    it("目標不存在時原樣回傳", () => {
+        expect([...expandPath(tree(), "nope", new Set(["A"]))]).toEqual(["A"]);
     });
 });

@@ -1,5 +1,5 @@
 import type { TreeNode } from "../core/tree";
-import { collapseOthers, collapseSubtree, expandSubtree, findNode, maxDepth, stepDepth, withDepth } from "../core/tree-ops";
+import { collapseOthers, collapseSubtree, expandPath, expandSubtree, findNode, maxDepth, stepDepth, withDepth } from "../core/tree-ops";
 import type { HostState } from "./host-state.svelte";
 
 /**
@@ -59,4 +59,22 @@ export const applyCollapseSubtree = (state: HostState, id: string) => {
 	const target = state.tree ? findNode(state.tree, id) : null;
 	if (!target) return;
 	replaceCollapsed(state, collapseSubtree(target, state.collapsed));
+};
+
+/** 點選節點：只更新麵包屑，不移動畫面 */
+export const selectNode = (state: HostState, id: string) => {
+	state.selectedId = id;
+};
+
+/**
+ * 從麵包屑選到節點：祖先全部展開、目標在聚焦子樹之外就先離開聚焦，
+ * 再設為選取並要求佈局把它帶到畫面上。
+ */
+export const revealNode = (state: HostState, id: string) => {
+	if (!state.tree || !findNode(state.tree, id)) return;
+	replaceCollapsed(state, expandPath(state.tree, id, state.collapsed));
+	const focused = visibleRoot(state);
+	if (state.focusId !== null && (!focused || !findNode(focused, id))) setFocus(state, null);
+	state.selectedId = id;
+	state.reveal = { id, seq: (state.reveal?.seq ?? 0) + 1 };
 };

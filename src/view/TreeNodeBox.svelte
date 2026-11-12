@@ -71,8 +71,17 @@
 	function openMenu(evt: MouseEvent) {
 		evt.preventDefault();
 		evt.stopPropagation();
+		ui.select(node.id);
 		ui.showNodeMenu(node, evt);
 	}
+
+	/** 點節點本體就選取；按鈕與連結維持原本行為。拖曳平移不會送出 click，所以不用另外判斷 */
+	function handleClick(evt: MouseEvent) {
+		if (evt.target instanceof Element && evt.target.closest("button, a")) return;
+		ui.select(node.id);
+	}
+
+	let selected = $derived(ui.state.selectedId === node.id);
 
 	/** heading 有內容型別或連結時才有 icon 列；沒有的話「…」直接放在標題列 */
 	let hasIconRow = $derived(isHeading && (types.length > 0 || hasLinks));
@@ -80,14 +89,17 @@
 	let maxNodeHeight = $derived(ui.state.maxNodeHeight > 0 ? `${ui.state.maxNodeHeight}px` : "none");
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 <div
 	class="node"
 	class:root
 	class:flat
 	class:branch-border={ui.state.branchBorder}
 	class:branch-bg={ui.state.branchBackground}
+	class:selected
+	data-node-id={node.id}
 	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}"
+	onclick={handleClick}
 	oncontextmenu={openMenu}
 >
 	<div class="head">
@@ -214,6 +226,14 @@
 		border: none;
 		border-radius: 0;
 		background: transparent;
+	}
+	/* 點選的節點：外框用主題強調色，放在最後覆蓋 root 與 flat */
+	.node.selected {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: 1px;
+	}
+	.node.flat.selected {
+		outline-offset: -2px;
 	}
 	.head {
 		display: flex;

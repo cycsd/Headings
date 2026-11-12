@@ -97,3 +97,11 @@ export const stepDepth = (current: number, delta: 1 | -1, max: number): number =
     const next = current === 0 ? max - 1 : current - 1;
     return Math.max(1, next);
 };
+
+/** 展開目標的所有祖先（不含目標自己），讓目標在佈局裡看得到 */
+export const expandPath = (root: TreeNode, id: string, current: ReadonlySet<string>): Set<string> => {
+    const next = new Set(current);
+    const path = pathTo(root, id);
+    for (const node of path.slice(0, -1)) next.delete(node.id);
+    return next;
+};

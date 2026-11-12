@@ -13,11 +13,24 @@
 	const ui = getContext<NodeUi>(NODE_UI);
 
 	let placement = $derived(treeTableLayout(tree, { collapsed }));
+
+	/** 麵包屑選到節點後把 cell 置中；等下一個 frame 讓剛展開的 cell 先渲染出來 */
+	let panZoom: ReturnType<typeof PanZoom> | undefined = $state();
+	let grid: HTMLElement | undefined = $state();
+	$effect(() => {
+		const request = ui.state.reveal;
+		if (!request) return;
+		const frame = requestAnimationFrame(() => {
+			const el = grid?.querySelector(`[data-node-id="${CSS.escape(request.id)}"]`);
+			if (el) panZoom?.centerOnElement(el);
+		});
+		return () => cancelAnimationFrame(frame);
+	});
 </script>
 
-<PanZoom minZoom={0.1} maxZoom={5} zoomStep={0.05}>
+<PanZoom bind:this={panZoom} minZoom={0.1} maxZoom={5} zoomStep={0.05}>
 	{#snippet children()}
-		<div class="tree-table" style="grid-template-columns: repeat({placement.columns}, minmax(0, 1fr));">
+		<div class="tree-table" bind:this={grid} style="grid-template-columns: repeat({placement.columns}, minmax(0, 1fr));">
 			<div class="cell header grid-span" style="--col-start: 1; --col-span: {placement.columns}; --row-start: 1; --row-span: 1; {branchStyle(-1)}">
 				<TreeNodeBox node={tree} branch={-1} root flat {getText} {onRenderMarkdown} {maxNodeWidth} />
 			</div>

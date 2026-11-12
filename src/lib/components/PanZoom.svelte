@@ -19,6 +19,7 @@
 
 	let zoom = $state(1);
 	let viewport: HTMLElement;
+	let content: HTMLElement;
 	let panX = $state(0);
 	let panY = $state(0);
 	let isPanning = $state(false);
@@ -273,6 +274,14 @@
 		panY -= dy * zoom;
 	}
 
+	/** 把內容層裡的某個元素置中；用螢幕上的矩形反推內容座標，不用知道佈局怎麼擺的 */
+	export function centerOnElement(el: Element) {
+		if (!viewport || !content) return;
+		const target = el.getBoundingClientRect();
+		const origin = content.getBoundingClientRect();
+		centerOn((target.left + target.width / 2 - origin.left) / zoom, (target.top + target.height / 2 - origin.top) / zoom);
+	}
+
 	function renderIcon(iconName: string): Attachment<HTMLElement> {
 		return (element) => {
 			element.replaceChildren();
@@ -309,7 +318,7 @@
 		onpointercancel={handlePointerUp}
 		onpointerleave={handlePointerLeave}
 	>
-		<div class="pan-zoom-content" style="--zoom: {zoom}; --pan-x: {panX}px; --pan-y: {panY}px;">
+		<div class="pan-zoom-content" bind:this={content} style="--zoom: {zoom}; --pan-x: {panX}px; --pan-y: {panY}px;">
 			{@render children()}
 		</div>
 	</div>

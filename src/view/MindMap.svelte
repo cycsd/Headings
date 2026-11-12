@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { untrack } from "svelte";
+	import { getContext, untrack } from "svelte";
+	import { NODE_UI, type NodeUi } from "./node-ui";
 	import { SvelteMap } from "svelte/reactivity";
 	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
@@ -78,6 +79,22 @@
 		});
 	});
 
+	/**
+	 * 麵包屑選到節點後把它置中。等下一個 frame 再做：收合狀態剛改完，新展開的節點要先量過尺寸、
+	 * 「根節點不動」的效果也要先跑完，置中才不會被蓋掉。
+	 */
+	const ui = getContext<NodeUi>(NODE_UI);
+	let canvas: HTMLElement | undefined = $state();
+	$effect(() => {
+		const request = ui.state.reveal;
+		if (!request) return;
+		const frame = requestAnimationFrame(() => {
+			const el = canvas?.querySelector(`[data-node-id="${CSS.escape(request.id)}"]`);
+			if (el) panZoom?.centerOnElement(el);
+		});
+		return () => cancelAnimationFrame(frame);
+	});
+
 	/** observe 時 ResizeObserver 會先回報一次初始尺寸，不用另外量 */
 	function measure(id: string): Attachment<HTMLElement> {
 		return (el) => {
@@ -94,7 +111,7 @@
 
 <PanZoom bind:this={panZoom} minZoom={0.1} maxZoom={5} zoomStep={0.05}>
 	{#snippet children()}
-		<div class="mindmap" style="width: {placement.width}px; height: {placement.height}px;">
+		<div class="mindmap" bind:this={canvas} style="width: {placement.width}px; height: {placement.height}px;">
 			<svg class="edges" width={placement.width} height={placement.height} viewBox="0 0 {placement.width} {placement.height}">
 				{#each placement.edges as edge (edge.from + ">" + edge.to)}
 					<path d={edge.path} style={branchStyle(edge.branch)} />

@@ -23,6 +23,10 @@ export type HostState = {
 	focusId: string | null;
 	/** 最後一次套用的展開層數（0 = 全部），「展開一層 / 收合一層」的基準 */
 	expandDepth: number;
+	/** 點選的節點 id，麵包屑顯示它的路徑；null 為還沒選 */
+	selectedId: string | null;
+	/** 要求佈局把節點帶到畫面上；seq 遞增讓同一個 id 也能再觸發 */
+	reveal: { id: string; seq: number } | null;
 	/** 子樹被收合的節點 */
 	collapsed: SvelteSet<string>;
 	/** 點開 icon 列的節點 */
@@ -39,6 +43,8 @@ export function createHostState(
 		showIcons: false,
 		focusId: null,
 		expandDepth: 0,
+		selectedId: null,
+		reveal: null,
 		collapsed: new SvelteSet<string>(),
 		iconsOpen: new SvelteSet<string>(),
 		litTypes: new SvelteMap<string, ReadonlySet<string>>(),
@@ -53,4 +59,6 @@ export function resetNodeState(state: HostState) {
 	state.litTypes.clear();
 	state.focusId = null;
 	state.expandDepth = 0;
+	state.selectedId = null;
+	state.reveal = null;
 }
