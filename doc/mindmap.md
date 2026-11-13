@@ -116,6 +116,56 @@ LayoutHost 麵包屑、TreeNodeBox 右鍵與「…」、HeadingsView 的 layers 
 ### 這輪不做
 縮放至全圖、小地圖、點標題置中、「用大綱開啟此子樹」、依層級調整字級與線粗。
 
+## 編輯功能共識 (2026-11-13)
+
+### 分層
+- `core/edit.ts` 純函式：節點編輯範圍、新增兄弟、新增子節點、刪除、搬移、調層級。輸入樹與原文，輸出文字補丁 `{from, to, insert}`，vitest 可測。
+- `service/document-editor.ts`：headless CodeMirror EditorState 當文件鏡像，帶 history；補丁套上後用 `vault.process` 寫回；
+  外部改動（metadataCache.changed 的 doc 與鏡像不同）進來就重設鏡像並清歷史。
+- view 只負責進出編輯模式與鍵盤滑鼠，不直接碰文字。
+
+### 節點內編輯
+- 用 `createEmbeddableMarkdownEditor`（Obsidian 自己的編輯器）取代節點的標題列與內容區。
+- 範圍：heading 節點是標題行到第一個子 heading 之前的全部內容，含已升級的段落；list item 只有自己這一項（不含巢狀子項）；其他升級段落只有自己。
+- list item 的縮排：進編輯器前去掉共同縮排，寫回時每一行補回原本的縮排字串（使用者多打的子項也一起縮）。
+- 進入：雙擊、F2、節點選單「編輯」。離開並一次寫回：Mod+Enter、點外面。沒有獨立的取消鍵，離開前用 Mod+Z 復原。
+  編輯器的其他預設按鍵一律不攔（Enter 清單接續、Esc 取消選取、Mod+B 等照 Obsidian）；Mod+Enter 原本是切換核取方塊，在節點編輯器裡被「送出」蓋掉。
+  編輯中不即時寫回，cache 更新不重建樹。
+- 寫回時檔案已被外部改過（快照不同）：不硬套，Notice 說明並把輸入放進剪貼簿。
+
+### 新增與刪除
+- Enter 新增兄弟：插在選取節點整個子樹之後；heading 同層級 `#` 前綴、list item 同縮排 `- `、升級段落空段落。
+- Tab 新增子節點：heading 加在子樹最後、層級加一（最多 6）；list item 加在子項最後、縮排再加一層；升級段落不能加子節點。
+  縮排單位從文件既有巢狀項目偵測，偵測不到用 Tab。
+- 新增後立刻選取並進入編輯模式。Delete 刪除含子樹，先確認。
+- 滑鼠走節點選單：編輯、新增兄弟、新增子節點、刪除。只在 view 內監聽按鍵，不註冊全域指令。
+
+### 方向鍵
+- 只在看得到的節點間移動，到邊界不動，沒選取時選根。
+- 大綱與樹狀表格：上下為上一列 / 下一列，左父、右第一個子。
+- 心智圖：上下為兄弟；左右依分支側別（右側分支右=子、左=父，左側相反）；根節點左右各到該側第一個子節點。
+- 移動後一律閃光暈；節點（含把手）有部分在視口外才平移到整個節點可見，節點比視口大就對齊上緣左緣。麵包屑定位維持置中。
+  實作：reveal 多一個 mode（center / ensure）。
+
+### 復原
+- Mod+Z / Mod+Shift+Z 在 view 有焦點時走 DocumentEditor 的 history，涵蓋新增、刪除、搬移與節點內編輯。
+
+### 第一階段實作狀態 (2026-11-13)
+完成：core/edit.ts（+ tests/core/edit.test.ts，13 項）、service/document-editor.ts、view/node-editing.ts、view/keyboard-nav.ts（+ 5 項測試）、
+view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與焦點、節點選單四個項目、PanZoom.ensureVisible、reveal mode。
+實作上的取捨：
+- 新增節點後要等 cache 更新才有節點，所以 NodeEditing 記住新節點的文字起點，收到新樹時用 range.from 找到它再進入編輯。
+- 升級段落的兄弟插入「新段落」佔位文字（cache 不會為空行建 section），編輯器掛上時全選，直接打字就取代。
+- 以段落為兄弟但 paragraph 沒升級成節點時，新段落會併進父 heading 的內容區，找不到節點就不進入編輯。
+- list item 的 range 從「-」開始，第一行縮排在 range 外，寫回只對第二行以後補縮排。
+- 每節結尾的 `---` 是 thematicBreak section，屬於前一個 heading，新增兄弟會插在它後面。
+手動測試要看：嵌入式編輯器失焦（onBlur）會不會被連結補全的彈窗觸發；Mod+Z 在 view 有焦點時是否被 Obsidian 的全域快捷鍵搶走；
+手機上雙擊與 F2 都沒有，只能走「…」選單的「編輯」。
+
+### 拖曳（第二階段）
+- 拖到節點上變成它的最後一個子節點，可跨父節點；heading 子樹整體調層級（h2 搬到 h3 底下變 h4，子孫跟著加）。
+- 兄弟之間的插入線第二版再做。
+
 ## 進度 (2026-11-11)
 設計共識的 8 個步驟都已實作：分層重構、設定遷移、統一 view 與 YAML、三種佈局、節點互動、升級節點、PanZoom 雙指、BlockView 改名。
 以 vitest 與 svelte-check 驗證，尚未在 Obsidian 內手動測試，第一次實際開啟時要看的點：

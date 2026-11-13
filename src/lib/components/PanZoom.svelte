@@ -274,6 +274,24 @@
 		panY -= dy * zoom;
 	}
 
+	/**
+	 * 元素有任何一部分在視口外才平移，而且只移到剛好整個看得到；比視口大就對齊上緣與左緣。
+	 * margin 留給貼在節點外的收合把手。
+	 */
+	export function ensureVisible(el: Element, margin = 20) {
+		if (!viewport) return;
+		const box = viewport.getBoundingClientRect();
+		const target = el.getBoundingClientRect();
+		const shift = (lo: number, hi: number, viewLo: number, viewHi: number): number => {
+			if (hi - lo > viewHi - viewLo - 2 * margin) return viewLo + margin - lo;
+			if (lo < viewLo + margin) return viewLo + margin - lo;
+			if (hi > viewHi - margin) return viewHi - margin - hi;
+			return 0;
+		};
+		panX += shift(target.left, target.right, box.left, box.right);
+		panY += shift(target.top, target.bottom, box.top, box.bottom);
+	}
+
 	/** 把內容層裡的某個元素置中；用螢幕上的矩形反推內容座標，不用知道佈局怎麼擺的 */
 	export function centerOnElement(el: Element) {
 		if (!viewport || !content) return;

@@ -19,10 +19,18 @@ export type NodeUi = {
 	showNodeMenu(node: TreeNode, evt: MouseEvent): void;
 	/** 點選節點：麵包屑顯示它的路徑 */
 	select(id: string): void;
+	/** 進入節點內編輯 */
+	edit(id: string): void;
+	/** 把 Obsidian 的嵌入式編輯器掛到節點上，離開時寫回；由 view 實作 */
+	mountEditor(node: TreeNode): Attachment<HTMLElement>;
+	/** 鍵盤與選單共用的結構操作；由 view 實作 */
+	command(command: NodeCommand, node: TreeNode): void;
 };
 
+export type NodeCommand = "addSibling" | "addChild" | "delete" | "undo" | "redo";
+
 /** view 提供、需要 Obsidian app 的動作 */
-export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter" | "showNodeMenu">;
+export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter" | "showNodeMenu" | "edit" | "mountEditor" | "command">;
 
 export const NODE_UI = Symbol("headings-node-ui");
 
@@ -51,4 +59,7 @@ export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => 
 	select(id) {
 		selectNode(state, id);
 	},
+	edit: actions.edit,
+	mountEditor: actions.mountEditor,
+	command: actions.command,
 });

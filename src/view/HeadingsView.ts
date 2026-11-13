@@ -17,6 +17,8 @@ import type { LayoutId } from "../layout/layout";
 import { layoutLabel, sectionTypeLabel } from "../labels";
 import { defaultLitTypes } from "../settings-model";
 import { t } from "../i18n";
+import { NodeEditing } from "./node-editing";
+import type { NodeCommand } from "./node-ui";
 import {
     applyCollapseOthers,
     applyCollapseSubtree,
@@ -58,6 +60,17 @@ export class HeadingsView extends ItemView {
         branchBackground: this.plugin.settings.nodeStyle.branchBackground,
     });
     private docService: PluginDocumentService = PluginDocumentService.create(this.plugin);
+    /** 節點編輯：進出編輯模式、新增 / 刪除、復原；離開編輯後把編輯中收到的檔案內容補套上 */
+    private editing = new NodeEditing(
+        this.app,
+        this.hostState,
+        (from, to) => this.loaded?.doc.slice(from, to) ?? "",
+        () => {
+            if (this.pendingLoaded) this.applyLoaded(this.pendingLoaded);
+        },
+    );
+    /** 編輯中收到的最後一份檔案內容 */
+    private pendingLoaded: Loaded | null = null;
 
     /** 目前顯示中的檔案內容；YAML 寫入後 metadataCache.changed 會再推一次新的 */
     private loaded: Loaded | null = null;
@@ -101,6 +114,9 @@ export class HeadingsView extends ItemView {
                 actions: {
                     showLinks: (node: TreeNode, evt: MouseEvent) => this.showLinksMenu(node, evt),
                     showNodeMenu: (node: TreeNode, evt: MouseEvent) => this.showNodeMenu(node, evt),
+                    edit: (id: string) => this.editing.startEdit(id),
+                    mountEditor: (node: TreeNode) => this.editing.mountEditor(node),
+                    command: (command: NodeCommand, node: TreeNode) => void this.editing.run(command, node),
                     // YAML 區塊畫成屬性面板；不是合法 frontmatter 就退回 markdown 渲染
                     renderFrontmatter: (text: string) => (element: HTMLElement) => {
                         element.replaceChildren();
@@ -178,11 +194,18 @@ export class HeadingsView extends ItemView {
 
     /** 名字避開 Component.load() */
     private applyLoaded(loaded: Loaded) {
+        // 編輯中不重建樹，離開編輯後再套最後一份；寫回時鏡像仍是進入時的快照，才能偵測外部改動
+        if (this.editing.isEditing) {
+            this.pendingLoaded = loaded;
+            return;
+        }
+        this.pendingLoaded = null;
         this.loaded = loaded;
         // cache 更新後 YAML 已經是新值，pending 可以放掉
         this.pendingLayout = null;
         this.pendingNodeTypes = null;
         this.render();
+        this.editing.onLoaded(loaded.file, loaded.doc);
     }
 
     /** 唯一的建樹路徑：adapter 建完整樹 → 依 YAML / 設定 promote → 交給 LayoutHost */
@@ -237,6 +260,29 @@ export class HeadingsView extends ItemView {
         const state = this.hostState;
         const isVisibleRoot = visibleRoot(state)?.id === node.id;
         const menu = new Menu();
+        menu.addItem((item) => item.setTitle(t("nodeMenuEdit")).setIcon("pencil").onClick(() => this.editing.startEdit(node.id)));
+        menu.addItem((item) =>
+            item
+                .setTitle(t("nodeMenuAddSibling"))
+                .setIcon("list-plus")
+                .setDisabled(node.kind === "root")
+                .onClick(() => void this.editing.run("addSibling", node)),
+        );
+        menu.addItem((item) =>
+            item
+                .setTitle(t("nodeMenuAddChild"))
+                .setIcon("git-branch-plus")
+                .setDisabled(node.kind === "section")
+                .onClick(() => void this.editing.run("addChild", node)),
+        );
+        menu.addItem((item) =>
+            item
+                .setTitle(t("nodeMenuDelete"))
+                .setIcon("trash")
+                .setDisabled(node.kind === "root")
+                .onClick(() => void this.editing.run("delete", node)),
+        );
+        menu.addSeparator();
         menu.addItem((item) =>
             item.setTitle(t("nodeMenuCollapseOthers")).setIcon("fold-vertical").onClick(() => applyCollapseOthers(state, node.id)),
         );

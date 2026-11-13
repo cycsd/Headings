@@ -90,7 +90,9 @@
 		if (!request) return;
 		const frame = requestAnimationFrame(() => {
 			const el = canvas?.querySelector(`[data-node-id="${CSS.escape(request.id)}"]`);
-			if (el) panZoom?.centerOnElement(el);
+			if (!el) return;
+			if (request.mode === "ensure") panZoom?.ensureVisible(el);
+			else panZoom?.centerOnElement(el);
 		});
 		return () => cancelAnimationFrame(frame);
 	});

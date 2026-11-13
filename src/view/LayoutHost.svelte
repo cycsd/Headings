@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { setContext } from "svelte";
-	import { Menu, setIcon, type IconName } from "obsidian";
+	import { Menu, Platform, setIcon, type IconName } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
 	import type { HostState } from "./host-state.svelte";
 	import type { LayoutProps } from "./layout-props";
 	import { getLayout } from "./layout-registry";
-	import { createNodeUi, NODE_UI, type NodeActions } from "./node-ui";
-	import { pathTo } from "../core/tree-ops";
+	import { createNodeUi, NODE_UI, type NodeActions, type NodeCommand } from "./node-ui";
+	import { findNode, pathTo } from "../core/tree-ops";
 	import type { TreeNode } from "../core/tree";
 	import { crumbIcon, crumbLabel } from "./breadcrumb";
 	import { revealNode, setFocus, visibleRoot } from "./tree-state";
+	import { navigate, type NavKey } from "./keyboard-nav";
 
 	interface Props {
 		state: HostState;
@@ -28,6 +29,7 @@
 	let entry = $derived(getLayout(state.layoutId));
 	/** 聚焦中只畫子樹；聚焦節點不存在時 visibleRoot 已退回完整樹 */
 	let visible = $derived(visibleRoot(state));
+
 	/** 聚焦節點在文件更新後消失就自動退回完整樹 */
 	$effect(() => {
 		if (state.tree && state.focusId !== null && pathTo(state.tree, state.focusId).length === 0) setFocus(state, null);
@@ -61,6 +63,62 @@
 		menu.showAtMouseEvent(evt);
 	}
 
+	/**
+	 * 鍵盤：方向鍵在看得到的節點間移動；Enter / Tab / F2 / Delete 是結構操作；Mod+Z / Mod+Shift+Z / Mod+Y 復原。
+	 * 編輯中交給編輯器自己處理，這裡不碰。
+	 */
+	// bind:this 在掛載時就設好，effect 跑的時候已經有值；不用 $state 是因為這裡的 prop 叫 state，會跟 rune 撞名
+	// svelte-ignore non_reactive_update
+	let container: HTMLElement | undefined;
+	const ARROWS: Record<string, NavKey> = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+
+	function selectedNode(): TreeNode | null {
+		return state.tree && state.selectedId !== null ? findNode(state.tree, state.selectedId) : null;
+	}
+
+	function handleKeydown(evt: KeyboardEvent) {
+		if (state.editingId !== null || !visible) return;
+		const mod = Platform.isMacOS ? evt.metaKey : evt.ctrlKey;
+
+		const arrow = ARROWS[evt.key];
+		if (arrow && !mod) {
+			evt.preventDefault();
+			if (state.selectedId === null) {
+				revealNode(state, visible.id, "ensure");
+				return;
+			}
+			const next = navigate(visible, state.collapsed, state.layoutId, state.selectedId, arrow);
+			if (next) revealNode(state, next.id, "ensure");
+			return;
+		}
+
+		let command: NodeCommand | null = null;
+		if (mod && !evt.altKey && evt.key.toLowerCase() === "z") command = evt.shiftKey ? "redo" : "undo";
+		else if (mod && !evt.altKey && evt.key.toLowerCase() === "y") command = "redo";
+		else if (!mod && evt.key === "Enter") command = "addSibling";
+		else if (!mod && evt.key === "Tab") command = "addChild";
+		else if (!mod && evt.key === "Delete") command = "delete";
+		else if (!mod && evt.key === "F2") {
+			const node = selectedNode();
+			if (!node) return;
+			evt.preventDefault();
+			actions.edit(node.id);
+			return;
+		}
+		if (!command) return;
+
+		const node = selectedNode() ?? (command === "undo" || command === "redo" ? visible : null);
+		if (!node) return;
+		evt.preventDefault();
+		evt.stopPropagation();
+		actions.command(command, node);
+	}
+
+	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器 */
+	$effect(() => {
+		if (state.selectedId !== null && state.editingId === null) container?.focus({ preventScroll: true });
+	});
+
 	function icon(name: IconName): Attachment<HTMLElement> {
 		return (el) => {
 			setIcon(el, name);
@@ -69,29 +127,40 @@
 </script>
 
 {#if state.tree && visible}
-	<nav class="crumbs" aria-label="Breadcrumb">
-		{#each crumbs as node, i (node.id)}
-			{#if i > 0}<span class="sep" {@attach icon("chevron-right")}></span>{/if}
-			<button
-				type="button"
-				class="crumb"
-				class:current={i === crumbs.length - 1}
-				disabled={i === 0 ? node.children.length === 0 : false}
-				onclick={(evt) => showSiblings(i, evt)}
-			>
-				<span class="ico" {@attach icon(crumbIcon(node))}></span>
-				<span class="label">{crumbLabel(node, getText)}</span>
-			</button>
-		{/each}
-	</nav>
-	<!-- 換佈局或換聚焦根都重新掛載，mindmap 才會把新的根置中 -->
-	{#key `${entry.id}:${state.focusId ?? ""}`}
-		{@const Layout = entry.component}
-		<Layout tree={visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} collapsed={state.collapsed} />
-	{/key}
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_static_element_interactions -->
+	<div class="host" role="tree" tabindex="-1" bind:this={container} onkeydown={handleKeydown}>
+		<nav class="crumbs" aria-label="Breadcrumb">
+			{#each crumbs as node, i (node.id)}
+				{#if i > 0}<span class="sep" {@attach icon("chevron-right")}></span>{/if}
+				<button
+					type="button"
+					class="crumb"
+					class:current={i === crumbs.length - 1}
+					disabled={i === 0 ? node.children.length === 0 : false}
+					onclick={(evt) => showSiblings(i, evt)}
+				>
+					<span class="ico" {@attach icon(crumbIcon(node))}></span>
+					<span class="label">{crumbLabel(node, getText)}</span>
+				</button>
+			{/each}
+		</nav>
+		<!-- 換佈局或換聚焦根都重新掛載，mindmap 才會把新的根置中 -->
+		{#key `${entry.id}:${state.focusId ?? ""}`}
+			{@const Layout = entry.component}
+			<Layout tree={visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} collapsed={state.collapsed} />
+		{/key}
+	</div>
 {/if}
 
 <style>
+	/* 容器吃滿 view 的內容區，裡面再是 flex column：麵包屑 + 佈局 */
+	.host {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		min-height: 0;
+		outline: none;
+	}
 	.crumbs {
 		flex: none;
 		display: flex;

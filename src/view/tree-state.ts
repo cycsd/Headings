@@ -1,6 +1,6 @@
 import type { TreeNode } from "../core/tree";
 import { collapseOthers, collapseSubtree, expandPath, expandSubtree, findNode, maxDepth, stepDepth, withDepth } from "../core/tree-ops";
-import type { HostState } from "./host-state.svelte";
+import type { HostState, RevealMode } from "./host-state.svelte";
 
 /**
  * HostState 上的樹操作：聚焦、展開層級、收合其他。
@@ -70,11 +70,11 @@ export const selectNode = (state: HostState, id: string) => {
  * 從麵包屑選到節點：祖先全部展開、目標在聚焦子樹之外就先離開聚焦，
  * 再設為選取並要求佈局把它帶到畫面上。
  */
-export const revealNode = (state: HostState, id: string) => {
+export const revealNode = (state: HostState, id: string, mode: RevealMode = "center") => {
 	if (!state.tree || !findNode(state.tree, id)) return;
 	replaceCollapsed(state, expandPath(state.tree, id, state.collapsed));
 	const focused = visibleRoot(state);
 	if (state.focusId !== null && (!focused || !findNode(focused, id))) setFocus(state, null);
 	state.selectedId = id;
-	state.reveal = { id, seq: (state.reveal?.seq ?? 0) + 1 };
+	state.reveal = { id, seq: (state.reveal?.seq ?? 0) + 1, mode };
 };

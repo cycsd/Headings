@@ -17,7 +17,7 @@
 		const request = ui.state.reveal;
 		if (!request) return;
 		const frame = requestAnimationFrame(() => {
-			container?.querySelector(`[data-node-id="${CSS.escape(request.id)}"]`)?.scrollIntoView({ block: "center" });
+			container?.querySelector(`[data-node-id="${CSS.escape(request.id)}"]`)?.scrollIntoView({ block: request.mode === "ensure" ? "nearest" : "center" });
 		});
 		return () => cancelAnimationFrame(frame);
 	});

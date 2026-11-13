@@ -84,6 +84,15 @@
 	}
 
 	let selected = $derived(ui.state.selectedId === node.id);
+	let editing = $derived(ui.state.editingId === node.id);
+
+	/** 雙擊節點本體進入編輯；按鈕、連結與編輯器本身除外 */
+	function handleDoubleClick(evt: MouseEvent) {
+		if (editing) return;
+		if (evt.target instanceof Element && evt.target.closest("button, a")) return;
+		evt.preventDefault();
+		ui.edit(node.id);
+	}
 
 	/**
 	 * 從麵包屑定位到這個節點時閃一下光暈。reveal.seq 變了就重播；
@@ -125,8 +134,13 @@
 	data-node-id={node.id}
 	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}"
 	onclick={handleClick}
+	ondblclick={handleDoubleClick}
 	oncontextmenu={openMenu}
 >
+	{#if editing}
+		<!-- 編輯模式：Obsidian 的嵌入式編輯器取代標題列與內容區；Mod+Enter / Mod+S / 點外面離開並寫回 -->
+		<div class="editor" {@attach ui.mountEditor(node)}></div>
+	{:else}
 	<div class="head">
 
 		<div class="title" class:plain={!isHeading} {@attach onRenderMarkdown(headText)}></div>
@@ -204,6 +218,7 @@
 				{/if}
 			{/each}
 		</div>
+	{/if}
 	{/if}
 
 	{#if hasChildren && handleSide !== "none"}
@@ -293,6 +308,18 @@
 		.node.flash {
 			animation: none;
 		}
+	}
+	/* 編輯中：節點拉到最大寬度，讓編輯器有空間；內容超過最大高度也在節點內捲動 */
+	.editor {
+		width: var(--max-node-width);
+		max-width: 100%;
+		max-height: var(--max-node-height);
+		overflow: auto;
+		font-weight: normal;
+		cursor: text;
+	}
+	.editor :global(.cm-editor) {
+		background: transparent;
 	}
 	.head {
 		display: flex;

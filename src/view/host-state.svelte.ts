@@ -2,6 +2,8 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import type { LayoutId } from "../layout/layout";
 import type { TreeNode } from "../core/tree";
 
+export type RevealMode = "center" | "ensure";
+
 /**
  * ItemView 與 Svelte 之間共享的反應式狀態；view 改這個物件，LayoutHost 就重新渲染。
  * 節點層級的狀態都以穩定 id 為 key，三種佈局共用，切換佈局或重新解析時不會丟。
@@ -25,8 +27,10 @@ export type HostState = {
 	expandDepth: number;
 	/** 點選的節點 id，麵包屑顯示它的路徑；null 為還沒選 */
 	selectedId: string | null;
-	/** 要求佈局把節點帶到畫面上；seq 遞增讓同一個 id 也能再觸發 */
-	reveal: { id: string; seq: number } | null;
+	/** 要求佈局把節點帶到畫面上；seq 遞增讓同一個 id 也能再觸發。center 置中、ensure 只在看不到時最小平移 */
+	reveal: { id: string; seq: number; mode: RevealMode } | null;
+	/** 正在節點內編輯的節點 id */
+	editingId: string | null;
 	/** 子樹被收合的節點 */
 	collapsed: SvelteSet<string>;
 	/** 點開 icon 列的節點 */
@@ -45,6 +49,7 @@ export function createHostState(
 		expandDepth: 0,
 		selectedId: null,
 		reveal: null,
+		editingId: null,
 		collapsed: new SvelteSet<string>(),
 		iconsOpen: new SvelteSet<string>(),
 		litTypes: new SvelteMap<string, ReadonlySet<string>>(),
@@ -61,4 +66,5 @@ export function resetNodeState(state: HostState) {
 	state.expandDepth = 0;
 	state.selectedId = null;
 	state.reveal = null;
+	state.editingId = null;
 }

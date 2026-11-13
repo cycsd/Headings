@@ -95,7 +95,7 @@ interface MarkdownEditorProps {
         mod: boolean,
         shift: boolean
     ) => boolean;
-    onEscape: (editor: EmbeddableMarkdownEditor) => void;
+    onEscape: (editor: EmbeddableMarkdownEditor) => boolean | void;
     onSubmit: (editor: EmbeddableMarkdownEditor) => void;
     onBlur: (editor: EmbeddableMarkdownEditor) => void;
     onPaste: (e: ClipboardEvent, editor: EmbeddableMarkdownEditor) => void;
@@ -164,9 +164,6 @@ export class EmbeddableMarkdownEditor {
         this.options = { ...defaultProperties, ...options };
         this.initial_value = this.options.value!;
         this.scope = new Scope(app.scope);
-
-        // Prevent Mod+Enter default behavior
-        this.scope.register(["Mod"], "Enter", () => true);
 
         // Use monkey-around to safely patch the method.
         // The factory is an arrow function, so `this` is this EmbeddableMarkdownEditor,
@@ -280,37 +277,26 @@ export class EmbeddableMarkdownEditor {
         // Add keyboard handlers
         const keyBindings: KeyBinding[] = [
             {
-                key: "Enter",
-                run: () => this.options.onEnter(this, false, false),
-                shift: () => this.options.onEnter(this, false, true),
-            },
-            {
                 key: "Mod-Enter",
                 run: () => this.options.onEnter(this, true, false),
                 shift: () => this.options.onEnter(this, true, true),
             },
             {
+                // onEscape 回傳 true 才算處理；否則交給 CodeMirror 預設（取消選取）
                 key: "Escape",
-                run: () => {
-                    this.options.onEscape(this);
-                    return true;
-                },
-                preventDefault: true,
+                run: () => this.options.onEscape(this) === true,
             },
         ];
-
-        // For single line mode, prevent Enter key from creating new lines
-        if (this.options.singleLine) {
-            keyBindings[0] = {
-                key: "Enter",
-                // In single line mode, Enter should trigger onEnter
-                run: () => this.options.onEnter(this, false, false),
-                // Even with shift, still call onEnter in single line mode
-                shift: () => this.options.onEnter(this, false, true),
-            };
-        }
-
         extensions.push(Prec.highest(keymap.of(keyBindings)));
+
+        // 一般 Enter 放最低優先權：Obsidian 自己的換行（含清單接續）先處理；
+        // 沒人處理才輪到 onEnter，所以 onEnter 收到一般 Enter 時代表要自己換行。單行模式則一律攔下。
+        const enterBinding: KeyBinding = {
+            key: "Enter",
+            run: () => this.options.onEnter(this, false, false),
+            shift: () => this.options.onEnter(this, false, true),
+        };
+        extensions.push(this.options.singleLine ? Prec.highest(keymap.of([enterBinding])) : Prec.lowest(keymap.of([enterBinding])));
 
         return extensions;
     }
