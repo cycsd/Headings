@@ -9,7 +9,7 @@
 	import { findNode, pathTo, withDropPlaceholder } from "../core/tree-ops";
 	import type { TreeNode } from "../core/tree";
 	import { crumbIcon, crumbLabel } from "./breadcrumb";
-	import { revealNode, setFocus, visibleRoot } from "./tree-state";
+	import { applyCollapseSubtree, applyExpandSubtree, requestReveal, revealNode, setFocus, visibleRoot } from "./tree-state";
 	import { navigate, type NavKey } from "./keyboard-nav";
 
 	interface Props {
@@ -64,7 +64,7 @@
 	}
 
 	/**
-	 * 鍵盤：方向鍵在看得到的節點間移動；Enter / Tab / F2 / Delete 是結構操作；Mod+Z / Mod+Shift+Z / Mod+Y 復原。
+	 * 鍵盤：方向鍵在看得到的節點間移動；Space / Shift+Space 收合展開；Enter / Tab / F2 / Delete 是結構操作；Mod+Z / Mod+Shift+Z / Mod+Y 復原。
 	 * 編輯中交給編輯器自己處理，這裡不碰。
 	 */
 	// bind:this 在掛載時就設好，effect 跑的時候已經有值；不用 $state 是因為這裡的 prop 叫 state，會跟 rune 撞名
@@ -74,6 +74,12 @@
 
 	function selectedNode(): TreeNode | null {
 		return state.tree && state.selectedId !== null ? findNode(state.tree, state.selectedId) : null;
+	}
+
+	/** 子樹裡（含自己）有沒有任何有子節點的節點是收合著的 */
+	function anyCollapsed(node: TreeNode, collapsed: ReadonlySet<string>): boolean {
+		if (node.children.length > 0 && collapsed.has(node.id)) return true;
+		return node.children.some((child) => anyCollapsed(child, collapsed));
 	}
 
 	function handleKeydown(evt: KeyboardEvent) {
@@ -89,6 +95,26 @@
 			}
 			const next = navigate(visible, state.collapsed, state.layoutId, state.selectedId, arrow);
 			if (next) revealNode(state, next.id, "ensure");
+			return;
+		}
+
+		// Space 切換選取節點的子節點（同分叉把手）；Shift+Space 切換整棵子樹（有任何後代收合著就全部展開，否則全部收合）
+		if (!mod && evt.key === " ") {
+			const node = selectedNode();
+			if (!node || node.children.length === 0) return;
+			evt.preventDefault();
+			let expanded: boolean;
+			if (evt.shiftKey) {
+				expanded = anyCollapsed(node, state.collapsed);
+				if (expanded) applyExpandSubtree(state, node.id);
+				else applyCollapseSubtree(state, node.id);
+			} else {
+				expanded = state.collapsed.has(node.id);
+				if (expanded) state.collapsed.delete(node.id);
+				else state.collapsed.add(node.id);
+			}
+			// 展開後節點會因錨點補償稍微移動，帶回畫面；收合不動
+			if (expanded) requestReveal(state, node.id, "ensure", false);
 			return;
 		}
 

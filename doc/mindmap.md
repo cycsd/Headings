@@ -274,6 +274,10 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
   onRenderMarkdown 多帶這段文字的起點 from，算出行起點後交給 NodeEditing.toggleTask → core toggleTask（空格變 x、其他狀態變空格，長度不變）→ write。
   畫面不自己改 DOM，等 cache 更新重畫。button / a / input 都不算點節點（不選取、不拖曳、不進編輯）。
 
+### 鍵盤收合展開 (2026-11-15)
+- 選取節點後 Space 切換它的子節點（同分叉把手），Shift+Space 切換整棵子樹（子樹裡有任何收合就全部展開，否則全部收合）。
+  沒有子節點不做事、不往上收父層（左右鍵已是導覽）。展開後 requestReveal(ensure, 不閃)，收合不動。不另外註冊 Obsidian 指令（使用者不要）。
+
 ## 候選功能 (2026-11-15，待使用者篩選)
 設計過但延後：反向跟隨（編輯器游標 → 高亮節點，做法見上）、Alt+↑/↓ 移動兄弟順序（順便修搬移復原掉子樹狀態）、
 大綱 / 樹狀表格讓位 FLIP 過渡、文件內段落連結畫虛線、區塊縮放、BlockView 第四種佈局、心智圖只往右、手機一輪驗證（拖曳、選取複製、軟鍵盤）。
