@@ -37,6 +37,11 @@ export type MindmapOptions = LayoutOptions & {
     spacing?: Partial<MindmapSpacing>;
     /** 四周留白 */
     padding?: number;
+    /**
+     * 固定根的直接子節點左右分配（拖曳中用，不然塞進落點佔位會讓分支跳邊）。
+     * 不在表裡的節點（佔位）跟前一個兄弟同側，沒有前一個就跟後一個；沒給就依高度自動切。
+     */
+    sides?: ReadonlyMap<string, Side>;
 };
 
 /** 1 右、-1 左、0 根 */
@@ -119,7 +124,7 @@ const measure = (node: TreeNode, depth: number, options: MindmapOptions, spacing
     const subs = visibleChildren(node, options).map((child) => measure(child, depth + 1, options, spacing));
     const base: Sub = { node, w: size.w, h: size.h, children: [], extentTop: -size.h / 2, extentBottom: size.h / 2 };
     if (subs.length === 0) return base;
-    if (depth === 0) return measureRoot(base, subs, spacing);
+    if (depth === 0) return measureRoot(base, subs, spacing, options.sides);
 
     const { anchors, height } = stack(subs, (a, b) => (a.children.length || b.children.length ? spacing.groupGap : spacing.gapY));
     const anchor = (anchors[0]! + anchors.at(-1)!) / 2;
@@ -129,13 +134,30 @@ const measure = (node: TreeNode, depth: number, options: MindmapOptions, spacing
     return base;
 };
 
-/** 根節點：分支切成左右兩組，各自疊好後置中對齊根的 anchor */
-const measureRoot = (base: Sub, subs: Sub[], spacing: MindmapSpacing): Sub => {
-    const k = splitIndex(subs, spacing.branchGapY);
-    const groups: { side: Side; subs: Sub[] }[] = [
-        { side: 1, subs: subs.slice(0, k) },
-        { side: -1, subs: subs.slice(k) },
-    ];
+/** 固定分配：查表；查不到的跟前一個兄弟同側，都查不到就跟後一個，再不然往右 */
+const fixedSides = (subs: Sub[], sides: ReadonlyMap<string, Side>): Side[] => {
+    const result: (Side | undefined)[] = subs.map((sub) => sides.get(sub.node.id));
+    for (let i = 0; i < result.length; i++) if (result[i] === undefined) result[i] = result[i - 1];
+    for (let i = result.length - 1; i >= 0; i--) if (result[i] === undefined) result[i] = result[i + 1];
+    return result.map((side) => side ?? 1);
+};
+
+/** 根節點：分支切成左右兩組（依高度切、或照 sides 固定），各自疊好後置中對齊根的 anchor */
+const measureRoot = (base: Sub, subs: Sub[], spacing: MindmapSpacing, sides?: ReadonlyMap<string, Side>): Sub => {
+    let groups: { side: Side; subs: Sub[] }[];
+    if (sides) {
+        const assigned = fixedSides(subs, sides);
+        groups = [
+            { side: 1, subs: subs.filter((_, i) => assigned[i] === 1) },
+            { side: -1, subs: subs.filter((_, i) => assigned[i] !== 1) },
+        ];
+    } else {
+        const k = splitIndex(subs, spacing.branchGapY);
+        groups = [
+            { side: 1, subs: subs.slice(0, k) },
+            { side: -1, subs: subs.slice(k) },
+        ];
+    }
     let top = base.extentTop;
     let bottom = base.extentBottom;
     for (const group of groups) {

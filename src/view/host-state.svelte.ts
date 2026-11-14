@@ -1,6 +1,7 @@
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import type { LayoutId } from "../layout/layout";
 import type { TreeNode } from "../core/tree";
+import type { DropPosition } from "../core/edit";
 
 export type RevealMode = "center" | "ensure";
 
@@ -15,6 +16,8 @@ export type DragState = {
 	y: number;
 	/** 游標下合法的目標節點，沒有就 null */
 	overId: string | null;
+	/** 對目標做什麼：放進去 / 插前面 / 插後面；overId 為 null 時也是 null */
+	overPosition: DropPosition | null;
 };
 
 /**

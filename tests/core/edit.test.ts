@@ -15,6 +15,7 @@ import {
     subtreeRange,
     applyPatches,
     canMove,
+    canDrop,
     moveNode,
     shiftHeadingLevels,
 } from "../../src/core/edit";
@@ -160,6 +161,12 @@ describe("deleteNode", () => {
         expect(applyPatch(doc, deleteNode(doc, itemB)!)).toContain("- 項目 A\n- 項目 C");
     });
 
+    it("刪清單最後一項：清單與下一段之間的空行留著，下一段不會黏進清單", () => {
+        const lists = byTitle(tree(), "4. 清單");
+        const itemC = lists.children.find((c) => c.kind === "listItem" && c.text?.startsWith("- 項目 C"))!;
+        expect(applyPatch(doc, deleteNode(doc, itemC)!)).toContain("  - 子項目 B-2\n\n有序清單：");
+    });
+
     it("刪最後一個節點時改吃前面的空行；root 不能刪", () => {
         const root = tree();
         const last = byTitle(root, "18. 參考範例（屬性與連結）");
@@ -237,6 +244,95 @@ describe("moveNode", () => {
         const code = byTitle(withCode, "7. 程式碼").children.find((c) => c.kind === "section")!;
         expect(canMove(byTitle(withCode, "1. 文字格式"), code)).toBe(false);
         expect(canMove(code, byTitle(withCode, "1. 文字格式"))).toBe(true);
+    });
+});
+
+describe("moveNode before / after（插在兄弟之間）", () => {
+    const listItemOf = (root: TreeNode, headingTitle: string, prefix: string): TreeNode => {
+        const found = byTitle(root, headingTitle).children.find((c) => c.kind === "listItem" && c.text?.startsWith(prefix));
+        if (!found) throw new Error(`no list item ${prefix}`);
+        return found;
+    };
+
+    it("heading 插在另一個 heading 前面：寫在目標那一行之前、層級改成跟目標一樣，nodeStart 落在標題上", () => {
+        const root = tree();
+        const h5 = byTitle(root, "5. 引用與水平線");
+        const h2 = byTitle(root, "2. 標題層級");
+        const move = moveNode(doc, h5, h2, "before")!;
+        const next = applyPatches(doc, move.patches);
+        expect(next).toContain("## 5. 引用與水平線\n\n> 這是引用。");
+        expect(next.indexOf("## 5. 引用與水平線")).toBeLessThan(next.indexOf("## 2. 標題層級"));
+        expect(next.slice(move.nodeStart, move.nodeStart + 6)).toBe("## 5. ");
+        // 前面那一節結尾的 --- 跟搬過來的標題之間空一行
+        expect(next).toContain("---\n\n## 5. 引用與水平線");
+    });
+
+    it("heading 插在另一個 heading 後面：寫在目標整個子樹之後（含尾端的 ---）", () => {
+        const root = tree();
+        const h1 = byTitle(root, "1. 文字格式");
+        const h5 = byTitle(root, "5. 引用與水平線");
+        const move = moveNode(doc, h1, h5, "after")!;
+        const next = applyPatches(doc, move.patches);
+        expect(next.indexOf("## 1. 文字格式")).toBeGreaterThan(next.indexOf("## 5. 引用與水平線"));
+        expect(next.indexOf("## 1. 文字格式")).toBeLessThan(next.indexOf("## 6. Callout"));
+        expect(next.slice(move.nodeStart, move.nodeStart + 6)).toBe("## 1. ");
+    });
+
+    it("子 heading 插到上一層旁邊會升級：### 搬到 ## 旁變 ##，子樹跟著位移", () => {
+        const root = tree();
+        const h2 = byTitle(root, "2. 標題層級");
+        // 2. 標題層級 底下的 # H1 是真的 h1，所以拿 fixture 另一處：把 h2 自己插到 # H1 後面，變成 h1
+        const h1 = byTitle(root, "H1");
+        const next = applyPatches(doc, moveNode(doc, h2, h1, "after")!.patches);
+        // # H1 的子樹一路到檔尾，所以搬到它後面就是檔尾
+        expect(next).toMatch(/\n\n# 2\. 標題層級\n?$/);
+        expect(next).toContain("---\n\n# H1");
+    });
+
+    it("list item 插在另一項前面 / 後面：縮排跟目標一樣、從行首插入、兄弟之間只隔一個換行", () => {
+        const root = tree();
+        const itemC = listItemOf(root, "4. 清單", "- 項目 C");
+        const itemA = listItemOf(root, "4. 清單", "- 項目 A");
+        const before = moveNode(doc, itemC, itemA, "before")!;
+        const next = applyPatches(doc, before.patches);
+        expect(next).toContain("無序清單：\n\n- 項目 C\n- 項目 A\n- 項目 B\n  - 子項目 B-1");
+        expect(next.slice(before.nodeStart, before.nodeStart + 6)).toBe("- 項目 C");
+
+        const sub1 = listItemOf(root, "4. 清單", "- 項目 B").children[0]!;
+        const sub2 = listItemOf(root, "4. 清單", "- 項目 B").children[1]!;
+        const after = moveNode(doc, sub1, sub2, "after")!;
+        const swapped = applyPatches(doc, after.patches);
+        expect(swapped).toContain("- 項目 B\n  - 子項目 B-2\n  - 子項目 B-1\n- 項目 C");
+        expect(swapped.slice(after.nodeStart, after.nodeStart + 9)).toBe("- 子項目 B-1");
+        // 項目 C 原本是清單最後一項，刪掉它之後清單與下一段之間的空行要留著
+        expect(next).toContain("  - 子項目 B-2\n\n有序清單：");
+    });
+
+    it("巢狀 list item 插到上一層旁邊會減一層縮排", () => {
+        const root = tree();
+        const sub1 = listItemOf(root, "4. 清單", "- 項目 B").children[0]!;
+        const itemB = listItemOf(root, "4. 清單", "- 項目 B");
+        const next = applyPatches(doc, moveNode(doc, sub1, itemB, "after")!.patches);
+        expect(next).toContain("- 項目 B\n  - 子項目 B-2\n- 子項目 B-1\n- 項目 C");
+    });
+
+    it("種類不同、root、自己 / 子孫都不能插前後；原地（相鄰兄弟）由 canDrop 擋掉", () => {
+        const root = tree();
+        const h4 = byTitle(root, "4. 清單");
+        const h5 = byTitle(root, "5. 引用與水平線");
+        const itemA = listItemOf(root, "4. 清單", "- 項目 A");
+        const itemB = listItemOf(root, "4. 清單", "- 項目 B");
+        expect(moveNode(doc, itemA, h4, "before")).toBeNull();
+        expect(moveNode(doc, h4, itemA, "after")).toBeNull();
+        expect(moveNode(doc, h4, root, "after")).toBeNull();
+        expect(moveNode(doc, h4, h4, "before")).toBeNull();
+        expect(moveNode(doc, h4, itemA, "before")).toBeNull();
+        expect(canDrop(root, h4, h5, "before")).toBe(false);
+        expect(canDrop(root, h5, h4, "after")).toBe(false);
+        expect(canDrop(root, h4, h5, "after")).toBe(true);
+        expect(canDrop(root, itemA, itemB, "before")).toBe(false);
+        expect(canDrop(root, itemA, itemB, "after")).toBe(true);
+        expect(canDrop(root, itemA, itemB, "into")).toBe(true);
     });
 });
 

@@ -5,7 +5,7 @@
 	import { SvelteMap } from "svelte/reactivity";
 	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
-	import { mindmapLayout, type Size } from "../layout/mindmap";
+	import { mindmapLayout, type Side, type Size } from "../layout/mindmap";
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
@@ -14,7 +14,9 @@
 
 	/** 量測到的節點尺寸；第一次渲染用預設尺寸，ResizeObserver 回報後重排 */
 	const sizes = new SvelteMap<string, Size>();
-	let placement = $derived(mindmapLayout(tree, { sizes, collapsed }));
+	/** 拖曳中固定根的直接子節點左右分配：拖曳開始時記下來，結束就放掉；不然佔位塞進去會讓分支跳邊 */
+	let frozenSides: ReadonlyMap<string, Side> | undefined = $state();
+	let placement = $derived(mindmapLayout(tree, { sizes, collapsed, sides: frozenSides }));
 
 	/**
 	 * 所有節點共用一個 ResizeObserver，回報先收進 pending，
@@ -98,6 +100,15 @@
 		return () => cancelAnimationFrame(frame);
 	});
 
+	$effect(() => {
+		if (!ui.state.drag) {
+			frozenSides = undefined;
+			return;
+		}
+		if (frozenSides) return;
+		frozenSides = untrack(() => new Map(placement.nodes.filter((n) => n.depth === 1).map((n) => [n.node.id, n.side])));
+	});
+
 	/** 拖曳靠近視口邊緣時自動平移；平移後游標底下的節點換了，要重算落點 */
 	$effect(() => {
 		if (!ui.state.drag) return;
@@ -109,7 +120,7 @@
 				const [dx, dy] = edgePan(drag.x, drag.y, rect);
 				if (dx !== 0 || dy !== 0) {
 					panZoom?.panBy(dx, dy);
-					refreshDropTarget(ui.state);
+					refreshDropTarget(ui.state, [dx, dy]);
 				}
 			}
 			frame = requestAnimationFrame(tick);

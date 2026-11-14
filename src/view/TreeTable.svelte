@@ -40,7 +40,7 @@
 				const [dx, dy] = edgePan(drag.x, drag.y, rect);
 				if (dx !== 0 || dy !== 0) {
 					panZoom?.panBy(dx, dy);
-					refreshDropTarget(ui.state);
+					refreshDropTarget(ui.state, [dx, dy]);
 				}
 			}
 			frame = requestAnimationFrame(tick);

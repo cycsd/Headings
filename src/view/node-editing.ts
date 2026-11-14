@@ -5,7 +5,7 @@ import { insertNewlineAndIndent } from "@codemirror/commands";
 import type { TreeNode } from "../core/tree";
 import { countNodes } from "../core/tree";
 import { findNode, pathTo } from "../core/tree-ops";
-import { commitEdit, deleteNode, editText, insertChild, insertSibling, moveNode, type TextPatch } from "../core/edit";
+import { commitEdit, deleteNode, editText, insertChild, insertSibling, moveNode, type DropPosition, type TextPatch } from "../core/edit";
 import { DocumentConflictError, DocumentEditor } from "../service/document-editor";
 import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
 import type { HostState } from "./host-state.svelte";
@@ -173,13 +173,13 @@ export class NodeEditing {
 		await this.write([insertion.patch]);
 	}
 
-	/** 拖曳搬移：source 子樹變成 target 的最後一個子節點，搬完選取它並帶到畫面上 */
-	async move(sourceId: string, targetId: string) {
+	/** 拖曳搬移：source 子樹搬到 target 的指定位置（放進去 / 插前面 / 插後面），搬完選取它並帶到畫面上 */
+	async move(sourceId: string, targetId: string, position: DropPosition) {
 		if (!this.editor || !this.state.tree) return;
 		const source = findNode(this.state.tree, sourceId);
 		const target = findNode(this.state.tree, targetId);
 		if (!source || !target) return;
-		const result = moveNode(this.editor.doc, source, target);
+		const result = moveNode(this.editor.doc, source, target, position);
 		if (!result) return;
 		this.pendingNew = { start: result.nodeStart, edit: false, selectAll: false };
 		await this.write(result.patches);

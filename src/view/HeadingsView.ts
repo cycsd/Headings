@@ -12,6 +12,7 @@ import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
 import { buildLinks, buildTree } from "../adapter/obsidian-tree";
 import { promote, promoteTypes, type TreeNode } from "../core/tree";
+import type { DropPosition } from "../core/edit";
 import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
 import type { LayoutId } from "../layout/layout";
 import { layoutLabel, sectionTypeLabel } from "../labels";
@@ -117,7 +118,7 @@ export class HeadingsView extends ItemView {
                     edit: (id: string) => this.editing.startEdit(id),
                     mountEditor: (node: TreeNode) => this.editing.mountEditor(node),
                     command: (command: NodeCommand, node: TreeNode) => void this.editing.run(command, node),
-                    moveNode: (sourceId: string, targetId: string) => void this.editing.move(sourceId, targetId),
+                    moveNode: (sourceId: string, targetId: string, position: DropPosition) => void this.editing.move(sourceId, targetId, position),
                     // YAML 區塊畫成屬性面板；不是合法 frontmatter 就退回 markdown 渲染
                     renderFrontmatter: (text: string) => (element: HTMLElement) => {
                         element.replaceChildren();

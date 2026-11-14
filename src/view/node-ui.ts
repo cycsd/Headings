@@ -1,5 +1,6 @@
 import type { Attachment } from "svelte/attachments";
 import type { TreeNode } from "../core/tree";
+import type { DropPosition } from "../core/edit";
 import type { HostState } from "./host-state.svelte";
 import { selectNode } from "./tree-state";
 import { startNodeDrag } from "./node-drag";
@@ -28,8 +29,8 @@ export type NodeUi = {
 	command(command: NodeCommand, node: TreeNode): void;
 	/** 從節點標題列按下開始拖曳；放到合法目標上就搬過去 */
 	startDrag(node: TreeNode, evt: PointerEvent): void;
-	/** 把 source 子樹搬到 target 底下成為最後一個子節點；由 view 實作 */
-	moveNode(sourceId: string, targetId: string): void;
+	/** 把 source 子樹搬到 target 的指定位置（放進去 / 插前面 / 插後面）；由 view 實作 */
+	moveNode(sourceId: string, targetId: string, position: DropPosition): void;
 };
 
 export type NodeCommand = "addSibling" | "addChild" | "delete" | "undo" | "redo";

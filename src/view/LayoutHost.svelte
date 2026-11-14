@@ -115,10 +115,12 @@
 	}
 
 	/**
-	 * 拖曳落點預覽：游標停在合法目標上時，在目標的 children 最後多放一個佔位節點再排佈局，
+	 * 拖曳落點預覽：游標停在合法目標上時，多放一個佔位節點再排佈局（放進去 → 目標 children 最後；插前後 → 兄弟列的那個位置），
 	 * 其他節點會真的讓出空間，佔位畫成虛線框。來源留在原位淡化，不先拿掉。
 	 */
-	let displayTree = $derived(visible && state.drag?.overId ? withDropPlaceholder(visible, state.drag.overId) : visible);
+	let displayTree = $derived(
+		visible && state.drag?.overId && state.drag.overPosition ? withDropPlaceholder(visible, state.drag.overId, state.drag.overPosition) : visible,
+	);
 
 	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器 */
 	$effect(() => {
@@ -225,11 +227,8 @@
 		user-select: none;
 		cursor: grabbing;
 	}
-	/* 跟著游標走的小影子：節點的完整複製縮小後固定定位、不接事件（才不會擋到 elementFromPoint）；太高就裁掉並在底部淡出 */
+	/* 跟著游標走的小影子：節點的完整複製縮小後跟著游標；定位、z-index、pointer-events 由 node-drag.ts 寫 inline（scoped 的 .node 樣式比這裡 specific）。太高就裁掉並在底部淡出 */
 	:global(.headings-drag-clone) {
-		position: fixed;
-		z-index: var(--layer-popover, 30);
-		margin: 0;
 		overflow: hidden;
 		transform-origin: top left;
 		pointer-events: none;

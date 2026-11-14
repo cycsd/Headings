@@ -164,7 +164,7 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
 
 ### 拖曳（第二階段）
 - 拖到節點上變成它的最後一個子節點，可跨父節點；heading 子樹整體調層級（h2 搬到 h3 底下變 h4，子孫跟著加）。
-- 兄弟之間的插入線第二版再做。
+- 兄弟之間的插入見下方「拖曳插入兄弟共識」。
 - 實作狀態 (2026-11-14)：core/edit.ts 的 canMove / moveNode / shiftHeadingLevels（+ 7 項測試）、view/node-drag.ts（pointer 事件、8px 門檻、
   elementFromPoint 找 data-node-id）、HostState.drag、TreeNodeBox 標題列按下開始、來源淡化與目標虛線外框、搬完用 nodeStart 找回節點並選取。
   規則補充：list item → heading 放在該 heading 內容區最後（editRange 末端，含結尾的 ---）；heading → list item、升級段落 → list item 不允許；
@@ -180,6 +180,31 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
 - 目標收合著看不到預覽時，改在目標節點上畫虛線外框。
 - 靠邊自動平移：心智圖與樹狀表格用 PanZoom.panBy、大綱用 scrollBy，邊緣 24px 內每 frame 最多 12px，平移後重算落點。
 - Esc 取消；游標不在合法目標上放開等於取消。放開後複製品移除、節點先回原位，寫回後 cache 更新才出現在新位置並選取。
+- 複製品的 position / z-index / pointer-events 寫 inline：節點的 scoped 樣式 `.node.svelte-xxx` 比 `.headings-drag-clone` specific，
+  寫在 CSS 會被 `.node { position: relative }` 蓋掉，複製品排到 body 最底下看不見（2026-11-14 修正）。
+
+### 拖曳插入兄弟共識 (2026-11-14)
+- 分區：以游標在目標節點上的垂直位置決定操作。「放進去」與「插前後」都合法時上 25% 插前面、中 50% 放進去、下 25% 插後面
+  （以螢幕像素算，邊區至少 8px、最多節點高的 1/3）；只有「放進去」合法時整個節點都是放進去；只有「插前後」合法時上下各半；
+  都不合法就不是目標。不用修飾鍵、不用節點之間的空隙。
+- 合法性：「放進去」沿用原規則。「插前後」只允許同種類（標題↔標題、清單項↔清單項、段落↔段落）；跨種類在文字上會變成別的結構
+  （段落放在 `## H` 前面其實是前一個節點的內容），結果會跟預覽不一致，所以不允許。目標不能是根節點、聚焦時的可見根、自己、自己的子孫；
+  插入位置等於現在位置（放在自己的正上方 / 正下方）視為無效目標。拖到自己父節點的下半部 = 插在父節點後面（往上提一層），合法。
+- 文字位置：插前面 = 寫在目標那一行之前（清單項從行首含縮排）；插後面 = 寫在目標整個子樹之後（含收合中的子孫與尾端的 `---`）。
+  標題階層改成跟目標一樣、子樹跟著位移；清單項縮排改成跟目標一樣；段落純搬位置。
+- 預覽：沿用佔位節點，插在兄弟列的那個 index，其他兄弟讓位；目標外框只在「放進去」且目標收合時畫。
+  心智圖根的直接子節點本來依高度切左右兩半，拖曳中把左右分配固定成拖曳開始時的樣子，佔位跟目標同側，不會跳邊。
+- 大綱與樹狀表格是流式 / grid 排版，讓位直接跳位不加過渡；排版模式不改（換絕對定位要自己量尺寸、表格同列等高也要自己算，
+  只換得拖曳中的滑動）。之後要滑動用 FLIP 疊在現有排版上即可。
+- 鍵盤 Alt+↑/↓ 移動順序這輪不做；核心函式以 position（into / before / after）參數設計，之後接鍵盤只是多一個呼叫。
+- 實作狀態 (2026-11-14)：core/edit.ts 的 DropPosition / canInsertBeside / canMoveTo / canDrop（含原地判斷）、moveNode 加 position 參數；
+  tree-ops.withDropPlaceholder 加 position；HostState.drag.overPosition；node-drag.dropPosition 做分區；mindmapLayout 加 sides 選項，
+  MindMap 在拖曳開始時凍結根子節點的左右分配。vitest +8（edit 6、tree-ops 1、deleteNode 1）。
+  順手修 deleteNode：原本把後面的空行全吃掉，刪清單最後一項會讓下一段黏進清單；改成接合處最多留一個空行、檔尾一個都不留。
+- 抖動修正 (2026-11-14)：使用者回報游標停在分區交界會一直抖。原因是佔位一插進去目標就被推開，用目標的即時矩形重算分區就會
+  「插入 → 目標移走 → 取消 → 目標移回 → 插入」循環。改成錨點制：決定目標時記下它當時的螢幕矩形，游標在矩形內只在矩形內換區、
+  在佔位框（data-drop-placeholder）上維持原決策、離開兩者才重新 elementFromPoint；自動平移時把內容位移量傳進 refreshDropTarget 移動錨點。
+  小影子同時改成只留節點本體，複製時把所有 button（收合把手、icon 列、「…」）拿掉。
 
 ## 進度 (2026-11-11)
 設計共識的 8 個步驟都已實作：分層重構、設定遷移、統一 view 與 YAML、三種佈局、節點互動、升級節點、PanZoom 雙指、BlockView 改名。
@@ -193,7 +218,6 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
 ## 延後項目
 - 文件內段落連結畫虛線：只畫目標解析為同一檔案且有 `#` 片段的連結，起點是含連結的節點，終點是包含目標位置的節點。
   label 取含連結那一句的開頭 10 字，點擊展開全文。SVG overlay 放 PanZoom 內容層內，ResizeObserver 重算。
-- 拖曳重排：第一版只做同父節點重排，寫回重用 HeadingHandlers 的搬移邏輯；跨父節點之後再做。
 - 區塊縮放（本文件最上方）。
 - BlockView 整合成第四個 Layout（含編輯功能）。
 - mindmap「只往右」方向。

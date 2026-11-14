@@ -89,8 +89,8 @@
 	let dragSource = $derived(ui.state.drag?.sourceId === node.id);
 	/** 來源的後代：留在原地淡化 */
 	let dragSubtree = $derived(!dragSource && (ui.state.drag?.subtreeIds.has(node.id) ?? false));
-	/** 目標收合著看不到落點預覽時，才在目標上畫外框 */
-	let dropTarget = $derived(ui.state.drag?.overId === node.id && collapsed);
+	/** 「放進去」且目標收合著看不到落點預覽時，才在目標上畫外框；插前後的佔位在兄弟列，看得到 */
+	let dropTarget = $derived(ui.state.drag?.overId === node.id && ui.state.drag.overPosition === "into" && collapsed);
 	/** 落點預覽的佔位框：跟來源同尺寸的虛線框，不接事件 */
 	let placeholder = $derived(node.id === DROP_PLACEHOLDER_ID);
 	let placeholderSize = $derived(ui.state.drag?.size ?? { w: 160, h: 36 });
@@ -152,6 +152,7 @@
 	class:placeholder
 	class:flash={flashing}
 	data-node-id={placeholder ? undefined : node.id}
+	data-drop-placeholder={placeholder ? "" : undefined}
 	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}{placeholder ? ` width: ${placeholderSize.w}px; height: ${placeholderSize.h}px;` : ""}"
 	onclick={handleClick}
 	ondblclick={handleDoubleClick}

@@ -110,11 +110,11 @@ export const expandPath = (root: TreeNode, id: string, current: ReadonlySet<stri
 export const DROP_PLACEHOLDER_ID = "__drop_placeholder__";
 
 /**
- * 回傳一棵在 target 的 children 最後多一個佔位節點的樹；只淺拷貝 root 到 target 的路徑，其他節點共用。
- * target 不存在就原樣回傳。
+ * 回傳一棵多一個佔位節點的樹：into 放在 target 的 children 最後，before / after 插在 target 父節點的 children 裡 target 的前 / 後。
+ * 只淺拷貝 root 到被改 children 的那個節點的路徑，其他節點共用。target 不存在、或 target 是 root 卻要插前後，就原樣回傳。
  */
-export const withDropPlaceholder = (root: TreeNode, targetId: string): TreeNode => {
-    const path = pathTo(root, targetId);
+export const withDropPlaceholder = (root: TreeNode, targetId: string, position: "into" | "before" | "after" = "into"): TreeNode => {
+    let path = pathTo(root, targetId);
     if (path.length === 0) return root;
     const placeholder: TreeNode = {
         id: DROP_PLACEHOLDER_ID,
@@ -126,7 +126,18 @@ export const withDropPlaceholder = (root: TreeNode, targetId: string): TreeNode 
         links: [],
         children: [],
     };
-    let rebuilt: TreeNode = { ...path[path.length - 1]!, children: [...path[path.length - 1]!.children, placeholder] };
+    let children: TreeNode[];
+    if (position === "into") {
+        children = [...path[path.length - 1]!.children, placeholder];
+    } else {
+        if (path.length < 2) return root;
+        const target = path[path.length - 1]!;
+        path = path.slice(0, -1);
+        children = [...path[path.length - 1]!.children];
+        const index = children.findIndex((c) => c.id === target.id);
+        children.splice(position === "before" ? index : index + 1, 0, placeholder);
+    }
+    let rebuilt: TreeNode = { ...path[path.length - 1]!, children };
     for (let i = path.length - 2; i >= 0; i--) {
         const node = path[i]!;
         rebuilt = { ...node, children: node.children.map((c) => (c.id === path[i + 1]!.id ? rebuilt : c)) };

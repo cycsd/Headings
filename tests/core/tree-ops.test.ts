@@ -132,4 +132,14 @@ describe("withDropPlaceholder", () => {
         expect(preview.children[1]).toBe(root.children[1]);
         expect(withDropPlaceholder(root, "nope")).toBe(root);
     });
+
+    it("before / after 把佔位插在目標父節點 children 裡目標的前 / 後；root 不能插前後", () => {
+        const root = tree();
+        const before = withDropPlaceholder(root, "A2", "before");
+        expect(before.children[0]!.children.map((n) => n.id)).toEqual(["A1", DROP_PLACEHOLDER_ID, "A2"]);
+        const after = withDropPlaceholder(root, "A", "after");
+        expect(after.children.map((n) => n.id)).toEqual(["A", DROP_PLACEHOLDER_ID, "B"]);
+        expect(after.children[0]).toBe(root.children[0]);
+        expect(withDropPlaceholder(root, "root", "before")).toBe(root);
+    });
 });
