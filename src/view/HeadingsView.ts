@@ -12,7 +12,7 @@ import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
 import { buildLinks, buildTree } from "../adapter/obsidian-tree";
 import { promote, promoteTypes, type TreeNode } from "../core/tree";
-import type { DropPosition } from "../core/edit";
+import { taskLineOffsets, type DropPosition } from "../core/edit";
 import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
 import type { LayoutId } from "../layout/layout";
 import { layoutLabel, sectionTypeLabel } from "../labels";
@@ -136,10 +136,22 @@ export class HeadingsView extends ItemView {
                 },
                 getText: (from: number, to: number) => this.loaded?.doc.slice(from, to) ?? "",
                 // 跟 Canvas 文字節點一樣包在閱讀模式容器裡，主題的標題字級、標籤膠囊、callout 等樣式才會套上
-                onRenderMarkdown: (text: string) => (element: HTMLElement) => {
+                onRenderMarkdown: (text: string, from: number) => (element: HTMLElement) => {
                     element.replaceChildren();
                     const host = element.createDiv({ cls: "markdown-embed-content" }).createDiv({ cls: "markdown-preview-view markdown-rendered" });
                     void MarkdownRenderer.render(this.plugin.app, text, host, this.state.file?.path ?? "", this);
+                    // 核取方塊：渲染出來的第 n 個對應原文第 n 個任務行；點了直接切換並寫回，畫面等 cache 更新重畫
+                    const onClick = (evt: MouseEvent) => {
+                        const target = evt.target;
+                        if (!(target instanceof HTMLInputElement) || !target.classList.contains("task-list-item-checkbox")) return;
+                        evt.stopPropagation();
+                        const boxes = Array.from(host.querySelectorAll<HTMLInputElement>("input.task-list-item-checkbox"));
+                        const line = taskLineOffsets(text)[boxes.indexOf(target)];
+                        if (line === undefined) return;
+                        void this.editing.toggleTask(from + line);
+                    };
+                    host.addEventListener("click", onClick);
+                    return () => host.removeEventListener("click", onClick);
                 },
             },
         });

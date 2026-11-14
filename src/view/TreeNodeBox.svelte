@@ -79,9 +79,12 @@
 		ui.showNodeMenu(node, evt);
 	}
 
+	/** 按鈕、連結、核取方塊有自己的行為，點到它們不算點節點 */
+	const CONTROLS = "button, a, input";
+
 	/** 點節點本體就選取；按鈕與連結維持原本行為。拖曳平移不會送出 click，所以不用另外判斷 */
 	function handleClick(evt: MouseEvent) {
-		if (evt.target instanceof Element && evt.target.closest("button, a")) return;
+		if (evt.target instanceof Element && evt.target.closest(CONTROLS)) return;
 		ui.select(node.id);
 	}
 
@@ -99,14 +102,14 @@
 	/** 標題列按下開始拖曳；按鈕、連結、編輯中除外。實際是否算拖曳由移動距離決定 */
 	function handleHeadPointerDown(evt: PointerEvent) {
 		if (editing) return;
-		if (evt.target instanceof Element && evt.target.closest("button, a")) return;
+		if (evt.target instanceof Element && evt.target.closest(CONTROLS)) return;
 		ui.startDrag(node, evt);
 	}
 
 	/** 雙擊節點本體進入編輯；按鈕、連結與編輯器本身除外 */
 	function handleDoubleClick(evt: MouseEvent) {
 		if (editing) return;
-		if (evt.target instanceof Element && evt.target.closest("button, a")) return;
+		if (evt.target instanceof Element && evt.target.closest(CONTROLS)) return;
 		evt.preventDefault();
 		ui.edit(node.id);
 	}
@@ -188,7 +191,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="head" onpointerdown={handleHeadPointerDown}>
 
-		<div class="title" class:plain={!isHeading} {@attach onRenderMarkdown(headText)}></div>
+		<div class="title" class:plain={!isHeading} {@attach onRenderMarkdown(headText, node.range.from)}></div>
 
 		{#if isHeading && (types.length > 0 || hasLinks)}
 			{#if iconsOpen}
@@ -259,7 +262,7 @@
 				{#if section.type === SECTION_TYPES.yaml}
 					<div class="section" {@attach ui.renderFrontmatter(sectionText(section))}></div>
 				{:else}
-					<div class="section" {@attach onRenderMarkdown(sectionText(section))}></div>
+					<div class="section" {@attach onRenderMarkdown(sectionText(section), section.range.from)}></div>
 				{/if}
 			{/each}
 		</div>

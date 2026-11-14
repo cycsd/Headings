@@ -151,6 +151,45 @@ export const deleteNode = (doc: string, node: TreeNode): TextPatch | null => {
     return { from, to, insert: "" };
 };
 
+/** 清單項的核取方塊：清單符號後面的 `[ ]` / `[x]`（含 Obsidian 的自訂狀態如 `[-]`、`[/]`） */
+const TASK_LINE = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+\[)([^\]])\]/;
+
+/**
+ * 一段文字裡每個核取方塊所在行的起點（相對於這段文字），順序跟渲染出來的 checkbox 一致；程式碼圍欄裡的不算。
+ * 渲染出來的第 n 個 checkbox 對應這裡的第 n 個，拿來把點擊對回原文。
+ */
+export const taskLineOffsets = (text: string): number[] => {
+    const offsets: number[] = [];
+    let fence: string | null = null;
+    let offset = 0;
+    for (const line of text.split("\n")) {
+        const open = /^\s*(```+|~~~+)/.exec(line);
+        if (open) {
+            const marker = open[1]!;
+            if (fence === null) fence = marker[0]!.repeat(3);
+            else if (marker.startsWith(fence)) fence = null;
+        } else if (fence === null && TASK_LINE.test(line)) {
+            offsets.push(offset);
+        }
+        offset += line.length + 1;
+    }
+    return offsets;
+};
+
+/**
+ * 切換 offset 所在行的核取方塊：跟 Obsidian 一樣，空格變 x、其他任何狀態變空格。
+ * 那一行不是核取方塊回傳 null。補丁長度不變，不會動到任何節點的位置。
+ */
+export const toggleTask = (doc: string, offset: number): TextPatch | null => {
+    const start = lineStart(doc, offset);
+    const end = doc.indexOf("\n", start);
+    const line = doc.slice(start, end === -1 ? doc.length : end);
+    const match = TASK_LINE.exec(line);
+    if (!match) return null;
+    const at = start + match[1]!.length;
+    return { from: at, to: at + 1, insert: match[2] === " " ? "x" : " " };
+};
+
 /** 補丁套到文字上（測試與鏡像用） */
 export const applyPatch = (doc: string, patch: TextPatch): string => doc.slice(0, patch.from) + patch.insert + doc.slice(patch.to);
 

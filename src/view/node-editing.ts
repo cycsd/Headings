@@ -5,7 +5,7 @@ import { insertNewlineAndIndent } from "@codemirror/commands";
 import type { TreeNode } from "../core/tree";
 import { countNodes } from "../core/tree";
 import { findNode, pathTo } from "../core/tree-ops";
-import { commitEdit, deleteNode, editText, insertChild, insertSibling, moveNode, type DropPosition, type TextPatch } from "../core/edit";
+import { commitEdit, deleteNode, editText, insertChild, insertSibling, moveNode, toggleTask, type DropPosition, type TextPatch } from "../core/edit";
 import { DocumentConflictError, DocumentEditor } from "../service/document-editor";
 import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
 import type { HostState } from "./host-state.svelte";
@@ -259,6 +259,13 @@ export class NodeEditing {
 		if (!insertion) return;
 		this.pendingNew = { start: insertion.nodeStart, edit: true, selectAll: node.kind === "section" };
 		await this.write([insertion.patch]);
+	}
+
+	/** 切換 offset 所在行的核取方塊並寫回；補丁長度不變，編輯中也可以點（不影響編輯範圍的位置） */
+	async toggleTask(offset: number) {
+		if (!this.editor) return;
+		const patch = toggleTask(this.editor.doc, offset);
+		if (patch) await this.write([patch]);
 	}
 
 	/** 拖曳搬移：source 子樹搬到 target 的指定位置（放進去 / 插前面 / 插後面），搬完選取它並帶到畫面上 */

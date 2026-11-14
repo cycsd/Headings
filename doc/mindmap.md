@@ -268,6 +268,18 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
 - 手機上雙指縮放與按鈕點擊範圍。
 已知未處理：tests/util/parse.test.ts 的 import 路徑在重構前就已失效；eslint 缺 `@eslint/json` 模組跑不起來。
 
+### 核取方塊勾選寫回 (2026-11-15)
+- MarkdownRenderer 畫出來的 `input.task-list-item-checkbox` 在非 MarkdownView 容器裡點了不會寫回，自己接 click：
+  渲染出來的第 n 個 checkbox 對應該段原文的第 n 個任務行（core/edit.ts taskLineOffsets，跳過程式碼圍欄），
+  onRenderMarkdown 多帶這段文字的起點 from，算出行起點後交給 NodeEditing.toggleTask → core toggleTask（空格變 x、其他狀態變空格，長度不變）→ write。
+  畫面不自己改 DOM，等 cache 更新重畫。button / a / input 都不算點節點（不選取、不拖曳、不進編輯）。
+
+## 候選功能 (2026-11-15，待使用者篩選)
+設計過但延後：反向跟隨（編輯器游標 → 高亮節點，做法見上）、Alt+↑/↓ 移動兄弟順序（順便修搬移復原掉子樹狀態）、
+大綱 / 樹狀表格讓位 FLIP 過渡、文件內段落連結畫虛線、區塊縮放、BlockView 第四種佈局、心智圖只往右、手機一輪驗證（拖曳、選取複製、軟鍵盤）。
+建議補的：每檔記住收合 / 聚焦 / 展開層數、搜尋過濾節點、checkbox 勾選寫回、點亮內容進視口才渲染、匯出 PNG / SVG / Markdown 大綱。
+另外建議開新功能前先在 Obsidian 內實測這兩天沒驗證的點（Scope 攔 Mod+Enter、衝突 Notice、刪除確認、閱讀模式定位、貼合尺寸）。
+
 ## 延後項目
 - 文件內段落連結畫虛線：只畫目標解析為同一檔案且有 `#` 片段的連結，起點是含連結的節點，終點是包含目標位置的節點。
   label 取含連結那一句的開頭 10 字，點擊展開全文。SVG overlay 放 PanZoom 內容層內，ResizeObserver 重算。

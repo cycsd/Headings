@@ -17,6 +17,8 @@ import {
     canMove,
     canDrop,
     moveNode,
+    taskLineOffsets,
+    toggleTask,
     shiftHeadingLevels,
 } from "../../src/core/edit";
 import {
@@ -175,6 +177,26 @@ describe("deleteNode", () => {
         expect(next.endsWith("---")).toBe(true);
         expect(deleteNode(doc, root)).toBeNull();
         expect(findNode(root, last.id)).not.toBeNull();
+    });
+});
+
+describe("taskLineOffsets / toggleTask", () => {
+    it("列出核取方塊所在行的起點，程式碼圍欄裡的不算", () => {
+        const text = "- [ ] a\n- plain\n  - [x] b\n```\n- [ ] not\n```\n1. [-] c";
+        expect(taskLineOffsets(text)).toEqual([0, 16, 44]);
+    });
+
+    it("空格變 x、其他狀態變空格；不是核取方塊回傳 null；長度不變", () => {
+        const text = "- [ ] a\n- [x] b\n- [-] c\n- plain";
+        expect(applyPatch(text, toggleTask(text, 0)!)).toBe("- [x] a\n- [x] b\n- [-] c\n- plain");
+        expect(applyPatch(text, toggleTask(text, 10)!)).toBe("- [ ] a\n- [ ] b\n- [-] c\n- plain");
+        expect(applyPatch(text, toggleTask(text, 16)!)).toBe("- [ ] a\n- [x] b\n- [ ] c\n- plain");
+        expect(toggleTask(text, 26)).toBeNull();
+    });
+
+    it("在真實文件上：待辦清單的子任務", () => {
+        const at = doc.indexOf("- [ ] 子任務 1");
+        expect(applyPatch(doc, toggleTask(doc, at + 3)!)).toContain("  - [x] 子任務 1\n  - [x] 子任務 2");
     });
 });
 
