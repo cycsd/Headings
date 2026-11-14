@@ -2,6 +2,7 @@ import type { Attachment } from "svelte/attachments";
 import type { TreeNode } from "../core/tree";
 import type { HostState } from "./host-state.svelte";
 import { selectNode } from "./tree-state";
+import { startNodeDrag } from "./node-drag";
 
 /** 節點元件透過 Svelte context 拿到的操作介面，由 LayoutHost 建立 */
 export type NodeUi = {
@@ -25,12 +26,16 @@ export type NodeUi = {
 	mountEditor(node: TreeNode): Attachment<HTMLElement>;
 	/** 鍵盤與選單共用的結構操作；由 view 實作 */
 	command(command: NodeCommand, node: TreeNode): void;
+	/** 從節點標題列按下開始拖曳；放到合法目標上就搬過去 */
+	startDrag(node: TreeNode, evt: PointerEvent): void;
+	/** 把 source 子樹搬到 target 底下成為最後一個子節點；由 view 實作 */
+	moveNode(sourceId: string, targetId: string): void;
 };
 
 export type NodeCommand = "addSibling" | "addChild" | "delete" | "undo" | "redo";
 
 /** view 提供、需要 Obsidian app 的動作 */
-export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter" | "showNodeMenu" | "edit" | "mountEditor" | "command">;
+export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter" | "showNodeMenu" | "edit" | "mountEditor" | "command" | "moveNode">;
 
 export const NODE_UI = Symbol("headings-node-ui");
 
@@ -62,4 +67,8 @@ export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => 
 	edit: actions.edit,
 	mountEditor: actions.mountEditor,
 	command: actions.command,
+	startDrag(node, evt) {
+		startNodeDrag(state, node, evt, actions.moveNode);
+	},
+	moveNode: actions.moveNode,
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, untrack } from "svelte";
 	import { NODE_UI, type NodeUi } from "./node-ui";
+	import { edgePan, refreshDropTarget } from "./node-drag";
 	import { SvelteMap } from "svelte/reactivity";
 	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
@@ -97,6 +98,26 @@
 		return () => cancelAnimationFrame(frame);
 	});
 
+	/** 拖曳靠近視口邊緣時自動平移；平移後游標底下的節點換了，要重算落點 */
+	$effect(() => {
+		if (!ui.state.drag) return;
+		let frame = 0;
+		const tick = () => {
+			const drag = ui.state.drag;
+			const rect = panZoom?.viewportRect();
+			if (drag && rect) {
+				const [dx, dy] = edgePan(drag.x, drag.y, rect);
+				if (dx !== 0 || dy !== 0) {
+					panZoom?.panBy(dx, dy);
+					refreshDropTarget(ui.state);
+				}
+			}
+			frame = requestAnimationFrame(tick);
+		};
+		frame = requestAnimationFrame(tick);
+		return () => cancelAnimationFrame(frame);
+	});
+
 	/** observe 時 ResizeObserver 會先回報一次初始尺寸，不用另外量 */
 	function measure(id: string): Attachment<HTMLElement> {
 		return (el) => {
@@ -113,7 +134,7 @@
 
 <PanZoom bind:this={panZoom} minZoom={0.1} maxZoom={5} zoomStep={0.05}>
 	{#snippet children()}
-		<div class="mindmap" bind:this={canvas} style="width: {placement.width}px; height: {placement.height}px;">
+		<div class="mindmap" class:dragging={ui.state.drag !== null} bind:this={canvas} style="width: {placement.width}px; height: {placement.height}px;">
 			<svg class="edges" width={placement.width} height={placement.height} viewBox="0 0 {placement.width} {placement.height}">
 				{#each placement.edges as edge (edge.from + ">" + edge.to)}
 					<path d={edge.path} style={branchStyle(edge.branch)} />
@@ -139,6 +160,10 @@
 <style>
 	.mindmap {
 		position: relative;
+	}
+	/* 拖曳落點預覽時其他節點讓出空間，加一點過渡才不會跳；平常不加，量測重排才跟手 */
+	.mindmap.dragging .placed {
+		transition: left 120ms ease, top 120ms ease;
 	}
 	.edges {
 		position: absolute;

@@ -132,6 +132,9 @@ export const deleteNode = (doc: string, node: TreeNode): TextPatch | null => {
     if (node.kind === "root") return null;
     const range = subtreeRange(node);
     let { from, to } = range;
+    // list item 的 range 從「-」開始，前面的縮排要一起刪，否則會留在下一行前面變成多餘縮排
+    const start = lineStart(doc, from);
+    if (/^[ \t]*$/.test(doc.slice(start, from))) from = start;
     while (to < doc.length && doc[to] === "\n") to += 1;
     if (to >= doc.length) {
         while (from > 0 && doc[from - 1] === "\n") from -= 1;
@@ -141,3 +144,105 @@ export const deleteNode = (doc: string, node: TreeNode): TextPatch | null => {
 
 /** 補丁套到文字上（測試與鏡像用） */
 export const applyPatch = (doc: string, patch: TextPatch): string => doc.slice(0, patch.from) + patch.insert + doc.slice(patch.to);
+
+/**
+ * 拖曳搬移：把 source 的整個子樹搬到 target 底下，成為它的最後一個子節點。
+ * - heading → heading / root：子樹裡每個標題的層級整體位移到 target 層級加一（最多 6）。
+ * - list item → list item：縮排改成 target 的縮排加一層；list item → heading：變成該 heading 內容區最後的清單。
+ * - 其他升級段落 → heading：搬到該 heading 內容區最後。
+ * - 不能搬到自己或自己的子孫底下；heading 不能搬進 list item；升級段落不能搬進 list item；section 不能當 target。
+ */
+export const canMove = (source: TreeNode, target: TreeNode): boolean => {
+    if (source.kind === "root" || target.kind === "section") return false;
+    if (source.id === target.id || isDescendant(source, target.id)) return false;
+    if (target.kind === "listItem") return source.kind === "listItem";
+    return true;
+};
+
+const isDescendant = (node: TreeNode, id: string): boolean => node.children.some((c) => c.id === id || isDescendant(c, id));
+
+/** 整段文字裡的標題層級全部位移 delta；程式碼圍欄裡的 # 不動 */
+export const shiftHeadingLevels = (text: string, delta: number): string => {
+    if (delta === 0) return text;
+    let fence: string | null = null;
+    return text
+        .split("\n")
+        .map((line) => {
+            const open = /^\s*(```+|~~~+)/.exec(line);
+            if (open) {
+                const marker = open[1]!;
+                if (fence === null) fence = marker[0]!.repeat(3);
+                else if (marker.startsWith(fence)) fence = null;
+                return line;
+            }
+            if (fence !== null) return line;
+            const heading = /^(#{1,6})(\s)/.exec(line);
+            if (!heading) return line;
+            const level = Math.min(6, Math.max(1, heading[1]!.length + delta));
+            return "#".repeat(level) + line.slice(heading[1]!.length);
+        })
+        .join("\n");
+};
+
+/** 把 list item 子樹的縮排從 from 換成 to：第一行（range 從「-」起）直接加 to，其餘行換掉前綴 */
+const reindentList = (text: string, from: string, to: string): string =>
+    text
+        .split("\n")
+        .map((line, i) => {
+            if (i === 0) return to + line;
+            if (line === "") return line;
+            if (line.startsWith(from)) return to + line.slice(from.length);
+            return to + line.replace(/^[ \t]+/, "");
+        })
+        .join("\n");
+
+export type Move = {
+    /** 剪下與貼上兩個補丁，位置都以原文為準 */
+    patches: TextPatch[];
+    /** 搬過去之後節點文字的起點（以套完補丁後的文件為準），cache 更新後用它找回節點 */
+    nodeStart: number;
+};
+
+export const moveNode = (doc: string, source: TreeNode, target: TreeNode, indentUnit = detectIndentUnit(doc)): Move | null => {
+    if (!canMove(source, target)) return null;
+    const cut = deleteNode(doc, source);
+    if (!cut) return null;
+    const raw = doc.slice(source.range.from, subtreeRange(source).to);
+
+    let insert: string;
+    let at: number;
+    /** insert 開頭的分隔與縮排長度，節點文字從它後面開始 */
+    let lead: number;
+    if (source.kind === "heading") {
+        const level = target.kind === "root" ? 1 : (target.level ?? 0) + 1;
+        insert = "\n\n" + shiftHeadingLevels(raw, level - (source.level ?? 1));
+        at = subtreeRange(target).to;
+        lead = 2;
+    } else if (source.kind === "listItem") {
+        const fromIndent = lineIndent(doc, source.range.from);
+        if (target.kind === "listItem") {
+            const indent = lineIndent(doc, target.range.from) + indentUnit;
+            insert = "\n" + reindentList(raw, fromIndent, indent);
+            at = subtreeRange(target).to;
+            lead = 1 + indent.length;
+        } else {
+            insert = "\n\n" + reindentList(raw, fromIndent, "");
+            at = editRange(target).to;
+            lead = 2;
+        }
+    } else {
+        insert = "\n\n" + raw;
+        at = editRange(target).to;
+        lead = 2;
+    }
+
+    // 插入點落在被剪掉的範圍裡（例如搬到自己父節點的最後面）就移到剪掉範圍之後，兩個補丁才不會重疊
+    if (at > cut.from && at < cut.to) at = cut.to;
+    // 插入點在剪掉範圍之後的話，套完補丁後會往前移剪掉的長度
+    const shifted = at >= cut.to ? at - (cut.to - cut.from) : at;
+    return { patches: [cut, { from: at, to: at, insert }], nodeStart: shifted + lead };
+};
+
+/** 多個互不重疊的補丁一次套上（位置都以原文為準），從後往前套就不用重算 offset */
+export const applyPatches = (doc: string, patches: readonly TextPatch[]): string =>
+    [...patches].sort((a, b) => b.from - a.from || b.to - a.to).reduce((text, patch) => applyPatch(text, patch), doc);

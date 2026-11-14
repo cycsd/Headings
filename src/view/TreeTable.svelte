@@ -6,6 +6,7 @@
 	import TreeNodeBox from "./TreeNodeBox.svelte";
 	import { getContext } from "svelte";
 	import { NODE_UI, type NodeUi } from "./node-ui";
+	import { edgePan, refreshDropTarget } from "./node-drag";
 
 	let { tree, getText, onRenderMarkdown, maxNodeWidth, collapsed }: LayoutProps = $props();
 
@@ -28,6 +29,26 @@
 		});
 		return () => cancelAnimationFrame(frame);
 	});
+	/** 拖曳靠近視口邊緣時自動平移；平移後游標底下的節點換了，要重算落點 */
+	$effect(() => {
+		if (!ui.state.drag) return;
+		let frame = 0;
+		const tick = () => {
+			const drag = ui.state.drag;
+			const rect = panZoom?.viewportRect();
+			if (drag && rect) {
+				const [dx, dy] = edgePan(drag.x, drag.y, rect);
+				if (dx !== 0 || dy !== 0) {
+					panZoom?.panBy(dx, dy);
+					refreshDropTarget(ui.state);
+				}
+			}
+			frame = requestAnimationFrame(tick);
+		};
+		frame = requestAnimationFrame(tick);
+		return () => cancelAnimationFrame(frame);
+	});
+
 </script>
 
 <PanZoom bind:this={panZoom} minZoom={0.1} maxZoom={5} zoomStep={0.05}>

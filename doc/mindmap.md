@@ -165,6 +165,21 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
 ### 拖曳（第二階段）
 - 拖到節點上變成它的最後一個子節點，可跨父節點；heading 子樹整體調層級（h2 搬到 h3 底下變 h4，子孫跟著加）。
 - 兄弟之間的插入線第二版再做。
+- 實作狀態 (2026-11-14)：core/edit.ts 的 canMove / moveNode / shiftHeadingLevels（+ 7 項測試）、view/node-drag.ts（pointer 事件、8px 門檻、
+  elementFromPoint 找 data-node-id）、HostState.drag、TreeNodeBox 標題列按下開始、來源淡化與目標虛線外框、搬完用 nodeStart 找回節點並選取。
+  規則補充：list item → heading 放在該 heading 內容區最後（editRange 末端，含結尾的 ---）；heading → list item、升級段落 → list item 不允許；
+  deleteNode 對 list item 會連同前面的縮排一起刪，否則殘留縮排會黏到下一行。
+  第一版的拖曳外觀（游標旁的小影子）被使用者否決，改法見下一節。
+
+### 拖曳外觀共識 (2026-11-14)
+- 小影子：超過 8px 門檻後把節點 DOM 複製一份（完整外觀：邊框、顏色、標題、內容）縮成畫面上的 0.6 倍，左上角固定在游標右下 12px，
+  最高 240px、超過裁掉並底部淡出。原位的節點與子樹留在原地淡化到 0.4，內容照常顯示（使用者否決了虛線佔位與藏內容）。
+  複製品與落點佔位都 pointer-events: none，不擋 elementFromPoint。
+- 落點提示：游標停在合法目標上時，用 withDropPlaceholder 複製一棵在目標 children 最後多一個佔位節點的樹（來源不先拿掉），
+  三種佈局重算，其他節點真的讓出空間，佔位畫成強調色虛線框、連線一起畫到目標。心智圖在拖曳中對 .placed 的 left/top 加 120ms 過渡。
+- 目標收合著看不到預覽時，改在目標節點上畫虛線外框。
+- 靠邊自動平移：心智圖與樹狀表格用 PanZoom.panBy、大綱用 scrollBy，邊緣 24px 內每 frame 最多 12px，平移後重算落點。
+- Esc 取消；游標不在合法目標上放開等於取消。放開後複製品移除、節點先回原位，寫回後 cache 更新才出現在新位置並選取。
 
 ## 進度 (2026-11-11)
 設計共識的 8 個步驟都已實作：分層重構、設定遷移、統一 view 與 YAML、三種佈局、節點互動、升級節點、PanZoom 雙指、BlockView 改名。

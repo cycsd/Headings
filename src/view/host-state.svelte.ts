@@ -4,6 +4,19 @@ import type { TreeNode } from "../core/tree";
 
 export type RevealMode = "center" | "ensure";
 
+export type DragState = {
+	sourceId: string;
+	/** 來源與它所有後代的 id，畫面上一起淡化 */
+	subtreeIds: ReadonlySet<string>;
+	/** 來源節點未縮放的尺寸，落點佔位框用同樣大小 */
+	size: { w: number; h: number };
+	/** 游標位置（螢幕座標） */
+	x: number;
+	y: number;
+	/** 游標下合法的目標節點，沒有就 null */
+	overId: string | null;
+};
+
 /**
  * ItemView 與 Svelte 之間共享的反應式狀態；view 改這個物件，LayoutHost 就重新渲染。
  * 節點層級的狀態都以穩定 id 為 key，三種佈局共用，切換佈局或重新解析時不會丟。
@@ -31,6 +44,8 @@ export type HostState = {
 	reveal: { id: string; seq: number; mode: RevealMode } | null;
 	/** 正在節點內編輯的節點 id */
 	editingId: string | null;
+	/** 拖曳中的狀態；物件在整段拖曳裡不換，只改欄位，讀 sourceId 的節點才不會跟著游標重算 */
+	drag: DragState | null;
 	/** 子樹被收合的節點 */
 	collapsed: SvelteSet<string>;
 	/** 點開 icon 列的節點 */
@@ -50,6 +65,7 @@ export function createHostState(
 		selectedId: null,
 		reveal: null,
 		editingId: null,
+		drag: null,
 		collapsed: new SvelteSet<string>(),
 		iconsOpen: new SvelteSet<string>(),
 		litTypes: new SvelteMap<string, ReadonlySet<string>>(),
@@ -67,4 +83,5 @@ export function resetNodeState(state: HostState) {
 	state.selectedId = null;
 	state.reveal = null;
 	state.editingId = null;
+	state.drag = null;
 }

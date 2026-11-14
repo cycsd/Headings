@@ -3,6 +3,7 @@
 	import { setIcon, type IconName } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
 	import { countNodes, sectionTypesOf, type SectionNode, type TreeNode } from "../core/tree";
+	import { DROP_PLACEHOLDER_ID } from "../core/tree-ops";
 	import { SECTION_TYPES } from "../core/section-types";
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
@@ -85,6 +86,21 @@
 
 	let selected = $derived(ui.state.selectedId === node.id);
 	let editing = $derived(ui.state.editingId === node.id);
+	let dragSource = $derived(ui.state.drag?.sourceId === node.id);
+	/** 來源的後代：留在原地淡化 */
+	let dragSubtree = $derived(!dragSource && (ui.state.drag?.subtreeIds.has(node.id) ?? false));
+	/** 目標收合著看不到落點預覽時，才在目標上畫外框 */
+	let dropTarget = $derived(ui.state.drag?.overId === node.id && collapsed);
+	/** 落點預覽的佔位框：跟來源同尺寸的虛線框，不接事件 */
+	let placeholder = $derived(node.id === DROP_PLACEHOLDER_ID);
+	let placeholderSize = $derived(ui.state.drag?.size ?? { w: 160, h: 36 });
+
+	/** 標題列按下開始拖曳；按鈕、連結、編輯中除外。實際是否算拖曳由移動距離決定 */
+	function handleHeadPointerDown(evt: PointerEvent) {
+		if (editing) return;
+		if (evt.target instanceof Element && evt.target.closest("button, a")) return;
+		ui.startDrag(node, evt);
+	}
 
 	/** 雙擊節點本體進入編輯；按鈕、連結與編輯器本身除外 */
 	function handleDoubleClick(evt: MouseEvent) {
@@ -130,18 +146,25 @@
 	class:branch-border={ui.state.branchBorder}
 	class:branch-bg={ui.state.branchBackground}
 	class:selected
+	class:drag-source={dragSource}
+	class:drop-target={dropTarget}
+	class:drag-subtree={dragSubtree}
+	class:placeholder
 	class:flash={flashing}
-	data-node-id={node.id}
-	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}"
+	data-node-id={placeholder ? undefined : node.id}
+	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}{placeholder ? ` width: ${placeholderSize.w}px; height: ${placeholderSize.h}px;` : ""}"
 	onclick={handleClick}
 	ondblclick={handleDoubleClick}
 	oncontextmenu={openMenu}
 >
+	{#if !placeholder}
 	{#if editing}
 		<!-- 編輯模式：Obsidian 的嵌入式編輯器取代標題列與內容區；Mod+Enter / Mod+S / 點外面離開並寫回 -->
 		<div class="editor" {@attach ui.mountEditor(node)}></div>
 	{:else}
-	<div class="head">
+	<!-- 從標題列按下可以拖曳（按鈕與連結除外）；移動超過門檻才算拖，點擊與雙擊照舊 -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="head" onpointerdown={handleHeadPointerDown}>
 
 		<div class="title" class:plain={!isHeading} {@attach onRenderMarkdown(headText)}></div>
 
@@ -238,6 +261,7 @@
 			<span class="dot">{#if collapsed}{hiddenCount}{/if}</span>
 		</button>
 	{/if}
+	{/if}
 </div>
 
 <style>
@@ -279,6 +303,26 @@
 		outline-offset: 1px;
 	}
 	.node.flat.selected {
+		outline-offset: -2px;
+	}
+	/* 拖曳中：來源與它的後代留在原地淡化，內容照常顯示 */
+	.node.drag-source,
+	.node.drag-subtree {
+		opacity: 0.4;
+	}
+	/* 落點預覽：跟來源同尺寸的虛線框，強調色；不接事件才不會擋到 elementFromPoint */
+	.node.placeholder {
+		box-sizing: border-box;
+		border: 2px dashed var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+		pointer-events: none;
+	}
+	/* 目標收合著、看不到落點預覽時才在目標上畫外框 */
+	.node.drop-target {
+		outline: 2px dashed var(--interactive-accent);
+		outline-offset: 2px;
+	}
+	.node.flat.drop-target {
 		outline-offset: -2px;
 	}
 	/* 從麵包屑定位到的節點：強調色光暈由濃轉淡閃兩下，flat 節點向內發光避免被鄰近 cell 蓋住 */

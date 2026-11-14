@@ -4,6 +4,7 @@
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
 	import { NODE_UI, type NodeUi } from "./node-ui";
+	import { edgePan, refreshDropTarget } from "./node-drag";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
 
 	let { tree, getText, onRenderMarkdown, maxNodeWidth, collapsed }: LayoutProps = $props();
@@ -19,6 +20,26 @@
 		const frame = requestAnimationFrame(() => {
 			container?.querySelector(`[data-node-id="${CSS.escape(request.id)}"]`)?.scrollIntoView({ block: request.mode === "ensure" ? "nearest" : "center" });
 		});
+		return () => cancelAnimationFrame(frame);
+	});
+
+	/** 拖曳靠近邊緣時自動捲動；捲動後游標底下的列換了，要重算落點 */
+	$effect(() => {
+		if (!ui.state.drag) return;
+		let frame = 0;
+		const tick = () => {
+			const drag = ui.state.drag;
+			const rect = container?.getBoundingClientRect();
+			if (drag && rect && container) {
+				const [dx, dy] = edgePan(drag.x, drag.y, rect);
+				if (dx !== 0 || dy !== 0) {
+					container.scrollBy(-dx, -dy);
+					refreshDropTarget(ui.state);
+				}
+			}
+			frame = requestAnimationFrame(tick);
+		};
+		frame = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(frame);
 	});
 </script>

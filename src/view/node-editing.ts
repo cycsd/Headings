@@ -5,7 +5,7 @@ import { insertNewlineAndIndent } from "@codemirror/commands";
 import type { TreeNode } from "../core/tree";
 import { countNodes } from "../core/tree";
 import { findNode, pathTo } from "../core/tree-ops";
-import { commitEdit, deleteNode, editText, insertChild, insertSibling, type TextPatch } from "../core/edit";
+import { commitEdit, deleteNode, editText, insertChild, insertSibling, moveNode, type TextPatch } from "../core/edit";
 import { DocumentConflictError, DocumentEditor } from "../service/document-editor";
 import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
 import type { HostState } from "./host-state.svelte";
@@ -22,7 +22,7 @@ import { t } from "../i18n";
 export class NodeEditing {
 	private editor: DocumentEditor | null = null;
 	/** 新增節點後等 cache 更新，用文字起點找到新節點並進入編輯 */
-	private pendingNew: { start: number; selectAll: boolean } | null = null;
+	private pendingNew: { start: number; edit: boolean; selectAll: boolean } | null = null;
 	/** 剛掛上的編輯器要不要全選（佔位文字） */
 	private selectAllOnMount = false;
 	/** 編輯中的草稿，編輯器被重掛時用來還原 */
@@ -49,13 +49,15 @@ export class NodeEditing {
 			this.editor.reset(doc);
 		}
 		if (this.pendingNew && this.state.tree) {
-			const { start, selectAll } = this.pendingNew;
+			const { start, edit, selectAll } = this.pendingNew;
 			this.pendingNew = null;
 			const node = findByStart(this.state.tree, start);
 			if (node) {
 				revealNode(this.state, node.id, "ensure");
-				this.selectAllOnMount = selectAll;
-				this.state.editingId = node.id;
+				if (edit) {
+					this.selectAllOnMount = selectAll;
+					this.state.editingId = node.id;
+				}
 			}
 		}
 	}
@@ -167,8 +169,20 @@ export class NodeEditing {
 		if (!this.editor) return;
 		const insertion = make(this.editor.doc, node, { placeholder: t("newParagraphPlaceholder") });
 		if (!insertion) return;
-		this.pendingNew = { start: insertion.nodeStart, selectAll: node.kind === "section" };
+		this.pendingNew = { start: insertion.nodeStart, edit: true, selectAll: node.kind === "section" };
 		await this.write([insertion.patch]);
+	}
+
+	/** 拖曳搬移：source 子樹變成 target 的最後一個子節點，搬完選取它並帶到畫面上 */
+	async move(sourceId: string, targetId: string) {
+		if (!this.editor || !this.state.tree) return;
+		const source = findNode(this.state.tree, sourceId);
+		const target = findNode(this.state.tree, targetId);
+		if (!source || !target) return;
+		const result = moveNode(this.editor.doc, source, target);
+		if (!result) return;
+		this.pendingNew = { start: result.nodeStart, edit: false, selectAll: false };
+		await this.write(result.patches);
 	}
 
 	private async delete(node: TreeNode) {

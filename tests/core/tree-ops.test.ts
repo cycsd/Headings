@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src/core/tree";
-import { collapseOthers, collapseSubtree, expandPath, expandSubtree, findNode, maxDepth, pathTo, stepDepth, withDepth } from "../../src/core/tree-ops";
+import { collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, findNode, maxDepth, pathTo, stepDepth, withDepth, withDropPlaceholder } from "../../src/core/tree-ops";
 
 const node = (id: string, children: TreeNode[] = []): TreeNode => ({
     id,
@@ -118,5 +118,18 @@ describe("expandPath", () => {
 
     it("目標不存在時原樣回傳", () => {
         expect([...expandPath(tree(), "nope", new Set(["A"]))]).toEqual(["A"]);
+    });
+});
+
+describe("withDropPlaceholder", () => {
+    it("在目標 children 最後加佔位節點，路徑外的節點共用同一個物件", () => {
+        const root = tree();
+        const preview = withDropPlaceholder(root, "A1");
+        const a = preview.children[0]!;
+        const a1 = a.children[0]!;
+        expect(a1.children.map((n) => n.id)).toEqual(["A1a", DROP_PLACEHOLDER_ID]);
+        expect(root.children[0]!.children[0]!.children.length).toBe(1);
+        expect(preview.children[1]).toBe(root.children[1]);
+        expect(withDropPlaceholder(root, "nope")).toBe(root);
     });
 });

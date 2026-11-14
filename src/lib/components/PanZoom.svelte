@@ -292,6 +292,17 @@
 		panY += shift(target.top, target.bottom, box.top, box.bottom);
 	}
 
+	/** 以螢幕像素平移畫布（拖曳靠邊自動平移用） */
+	export function panBy(dx: number, dy: number) {
+		panX += dx;
+		panY += dy;
+	}
+
+	/** 視口在螢幕上的矩形（拖曳靠邊判斷用） */
+	export function viewportRect(): DOMRect | null {
+		return viewport?.getBoundingClientRect() ?? null;
+	}
+
 	/** 把內容層裡的某個元素置中；用螢幕上的矩形反推內容座標，不用知道佈局怎麼擺的 */
 	export function centerOnElement(el: Element) {
 		if (!viewport || !content) return;

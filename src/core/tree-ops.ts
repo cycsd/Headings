@@ -105,3 +105,31 @@ export const expandPath = (root: TreeNode, id: string, current: ReadonlySet<stri
     for (const node of path.slice(0, -1)) next.delete(node.id);
     return next;
 };
+
+/** 拖曳落點預覽用的佔位節點 id；佈局把它當一般節點排，節點元件畫成虛線框 */
+export const DROP_PLACEHOLDER_ID = "__drop_placeholder__";
+
+/**
+ * 回傳一棵在 target 的 children 最後多一個佔位節點的樹；只淺拷貝 root 到 target 的路徑，其他節點共用。
+ * target 不存在就原樣回傳。
+ */
+export const withDropPlaceholder = (root: TreeNode, targetId: string): TreeNode => {
+    const path = pathTo(root, targetId);
+    if (path.length === 0) return root;
+    const placeholder: TreeNode = {
+        id: DROP_PLACEHOLDER_ID,
+        kind: "section",
+        sectionType: "paragraph",
+        title: null,
+        range: { from: 0, to: 0 },
+        sections: [],
+        links: [],
+        children: [],
+    };
+    let rebuilt: TreeNode = { ...path[path.length - 1]!, children: [...path[path.length - 1]!.children, placeholder] };
+    for (let i = path.length - 2; i >= 0; i--) {
+        const node = path[i]!;
+        rebuilt = { ...node, children: node.children.map((c) => (c.id === path[i + 1]!.id ? rebuilt : c)) };
+    }
+    return rebuilt;
+};

@@ -6,7 +6,7 @@
 	import type { LayoutProps } from "./layout-props";
 	import { getLayout } from "./layout-registry";
 	import { createNodeUi, NODE_UI, type NodeActions, type NodeCommand } from "./node-ui";
-	import { findNode, pathTo } from "../core/tree-ops";
+	import { findNode, pathTo, withDropPlaceholder } from "../core/tree-ops";
 	import type { TreeNode } from "../core/tree";
 	import { crumbIcon, crumbLabel } from "./breadcrumb";
 	import { revealNode, setFocus, visibleRoot } from "./tree-state";
@@ -114,6 +114,12 @@
 		actions.command(command, node);
 	}
 
+	/**
+	 * 拖曳落點預覽：游標停在合法目標上時，在目標的 children 最後多放一個佔位節點再排佈局，
+	 * 其他節點會真的讓出空間，佔位畫成虛線框。來源留在原位淡化，不先拿掉。
+	 */
+	let displayTree = $derived(visible && state.drag?.overId ? withDropPlaceholder(visible, state.drag.overId) : visible);
+
 	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器 */
 	$effect(() => {
 		if (state.selectedId !== null && state.editingId === null) container?.focus({ preventScroll: true });
@@ -147,7 +153,7 @@
 		<!-- 換佈局或換聚焦根都重新掛載，mindmap 才會把新的根置中 -->
 		{#key `${entry.id}:${state.focusId ?? ""}`}
 			{@const Layout = entry.component}
-			<Layout tree={visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} collapsed={state.collapsed} />
+			<Layout tree={displayTree ?? visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} collapsed={state.collapsed} />
 		{/key}
 	</div>
 {/if}
@@ -213,5 +219,24 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	/* 拖曳中整個 app 不要選到文字、游標用抓取 */
+	:global(body.headings-dragging) {
+		user-select: none;
+		cursor: grabbing;
+	}
+	/* 跟著游標走的小影子：節點的完整複製縮小後固定定位、不接事件（才不會擋到 elementFromPoint）；太高就裁掉並在底部淡出 */
+	:global(.headings-drag-clone) {
+		position: fixed;
+		z-index: var(--layer-popover, 30);
+		margin: 0;
+		overflow: hidden;
+		transform-origin: top left;
+		pointer-events: none;
+		box-shadow: var(--shadow-l);
+		opacity: 0.95;
+	}
+	:global(.headings-drag-clone.is-clipped) {
+		mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent);
 	}
 </style>

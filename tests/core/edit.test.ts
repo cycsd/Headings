@@ -13,6 +13,10 @@ import {
     insertChild,
     insertSibling,
     subtreeRange,
+    applyPatches,
+    canMove,
+    moveNode,
+    shiftHeadingLevels,
 } from "../../src/core/edit";
 import {
     obsidianMarkdownAllSyntaxExampleDoc as doc,
@@ -164,5 +168,95 @@ describe("deleteNode", () => {
         expect(next.endsWith("---")).toBe(true);
         expect(deleteNode(doc, root)).toBeNull();
         expect(findNode(root, last.id)).not.toBeNull();
+    });
+});
+
+describe("moveNode", () => {
+    const listItemOf = (root: TreeNode, headingTitle: string, prefix: string): TreeNode => {
+        const h = byTitle(root, headingTitle);
+        const found = h.children.find((c) => c.kind === "listItem" && c.text?.startsWith(prefix));
+        if (!found) throw new Error(`no list item ${prefix}`);
+        return found;
+    };
+
+    it("heading 搬到另一個 heading 底下：成為最後一個子節點，層級整體位移", () => {
+        const root = tree();
+        const h5 = byTitle(root, "5. 引用與水平線");
+        const h2 = byTitle(root, "2. 標題層級");
+        // 2. 標題層級 底下有 # H1 … ###### H6 子標題，h5（h2）搬進去變 h3，最後面
+        const next = applyPatches(doc, moveNode(doc, h5, h2)!.patches);
+        expect(next).not.toContain("\n## 5. 引用與水平線");
+        expect(next).toContain("### 5. 引用與水平線\n\n> 這是引用。");
+        // fixture 裡 2. 標題層級 底下的「# H1 … ###### H6」是真的 h1–h6，不是它的子節點，所以它的子樹到 H1 之前就結束
+        expect(next.indexOf("### 5. 引用與水平線")).toBeGreaterThan(next.indexOf("## 2. 標題層級"));
+        expect(next.indexOf("### 5. 引用與水平線")).toBeLessThan(next.indexOf("\n# H1"));
+    });
+
+    it("heading 子樹裡的標題跟著位移，程式碼圍欄裡的 # 不動", () => {
+        const shifted = shiftHeadingLevels("## A\n\n```\n# not heading\n```\n\n### B\n###### C", 1);
+        expect(shifted).toBe("### A\n\n```\n# not heading\n```\n\n#### B\n###### C");
+        expect(shiftHeadingLevels("### A\n#### B", -2)).toBe("# A\n## B");
+    });
+
+    it("list item 搬到另一個 list item 底下：縮排改成目標加一層，巢狀子項跟著縮", () => {
+        const root = tree();
+        const itemB = listItemOf(root, "4. 清單", "- 項目 B");
+        const itemA = listItemOf(root, "4. 清單", "- 項目 A");
+        const next = applyPatches(doc, moveNode(doc, itemB, itemA)!.patches);
+        expect(next).toContain("- 項目 A\n  - 項目 B\n    - 子項目 B-1\n    - 子項目 B-2\n- 項目 C");
+    });
+
+    it("list item 搬到 heading 底下：去掉縮排，放在該 heading 內容區最後、子 heading 之前", () => {
+        const root = tree();
+        const sub = listItemOf(root, "4. 清單", "- 項目 B").children[0]!;
+        const h1 = byTitle(root, "1. 文字格式");
+        const next = applyPatches(doc, moveNode(doc, sub, h1)!.patches);
+        expect(next).toContain("---\n\n- 子項目 B-1\n\n## 2. 標題層級");
+        expect(next).toContain("- 項目 B\n  - 子項目 B-2");
+    });
+
+    it("搬到自己的父節點底下等於移到最後", () => {
+        const root = tree();
+        const itemA = listItemOf(root, "4. 清單", "- 項目 A");
+        const lists = byTitle(root, "4. 清單");
+        const next = applyPatches(doc, moveNode(doc, itemA, lists)!.patches);
+        expect(next).toContain("無序清單：\n\n- 項目 B\n  - 子項目 B-1");
+        // 內容區最後面是這一節結尾的 ---，所以搬過去的清單會在 --- 之後
+        expect(next).toContain("- [x] 子任務 2\n\n---\n\n- 項目 A\n\n## 5.");
+    });
+
+    it("不合法的搬移回傳 null：搬到自己 / 子孫、heading 進 list item、target 是升級段落、root 當 source", () => {
+        const root = tree();
+        const h4 = byTitle(root, "4. 清單");
+        const itemA = listItemOf(root, "4. 清單", "- 項目 A");
+        expect(moveNode(doc, h4, h4)).toBeNull();
+        expect(moveNode(doc, h4, itemA)).toBeNull();
+        expect(moveNode(doc, byTitle(root, "1. 文字格式"), itemA)).toBeNull();
+        expect(moveNode(doc, root, h4)).toBeNull();
+        const withCode = promote(buildTree(metadata, doc, fileName), promoteTypes(["code"]), []);
+        const code = byTitle(withCode, "7. 程式碼").children.find((c) => c.kind === "section")!;
+        expect(canMove(byTitle(withCode, "1. 文字格式"), code)).toBe(false);
+        expect(canMove(code, byTitle(withCode, "1. 文字格式"))).toBe(true);
+    });
+});
+
+describe("moveNode.nodeStart", () => {
+    it("搬過去之後的起點落在節點文字上，往前搬與往後搬都對", () => {
+        const root = tree();
+        const h5 = byTitle(root, "5. 引用與水平線");
+        const h2 = byTitle(root, "2. 標題層級");
+        const back = moveNode(doc, h5, h2)!;
+        expect(applyPatches(doc, back.patches).slice(back.nodeStart, back.nodeStart + 7)).toBe("### 5. ");
+
+        const h1 = byTitle(root, "1. 文字格式");
+        const h6 = byTitle(root, "6. Callout");
+        const forward = moveNode(doc, h1, h6)!;
+        expect(applyPatches(doc, forward.patches).slice(forward.nodeStart, forward.nodeStart + 7)).toBe("### 1. ");
+
+        const lists = byTitle(root, "4. 清單");
+        const itemB = lists.children.find((c) => c.kind === "listItem" && c.text?.startsWith("- 項目 B"))!;
+        const itemA = lists.children.find((c) => c.kind === "listItem" && c.text?.startsWith("- 項目 A"))!;
+        const nested = moveNode(doc, itemB, itemA)!;
+        expect(applyPatches(doc, nested.patches).slice(nested.nodeStart, nested.nodeStart + 6)).toBe("- 項目 B");
     });
 });

@@ -117,6 +117,7 @@ export class HeadingsView extends ItemView {
                     edit: (id: string) => this.editing.startEdit(id),
                     mountEditor: (node: TreeNode) => this.editing.mountEditor(node),
                     command: (command: NodeCommand, node: TreeNode) => void this.editing.run(command, node),
+                    moveNode: (sourceId: string, targetId: string) => void this.editing.move(sourceId, targetId),
                     // YAML 區塊畫成屬性面板；不是合法 frontmatter 就退回 markdown 渲染
                     renderFrontmatter: (text: string) => (element: HTMLElement) => {
                         element.replaceChildren();
