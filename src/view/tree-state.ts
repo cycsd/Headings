@@ -14,7 +14,9 @@ export const visibleRoot = (state: HostState): TreeNode | null => {
 	return findNode(state.tree, state.focusId) ?? state.tree;
 };
 
+/** 寫回收合集合；內容沒變就不動，不然 clear + add 會讓所有讀 collapsed 的 derived（三種佈局的 placement）白白重算 */
 const replaceCollapsed = (state: HostState, next: ReadonlySet<string>) => {
+	if (next.size === state.collapsed.size && [...next].every((id) => state.collapsed.has(id))) return;
 	state.collapsed.clear();
 	for (const id of next) state.collapsed.add(id);
 };
@@ -70,11 +72,16 @@ export const selectNode = (state: HostState, id: string) => {
  * 從麵包屑選到節點：祖先全部展開、目標在聚焦子樹之外就先離開聚焦，
  * 再設為選取並要求佈局把它帶到畫面上。
  */
-export const revealNode = (state: HostState, id: string, mode: RevealMode = "center") => {
+export const revealNode = (state: HostState, id: string, mode: RevealMode = "center", flash = true) => {
 	if (!state.tree || !findNode(state.tree, id)) return;
 	replaceCollapsed(state, expandPath(state.tree, id, state.collapsed));
 	const focused = visibleRoot(state);
 	if (state.focusId !== null && (!focused || !findNode(focused, id))) setFocus(state, null);
 	state.selectedId = id;
-	state.reveal = { id, seq: (state.reveal?.seq ?? 0) + 1, mode };
+	requestReveal(state, id, mode, flash);
+};
+
+/** 只要求佈局把（已經看得到的）節點帶到畫面上，不碰收合、聚焦與選取；編輯中節點長大時用 */
+export const requestReveal = (state: HostState, id: string, mode: RevealMode, flash: boolean) => {
+	state.reveal = { id, seq: (state.reveal?.seq ?? 0) + 1, mode, flash };
 };

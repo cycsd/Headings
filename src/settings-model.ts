@@ -30,6 +30,12 @@ export interface HeadingsSettings {
 	defaultExpandDepth: number;
 	/** 節點的邊框與背景是否套用分支顏色；關閉就用主題預設的邊框與背景 */
 	nodeStyle: Record<NodeStyleKey, boolean>;
+	/** 節點內編輯器是否用自訂尺寸；關閉就跟著節點最大寬度 / 最大高度 */
+	editorSizeEnabled: boolean;
+	/** 編輯器固定寬度 (px) */
+	editorWidth: number;
+	/** 編輯器最大高度 (px)，超過在節點內捲動；0 為不限制（實際以視窗高度一半兜底） */
+	editorMaxHeight: number;
 }
 
 export const NODE_STYLE_KEYS = ["branchBorder", "branchBackground"] as const;
@@ -47,11 +53,27 @@ export const DEFAULT_SETTINGS: HeadingsSettings = {
 	defaultExpandEnabled: false,
 	defaultExpandDepth: 1,
 	nodeStyle: { branchBorder: true, branchBackground: true },
+	editorSizeEnabled: false,
+	editorWidth: 360,
+	editorMaxHeight: 320,
 };
 
 export const MAX_NODE_WIDTH_RANGE = { min: 160, max: 1200, step: 20 } as const;
 /** 0 代表不限制；滑桿從 0 跳到 120 */
 export const MAX_NODE_HEIGHT_RANGE = { min: 0, max: 1200, step: 20, minLimit: 120 } as const;
+export const EDITOR_WIDTH_RANGE = { min: 200, max: 1200, step: 20 } as const;
+/** 0 代表不限制；滑桿從 0 跳到 120 */
+export const EDITOR_HEIGHT_RANGE = { min: 0, max: 1200, step: 20, minLimit: 120 } as const;
+
+/** 高度滑桿：0 為不限制，0 到下限之間的值拉到下限 */
+export const normalizeHeight = (value: number, minLimit: number = MAX_NODE_HEIGHT_RANGE.minLimit): number =>
+	value > 0 && value < minLimit ? minLimit : value;
+
+/** 進入編輯時編輯器的尺寸：開了自訂就用自訂值，否則跟著節點的最大寬度 / 最大高度 */
+export const editorSize = (settings: HeadingsSettings): { width: number; maxHeight: number } =>
+	settings.editorSizeEnabled
+		? { width: settings.editorWidth, maxHeight: settings.editorMaxHeight }
+		: { width: settings.maxNodeWidth, maxHeight: settings.maxNodeHeight };
 /** root 以下展開幾層；0 代表只展開 root */
 export const EXPAND_DEPTH_RANGE = { min: 0, max: 9, step: 1 } as const;
 
@@ -128,10 +150,22 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 		migrated = true;
 	}
 
-	const height = readClamped(data.maxNodeHeight, DEFAULT_SETTINGS.maxNodeHeight, MAX_NODE_HEIGHT_RANGE.min, MAX_NODE_HEIGHT_RANGE.max);
-	// 0 以上、下限以下的值沒有意義，拉到下限
-	const maxNodeHeight = height.value > 0 && height.value < MAX_NODE_HEIGHT_RANGE.minLimit ? MAX_NODE_HEIGHT_RANGE.minLimit : height.value;
-	if (height.migrated || maxNodeHeight !== height.value) migrated = true;
+	/** 高度欄位：夾範圍後，0 以上、下限以下的值沒有意義，拉到下限 */
+	const readHeight = (value: unknown, fallback: number, range: { min: number; max: number; minLimit: number }): number => {
+		const read = readClamped(value, fallback, range.min, range.max);
+		const normalized = normalizeHeight(read.value, range.minLimit);
+		if (read.migrated || normalized !== read.value) migrated = true;
+		return normalized;
+	};
+	const maxNodeHeight = readHeight(data.maxNodeHeight, DEFAULT_SETTINGS.maxNodeHeight, MAX_NODE_HEIGHT_RANGE);
+
+	let editorSizeEnabled = DEFAULT_SETTINGS.editorSizeEnabled;
+	if (typeof data.editorSizeEnabled === "boolean") editorSizeEnabled = data.editorSizeEnabled;
+	else if (data.editorSizeEnabled !== undefined) migrated = true;
+	const width = readClamped(data.editorWidth, DEFAULT_SETTINGS.editorWidth, EDITOR_WIDTH_RANGE.min, EDITOR_WIDTH_RANGE.max);
+	const editorWidth = width.value;
+	if (width.migrated) migrated = true;
+	const editorMaxHeight = readHeight(data.editorMaxHeight, DEFAULT_SETTINGS.editorMaxHeight, EDITOR_HEIGHT_RANGE);
 
 	let defaultExpandEnabled = DEFAULT_SETTINGS.defaultExpandEnabled;
 	let rawDepth = data.defaultExpandDepth;
@@ -153,14 +187,17 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 
 	const known = new Set([
 		"nodeTypes", "defaultLitTypes", "defaultLayout", "maxNodeWidth", "maxNodeHeight",
-		"defaultExpandEnabled", "defaultExpandDepth", "nodeStyle",
+		"defaultExpandEnabled", "defaultExpandDepth", "nodeStyle", "editorSizeEnabled", "editorWidth", "editorMaxHeight",
 	]);
 	for (const key of Object.keys(data)) {
 		if (!known.has(key)) migrated = true;
 	}
 
 	return {
-		settings: { nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, maxNodeHeight, defaultExpandEnabled, defaultExpandDepth, nodeStyle },
+		settings: {
+			nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, maxNodeHeight, defaultExpandEnabled, defaultExpandDepth, nodeStyle,
+			editorSizeEnabled, editorWidth, editorMaxHeight,
+		},
 		migrated,
 	};
 };

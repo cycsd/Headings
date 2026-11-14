@@ -16,7 +16,7 @@ import type { DropPosition } from "../core/edit";
 import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
 import type { LayoutId } from "../layout/layout";
 import { layoutLabel, sectionTypeLabel } from "../labels";
-import { defaultLitTypes } from "../settings-model";
+import { defaultLitTypes, editorSize, type HeadingsSettings } from "../settings-model";
 import { t } from "../i18n";
 import { NodeEditing } from "./node-editing";
 import type { NodeCommand } from "./node-ui";
@@ -31,6 +31,11 @@ import {
     visibleRoot,
 } from "./tree-state";
 
+/** 設定 → HostState 的編輯器尺寸欄位 */
+const editorSizeState = (settings: HeadingsSettings): Pick<HostState, "editorSizeEnabled" | "editorWidth" | "editorMaxHeight"> => {
+    const { width, maxHeight } = editorSize(settings);
+    return { editorSizeEnabled: settings.editorSizeEnabled, editorWidth: width, editorMaxHeight: maxHeight };
+};
 
 export type HeadingsViewState = {
     filePath: string | null;
@@ -56,6 +61,7 @@ export class HeadingsView extends ItemView {
         tree: null,
         maxNodeWidth: this.plugin.settings.maxNodeWidth,
         maxNodeHeight: this.plugin.settings.maxNodeHeight,
+        ...editorSizeState(this.plugin.settings),
         defaultLit: new Set(defaultLitTypes(this.plugin.settings)),
         branchBorder: this.plugin.settings.nodeStyle.branchBorder,
         branchBackground: this.plugin.settings.nodeStyle.branchBackground,
@@ -116,7 +122,8 @@ export class HeadingsView extends ItemView {
                     showLinks: (node: TreeNode, evt: MouseEvent) => this.showLinksMenu(node, evt),
                     showNodeMenu: (node: TreeNode, evt: MouseEvent) => this.showNodeMenu(node, evt),
                     edit: (id: string) => this.editing.startEdit(id),
-                    mountEditor: (node: TreeNode) => this.editing.mountEditor(node),
+                    mountEditor: (node: TreeNode, onHeight: (height: number) => void) => this.editing.mountEditor(node, onHeight),
+                    measureEditor: (node: TreeNode, nodeEl: HTMLElement | undefined) => this.editing.measureEditor(node, nodeEl),
                     command: (command: NodeCommand, node: TreeNode) => void this.editing.run(command, node),
                     moveNode: (sourceId: string, targetId: string, position: DropPosition) => void this.editing.move(sourceId, targetId, position),
                     // YAML 區塊畫成屬性面板；不是合法 frontmatter 就退回 markdown 渲染
@@ -128,9 +135,11 @@ export class HeadingsView extends ItemView {
                     },
                 },
                 getText: (from: number, to: number) => this.loaded?.doc.slice(from, to) ?? "",
+                // 跟 Canvas 文字節點一樣包在閱讀模式容器裡，主題的標題字級、標籤膠囊、callout 等樣式才會套上
                 onRenderMarkdown: (text: string) => (element: HTMLElement) => {
                     element.replaceChildren();
-                    void MarkdownRenderer.render(this.plugin.app, text, element, this.state.file?.path ?? "", this);
+                    const host = element.createDiv({ cls: "markdown-embed-content" }).createDiv({ cls: "markdown-preview-view markdown-rendered" });
+                    void MarkdownRenderer.render(this.plugin.app, text, host, this.state.file?.path ?? "", this);
                 },
             },
         });
@@ -220,6 +229,7 @@ export class HeadingsView extends ItemView {
         this.hostState.branchBorder = this.plugin.settings.nodeStyle.branchBorder;
         this.hostState.branchBackground = this.plugin.settings.nodeStyle.branchBackground;
         this.hostState.maxNodeHeight = this.plugin.settings.maxNodeHeight;
+        Object.assign(this.hostState, editorSizeState(this.plugin.settings));
         this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()), buildLinks(cached));
         if (this.applyDefaultDepth) {
             this.applyDefaultDepth = false;

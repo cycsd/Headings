@@ -3,7 +3,16 @@ import HeadingsPlugin from "./main";
 import { t } from "./i18n";
 import { CONTENT_SECTION_TYPES, PROMOTABLE_SECTION_TYPES } from "./core/section-types";
 import { LAYOUT_IDS } from "./layout/layout";
-import { DEFAULT_SETTINGS, EXPAND_DEPTH_RANGE, MAX_NODE_HEIGHT_RANGE, MAX_NODE_WIDTH_RANGE, NODE_STYLE_KEYS } from "./settings-model";
+import {
+	DEFAULT_SETTINGS,
+	EDITOR_HEIGHT_RANGE,
+	EDITOR_WIDTH_RANGE,
+	EXPAND_DEPTH_RANGE,
+	MAX_NODE_HEIGHT_RANGE,
+	MAX_NODE_WIDTH_RANGE,
+	NODE_STYLE_KEYS,
+	normalizeHeight,
+} from "./settings-model";
 import { contentTypeLabel, layoutLabel, nodeStyleLabel, sectionTypeLabel } from "./labels";
 
 export { DEFAULT_SETTINGS, type HeadingsSettings } from "./settings-model";
@@ -17,9 +26,10 @@ const TOGGLE_GROUPS = [
 const allOn = (settings: Record<string, unknown>, group: (typeof TOGGLE_GROUPS)[number]): boolean =>
 	group.types.every((type) => getPath(settings, `${group.key}.${type}`) === true);
 
-/** 滑桿 0 為不限制，0 到下限之間的值拉到下限 */
-const normalizeHeight = (value: number): number =>
-	value > 0 && value < MAX_NODE_HEIGHT_RANGE.minLimit ? MAX_NODE_HEIGHT_RANGE.minLimit : value;
+/** 高度類的滑桿：0 為不限制，0 到下限之間的值拉到下限 */
+const HEIGHT_KEYS: Record<string, number> = { maxNodeHeight: MAX_NODE_HEIGHT_RANGE.minLimit, editorMaxHeight: EDITOR_HEIGHT_RANGE.minLimit };
+const normalizeValue = (key: string, value: unknown): unknown =>
+	typeof value === "number" && key in HEIGHT_KEYS ? normalizeHeight(value, HEIGHT_KEYS[key]) : value;
 
 const layoutOptions = (): Record<string, string> =>
 	Object.fromEntries(LAYOUT_IDS.map((id) => [id, layoutLabel[id]()]));
@@ -107,7 +117,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 					.setLimits(MAX_NODE_HEIGHT_RANGE.min, MAX_NODE_HEIGHT_RANGE.max, MAX_NODE_HEIGHT_RANGE.step)
 					.setValue(this.plugin.settings.maxNodeHeight)
 					.setDynamicTooltip()
-					.onChange((value) => this.applySetting("maxNodeHeight", normalizeHeight(value))),
+					.onChange((value) => this.applySetting("maxNodeHeight", normalizeValue("maxNodeHeight", value))),
 			);
 
 		new Setting(containerEl)
@@ -135,6 +145,35 @@ export class HeadingsSettingTab extends PluginSettingTab {
 				.setDesc(t("settingNodeStyleDescription"))
 				.addToggle((toggle) =>
 					toggle.setValue(this.plugin.settings.nodeStyle[key]).onChange((value) => this.applySetting(`nodeStyle.${key}`, value)),
+				);
+		}
+
+		new Setting(containerEl)
+			.setName(t("settingEditorSizeEnabledName"))
+			.setDesc(t("settingEditorSizeEnabledDescription"))
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.editorSizeEnabled).onChange((value) => this.applySetting("editorSizeEnabled", value)),
+			);
+		if (this.plugin.settings.editorSizeEnabled) {
+			new Setting(containerEl)
+				.setName(t("settingEditorWidthName"))
+				.setDesc(t("settingEditorWidthDescription"))
+				.addSlider((slider) =>
+					slider
+						.setLimits(EDITOR_WIDTH_RANGE.min, EDITOR_WIDTH_RANGE.max, EDITOR_WIDTH_RANGE.step)
+						.setValue(this.plugin.settings.editorWidth)
+						.setDynamicTooltip()
+						.onChange((value) => this.applySetting("editorWidth", value)),
+				);
+			new Setting(containerEl)
+				.setName(t("settingEditorMaxHeightName"))
+				.setDesc(t("settingEditorMaxHeightDescription"))
+				.addSlider((slider) =>
+					slider
+						.setLimits(EDITOR_HEIGHT_RANGE.min, EDITOR_HEIGHT_RANGE.max, EDITOR_HEIGHT_RANGE.step)
+						.setValue(this.plugin.settings.editorMaxHeight)
+						.setDynamicTooltip()
+						.onChange((value) => this.applySetting("editorMaxHeight", normalizeValue("editorMaxHeight", value))),
 				);
 		}
 	}
@@ -240,11 +279,49 @@ export class HeadingsSettingTab extends PluginSettingTab {
 			{
 				type: "group",
 				heading: t("settingNodeStyleHeading"),
-				items: NODE_STYLE_KEYS.map((key) => ({
-					name: nodeStyleLabel[key](),
-					desc: t("settingNodeStyleDescription"),
-					control: { type: "toggle", key: `nodeStyle.${key}`, defaultValue: DEFAULT_SETTINGS.nodeStyle[key] },
-				})),
+				items: [
+					...NODE_STYLE_KEYS.map(
+						(key): SettingGroupItem => ({
+							name: nodeStyleLabel[key](),
+							desc: t("settingNodeStyleDescription"),
+							control: { type: "toggle", key: `nodeStyle.${key}`, defaultValue: DEFAULT_SETTINGS.nodeStyle[key] },
+						}),
+					),
+					{
+						name: t("settingEditorSizeEnabledName"),
+						desc: t("settingEditorSizeEnabledDescription"),
+						control: { type: "toggle", key: "editorSizeEnabled", defaultValue: DEFAULT_SETTINGS.editorSizeEnabled },
+					},
+					// 兩個尺寸只在開關開著時顯示；開關改了 applySetting 會重畫
+					...(this.plugin.settings.editorSizeEnabled
+						? ([
+								{
+									name: t("settingEditorWidthName"),
+									desc: t("settingEditorWidthDescription"),
+									control: {
+										type: "slider",
+										key: "editorWidth",
+										...EDITOR_WIDTH_RANGE,
+										defaultValue: DEFAULT_SETTINGS.editorWidth,
+										displayFormat: (value: number) => `${value}px`,
+									},
+								},
+								{
+									name: t("settingEditorMaxHeightName"),
+									desc: t("settingEditorMaxHeightDescription"),
+									control: {
+										type: "slider",
+										key: "editorMaxHeight",
+										min: EDITOR_HEIGHT_RANGE.min,
+										max: EDITOR_HEIGHT_RANGE.max,
+										step: EDITOR_HEIGHT_RANGE.step,
+										defaultValue: DEFAULT_SETTINGS.editorMaxHeight,
+										displayFormat: (value: number) => (value === 0 ? t("settingUnlimited") : `${value}px`),
+									},
+								},
+							] satisfies SettingGroupItem[])
+						: []),
+				],
 			},
 		];
 	}
@@ -256,7 +333,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	}
 
 	async setControlValue(key: string, value: unknown) {
-		await this.applySetting(key, key === "maxNodeHeight" && typeof value === "number" ? normalizeHeight(value) : value);
+		await this.applySetting(key, normalizeValue(key, value));
 	}
 
 	private async applySetting(key: string, value: unknown) {
@@ -271,8 +348,8 @@ export class HeadingsSettingTab extends PluginSettingTab {
 		}
 		await this.plugin.saveSettings();
 		await this.plugin.refreshHeadingsViews();
-		// 這兩組的個別開關與「全部」開關互相影響，改了就重畫整個設定頁讓它們同步
-		if (TOGGLE_GROUPS.some((g) => key.startsWith(`${g.key}.`))) this.rerender();
+		// 這兩組的個別開關與「全部」開關互相影響，改了就重畫整個設定頁讓它們同步；編輯器尺寸開關決定底下兩個滑桿顯不顯示
+		if (TOGGLE_GROUPS.some((g) => key.startsWith(`${g.key}.`)) || key === "editorSizeEnabled") this.rerender();
 	}
 
 	/** 1.13 以後用 update() 重畫宣告式設定；舊版重跑 display() */

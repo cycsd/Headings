@@ -37,14 +37,19 @@ export type HostState = {
 	branchBackground: boolean;
 	/** 全域設定：內容區最大高度 (px)，0 為不限制 */
 	maxNodeHeight: number;
+	/** 全域設定：編輯器是否用自訂尺寸；關閉時依內容貼合節點 */
+	editorSizeEnabled: boolean;
+	/** 全域設定（已解析）：自訂的編輯器寬度與最大高度 (px)，最大高度 0 為不限制（以視窗高度一半兜底） */
+	editorWidth: number;
+	editorMaxHeight: number;
 	/** 聚焦中的節點 id；null 為完整樹 */
 	focusId: string | null;
 	/** 最後一次套用的展開層數（0 = 全部），「展開一層 / 收合一層」的基準 */
 	expandDepth: number;
 	/** 點選的節點 id，麵包屑顯示它的路徑；null 為還沒選 */
 	selectedId: string | null;
-	/** 要求佈局把節點帶到畫面上；seq 遞增讓同一個 id 也能再觸發。center 置中、ensure 只在看不到時最小平移 */
-	reveal: { id: string; seq: number; mode: RevealMode } | null;
+	/** 要求佈局把節點帶到畫面上；seq 遞增讓同一個 id 也能再觸發。center 置中、ensure 只在看不到時最小平移；flash 為 false 就不閃光暈 */
+	reveal: { id: string; seq: number; mode: RevealMode; flash: boolean } | null;
 	/** 正在節點內編輯的節點 id */
 	editingId: string | null;
 	/** 拖曳中的狀態；物件在整段拖曳裡不換，只改欄位，讀 sourceId 的節點才不會跟著游標重算 */
@@ -58,7 +63,19 @@ export type HostState = {
 };
 
 export function createHostState(
-	init: Pick<HostState, "layoutId" | "tree" | "maxNodeWidth" | "maxNodeHeight" | "defaultLit" | "branchBorder" | "branchBackground">,
+	init: Pick<
+		HostState,
+		| "layoutId"
+		| "tree"
+		| "maxNodeWidth"
+		| "maxNodeHeight"
+		| "editorSizeEnabled"
+		| "editorWidth"
+		| "editorMaxHeight"
+		| "defaultLit"
+		| "branchBorder"
+		| "branchBackground"
+	>,
 ): HostState {
 	const state = $state<HostState>({
 		...init,

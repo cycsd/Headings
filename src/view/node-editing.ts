@@ -10,7 +10,12 @@ import { DocumentConflictError, DocumentEditor } from "../service/document-edito
 import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
 import type { HostState } from "./host-state.svelte";
 import type { NodeCommand } from "./node-ui";
-import { revealNode, selectNode } from "./tree-state";
+import { requestReveal, revealNode, selectNode } from "./tree-state";
+import { clampHeight, domMeasurer, heightBounds, innerBox, innerMaxWidth, resolveEditorBox, type Box, type HeightBounds } from "./editor-size";
+import { buildIdMap, collectStarts, diffPatch, findByStart, remapHostState, type MovedSubtree } from "./id-remap";
+
+/** 畫完修正高度時多留的餘裕，游標在最後一行也不會剛好出捲軸 */
+const HEIGHT_SLACK = 4;
 import { ConfirmModal } from "./confirm-modal";
 import { crumbLabel } from "./breadcrumb";
 import { t } from "../i18n";
@@ -23,8 +28,22 @@ export class NodeEditing {
 	private editor: DocumentEditor | null = null;
 	/** 新增節點後等 cache 更新，用文字起點找到新節點並進入編輯 */
 	private pendingNew: { start: number; edit: boolean; selectAll: boolean } | null = null;
-	/** 剛掛上的編輯器要不要全選（佔位文字） */
-	private selectAllOnMount = false;
+	/**
+	 * 寫回後等 cache 更新，把以 id 記的節點狀態（收合、點亮、選取…）搬到新 id 上：
+	 * id 由標題與序號組成，改標題、插入或刪除兄弟都會讓它變，不搬的話編輯完節點會自己展開、狀態跑到別的節點上
+	 */
+	private pendingRemap: { starts: Map<string, number>; patches: TextPatch[]; moved: MovedSubtree | null } | null = null;
+	/**
+	 * 寫回前後的文件內容。cache 更新是非同步的，編輯中擱置的那一版（before）可能在我們的那一版（after）之前送到，
+	 * 拿它來搬狀態、找新節點會對到舊樹；所以 before 略過、after 才處理、其他內容代表別人改了就放棄等待
+	 */
+	private pendingWrite: { before: string; after: string } | null = null;
+	/** 上一次載入的樹裡每個節點的起點；外部改動（沒有補丁可對照）時用鏡像與新文件的差異搬狀態 */
+	private lastStarts: Map<string, number> | null = null;
+	/** 進編輯時算好的高度上下限，CodeMirror 畫完修正高度時用同一組 */
+	private bounds = new Map<string, HeightBounds>();
+	/** 剛掛上的編輯器游標放哪：既有節點放開頭（看到的是標題那一行）、新節點放結尾、新段落全選佔位文字 */
+	private mountCursor: "start" | "end" | "all" = "start";
 	/** 編輯中的草稿，編輯器被重掛時用來還原 */
 	private drafts = new Map<string, string>();
 
@@ -42,11 +61,28 @@ export class NodeEditing {
 
 	/** 每次 view 收到新的檔案內容就呼叫：換檔重建鏡像、同檔同步鏡像、處理等待中的新節點 */
 	onLoaded(file: TFile, doc: string) {
-		if (!this.editor || this.editor.file.path !== file.path) {
+		const sameFile = this.editor !== null && this.editor.file.path === file.path;
+		// 自己寫回前的那一版：略過，連鏡像都不要動（動了會清掉歷史）
+		if (sameFile && this.pendingWrite && doc === this.pendingWrite.before) return;
+		if (!sameFile || !this.editor) {
 			this.editor = new DocumentEditor(this.app, file, doc);
 			this.pendingNew = null;
+			this.pendingRemap = null;
 		} else {
+			if (this.pendingWrite && doc !== this.pendingWrite.after) {
+				this.pendingNew = null;
+				this.pendingRemap = null;
+			} else if (!this.pendingWrite && this.lastStarts && doc !== this.editor.doc) {
+				// 外部改動（在 Markdown 編輯器裡打字）：沒有補丁可對照，用鏡像與新文件的差異化成一個補丁走同一條路
+				this.pendingRemap = { starts: this.lastStarts, patches: diffPatch(this.editor.doc, doc), moved: null };
+			}
 			this.editor.reset(doc);
+		}
+		this.pendingWrite = null;
+		if (this.pendingRemap && this.state.tree) {
+			const { starts, patches, moved } = this.pendingRemap;
+			this.pendingRemap = null;
+			remapHostState(this.state, buildIdMap(starts, patches, this.state.tree, moved));
 		}
 		if (this.pendingNew && this.state.tree) {
 			const { start, edit, selectAll } = this.pendingNew;
@@ -55,11 +91,12 @@ export class NodeEditing {
 			if (node) {
 				revealNode(this.state, node.id, "ensure");
 				if (edit) {
-					this.selectAllOnMount = selectAll;
+					this.mountCursor = selectAll ? "all" : "end";
 					this.state.editingId = node.id;
 				}
 			}
 		}
+		this.lastStarts = this.state.tree ? collectStarts(this.state.tree) : null;
 	}
 
 	startEdit(id: string) {
@@ -69,20 +106,45 @@ export class NodeEditing {
 	}
 
 
-	/** 掛在節點上的 Obsidian 嵌入式編輯器；Mod+Enter / Esc / 失焦都會離開並寫回 */
-	mountEditor(node: TreeNode): Attachment<HTMLElement> {
-		// untrack：attachment 本體在 effect 裡跑，讀到 node 的欄位會被追蹤；不追蹤才不會因為樹重算而重掛編輯器
-		return (el) => untrack(() => this.mount(el, node));
+	/**
+	 * 進編輯時算一次編輯器尺寸（見 editor-size.ts）。nodeEl 是還沒換成編輯器的節點元素：
+	 * 量它原本的內容框當下限、用它的字型與內距量文字；拿不到（節點一掛上就在編輯中）就沒有下限。
+	 */
+	measureEditor(node: TreeNode, nodeEl: HTMLElement | undefined): Box {
+		const { text } = editText(this.editor?.doc ?? "", node);
+		const s = this.state;
+		const measure = domMeasurer(nodeEl ?? document.body);
+		const input = {
+			text,
+			node: nodeEl ? innerBox(nodeEl) : { w: 0, h: 0 },
+			custom: { enabled: s.editorSizeEnabled, width: s.editorWidth, maxHeight: s.editorMaxHeight },
+			maxWidth: nodeEl ? innerMaxWidth(nodeEl, s.maxNodeWidth) : s.maxNodeWidth,
+			maxHeight: s.maxNodeHeight,
+			viewportHeight: window.innerHeight,
+		};
+		this.bounds.set(node.id, heightBounds(input, measure));
+		return resolveEditorBox(measure, input);
 	}
 
-	private mount(el: HTMLElement, node: TreeNode): () => void {
+	/**
+	 * 掛在節點上的 Obsidian 嵌入式編輯器；Mod+Enter / 點外面會離開並寫回。
+	 * onHeight：CodeMirror 畫完即時預覽後量到實際內容高度，請節點元件把編輯器鎖成這個高度（開啟時不出捲軸）。
+	 */
+	mountEditor(node: TreeNode, onHeight: (height: number) => void): Attachment<HTMLElement> {
+		// untrack：attachment 本體在 effect 裡跑，讀到 node 的欄位會被追蹤；不追蹤才不會因為樹重算而重掛編輯器
+		return (el) => untrack(() => this.mount(el, node, onHeight));
+	}
+
+	private mount(el: HTMLElement, node: TreeNode, onHeight: (height: number) => void): () => void {
 		const doc = this.editor?.doc ?? "";
 		const { text } = editText(doc, node);
 		// 編輯器若被重掛（佈局重算等），用上次的草稿而不是原文，打到一半的字不會不見
 		const draft = this.drafts.get(node.id);
 		const value = draft ?? text;
-		const selectAll = this.selectAllOnMount && draft === undefined;
-		this.selectAllOnMount = false;
+		const cursor = draft === undefined ? this.mountCursor : "end";
+		this.mountCursor = "start";
+		const cursorLocation =
+			cursor === "all" ? { anchor: 0, head: value.length } : cursor === "end" ? { anchor: value.length, head: value.length } : { anchor: 0, head: 0 };
 		let finished = false;
 		const finish = (current: string) => {
 			if (finished) return;
@@ -92,7 +154,7 @@ export class NodeEditing {
 		};
 		const editor = createEmbeddableMarkdownEditor(this.app, el, {
 			value,
-			cursorLocation: selectAll ? { anchor: 0, head: value.length } : { anchor: value.length, head: value.length },
+			cursorLocation,
 			// Enter 綁在最低優先權：Obsidian 自己的換行（含清單接續）先處理，沒人處理才補一個換行。Mod+Enter 不碰
 			onEnter: (ed, mod) => (mod ? false : insertNewlineAndIndent(ed.activeCM)),
 			onChange: () => this.drafts.set(node.id, editor.value),
@@ -100,6 +162,29 @@ export class NodeEditing {
 		if (this.editor) editor.owner.file = this.editor.file;
 		// 要等元件掛完才 focus 得到，原因同 BlockViewEditor
 		setTimeout(() => editor.editor.cm?.focus());
+
+		// 尺寸：掛上時是估算值，CodeMirror 畫完即時預覽（下一兩個 frame）後量實際內容高度修正一次，
+		// 不低於節點原本的高、不高於上限，之後鎖住；使用者自己拉過就不再碰。修正完再 ensure 一次把節點露出來（看得到就不動），不閃光暈。
+		// 只設 reveal 請求，不走 revealNode（它會動收合與選取）
+		const bounds = this.bounds.get(node.id);
+		let applied = el.offsetHeight;
+		const fit = () => {
+			if (!bounds || Math.abs(el.offsetHeight - applied) > 1) return;
+			const content = (editor.activeCM?.scrollDOM.scrollHeight ?? el.scrollHeight) + HEIGHT_SLACK;
+			const h = clampHeight(content, bounds);
+			if (Math.abs(h - applied) > 1) {
+				applied = h;
+				onHeight(h);
+			}
+		};
+		let frame = requestAnimationFrame(() => {
+			frame = requestAnimationFrame(() => {
+				fit();
+				requestReveal(this.state, node.id, "ensure", false);
+			});
+		});
+		// 有些裝飾（標籤膠囊、嵌入）晚一點才畫出來，再補量一次
+		const settle = window.setTimeout(fit, 250);
 
 		/**
 		 * 編輯器的預設按鍵一律不攔（Enter 的清單接續、Esc 取消選取、Mod+B 粗體等都照 Obsidian 的來），
@@ -134,6 +219,9 @@ export class NodeEditing {
 		};
 		document.addEventListener("pointerdown", onPointerDown, true);
 		return () => {
+			cancelAnimationFrame(frame);
+			clearTimeout(settle);
+			this.bounds.delete(node.id);
 			document.removeEventListener("pointerdown", onPointerDown, true);
 			el.removeEventListener("keydown", onKeydownCapture, true);
 			editor.destroy();
@@ -182,7 +270,7 @@ export class NodeEditing {
 		const result = moveNode(this.editor.doc, source, target, position);
 		if (!result) return;
 		this.pendingNew = { start: result.nodeStart, edit: false, selectAll: false };
-		await this.write(result.patches);
+		await this.write(result.patches, undefined, { oldId: source.id, newStart: result.nodeStart });
 	}
 
 	private async delete(node: TreeNode) {
@@ -198,20 +286,31 @@ export class NodeEditing {
 		if (parent) selectNode(this.state, parent.id);
 	}
 
-	private async history(action: (editor: DocumentEditor) => Promise<boolean>) {
+	private async history(action: (editor: DocumentEditor) => Promise<TextPatch[] | null>) {
 		if (!this.editor || this.isEditing) return;
+		const starts = this.state.tree ? collectStarts(this.state.tree) : null;
+		const before = this.editor.doc;
 		try {
-			await action(this.editor);
+			const patches = await action(this.editor);
+			if (!patches) return;
+			this.pendingWrite = { before, after: this.editor.doc };
+			// 搬移的復原是「剪回去」，子樹的狀態對不回去會掉，其餘節點照常搬
+			if (starts) this.pendingRemap = { starts, patches, moved: null };
 		} catch (error) {
 			this.reportConflict(error);
 		}
 	}
 
 	/** 寫回；檔案被外部改過就不硬套，通知並把使用者輸入放進剪貼簿 */
-	private async write(patches: TextPatch[], clipboardText?: string) {
+	private async write(patches: TextPatch[], clipboardText?: string, moved: MovedSubtree | null = null) {
 		if (!this.editor) return;
+		const starts = this.state.tree ? collectStarts(this.state.tree) : null;
+		const before = this.editor.doc;
 		try {
-			await this.editor.apply(patches);
+			const applied = await this.editor.apply(patches);
+			if (this.editor.doc === before) return;
+			this.pendingWrite = { before, after: this.editor.doc };
+			if (starts) this.pendingRemap = { starts, patches: applied, moved };
 		} catch (error) {
 			this.pendingNew = null;
 			this.reportConflict(error, clipboardText);
@@ -228,12 +327,3 @@ export class NodeEditing {
 	}
 }
 
-/** 以文字起點找節點（新增後的節點位置是已知的） */
-const findByStart = (root: TreeNode, start: number): TreeNode | null => {
-	if (root.range.from === start && root.kind !== "root") return root;
-	for (const child of root.children) {
-		const found = findByStart(child, start);
-		if (found) return found;
-	}
-	return null;
-};

@@ -1,4 +1,4 @@
-import { EditorState, type StateCommand } from "@codemirror/state";
+import { EditorState, type StateCommand, type Transaction } from "@codemirror/state";
 import { history, redo, undo } from "@codemirror/commands";
 import type { App, TFile } from "obsidian";
 import type { TextPatch } from "../core/edit";
@@ -14,6 +14,15 @@ export class DocumentConflictError extends Error {
         this.name = "DocumentConflictError";
     }
 }
+
+/** transaction 的 ChangeSet 轉成以舊文件為準的補丁 */
+const changesToPatches = (tr: Transaction): TextPatch[] => {
+    const patches: TextPatch[] = [];
+    tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+        patches.push({ from: fromA, to: toA, insert: inserted.toString() });
+    });
+    return patches;
+};
 
 export class DocumentEditor {
     private state: EditorState;
@@ -39,27 +48,30 @@ export class DocumentEditor {
         if (doc !== this.doc) this.state = DocumentEditor.create(doc);
     }
 
-    async apply(patches: TextPatch[]): Promise<void> {
+    /** 套補丁並寫回；回傳實際套上的補丁（以套之前的文件為準），呼叫端用來搬節點狀態 */
+    async apply(patches: TextPatch[]): Promise<TextPatch[]> {
         const before = this.doc;
-        const next = this.state.update({ changes: patches.map((p) => ({ from: p.from, to: p.to, insert: p.insert })) }).state;
-        await this.commit(before, next);
+        const tr = this.state.update({ changes: patches.map((p) => ({ from: p.from, to: p.to, insert: p.insert })) });
+        await this.commit(before, tr.state);
+        return changesToPatches(tr);
     }
 
-    undo(): Promise<boolean> {
+    /** 回傳這次復原實際改了什麼（以復原前的文件為準）；沒東西可復原回傳 null */
+    undo(): Promise<TextPatch[] | null> {
         return this.run(undo);
     }
 
-    redo(): Promise<boolean> {
+    redo(): Promise<TextPatch[] | null> {
         return this.run(redo);
     }
 
-    private async run(command: StateCommand): Promise<boolean> {
+    private async run(command: StateCommand): Promise<TextPatch[] | null> {
         const before = this.doc;
-        let next: EditorState | null = null;
-        const handled = command({ state: this.state, dispatch: (tr) => (next = tr.state) });
-        if (!handled || !next) return false;
-        await this.commit(before, next);
-        return true;
+        let tr: Transaction | null = null;
+        const handled = command({ state: this.state, dispatch: (t) => (tr = t) });
+        if (!handled || !tr) return null;
+        await this.commit(before, (tr as Transaction).state);
+        return changesToPatches(tr);
     }
 
     /** 檔案內容必須等於 before 才寫入 after；不等就是外部改過 */

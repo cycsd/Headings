@@ -5,12 +5,13 @@
 	import { SvelteMap } from "svelte/reactivity";
 	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
-	import { mindmapLayout, type Side, type Size } from "../layout/mindmap";
+	import { mindmapLayout, type PlacedNode, type Side, type Size } from "../layout/mindmap";
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
 
 	let { tree, getText, onRenderMarkdown, maxNodeWidth, collapsed }: LayoutProps = $props();
+	const ui = getContext<NodeUi>(NODE_UI);
 
 	/** 量測到的節點尺寸；第一次渲染用預設尺寸，ResizeObserver 回報後重排 */
 	const sizes = new SvelteMap<string, Size>();
@@ -59,34 +60,45 @@
 	});
 
 	/**
-	 * 佈局每次都把整張圖平移到留白處，根節點的畫布座標會隨子樹大小變動。
-	 * 第一次佈局把根節點置中；之後根節點移動多少，就反向平移多少，讓它在螢幕上不動。
+	 * 佈局每次都把整張圖平移到留白處，節點的畫布座標會隨子樹大小變動。螢幕上保持不動的參考點（錨點）：
+	 * 平常是根節點中心；編輯中是編輯節點靠根那一側的上角，它變大、兄弟讓位時使用者盯著的角落不跑；
+	 * 離開編輯後的第一次重排也沿用它。第一次佈局把根節點置中；錨點換人時只記新位置、不平移。
 	 */
 	let panZoom: ReturnType<typeof PanZoom> | undefined = $state();
-	let prevRoot: { x: number; y: number } | null = null;
+	let anchorPrev: { id: string; x: number; y: number } | null = null;
+	let lastEditing: string | null = null;
+	let lastPlacement: typeof placement | null = null;
+
+	const anchorPoint = (placed: PlacedNode): { x: number; y: number } =>
+		placed.depth === 0
+			? { x: placed.x + placed.w / 2, y: placed.y + placed.h / 2 }
+			: { x: placed.side === -1 ? placed.x + placed.w : placed.x, y: placed.y };
 
 	$effect(() => {
-		const root = placement.nodes[0];
+		const nodes = placement.nodes;
 		const pz = panZoom;
-		if (!root || !pz) return;
-		const cx = root.x + root.w / 2;
-		const cy = root.y + root.h / 2;
-		const prev = prevRoot;
-		prevRoot = { x: cx, y: cy };
+		const editingId = ui.state.editingId;
+		if (nodes.length === 0 || !pz) return;
 		untrack(() => {
-			if (prev === null) {
-				pz.centerOn(cx, cy);
-			} else if (prev.x !== cx || prev.y !== cy) {
-				pz.shiftContent(cx - prev.x, cy - prev.y);
-			}
+			const changed = placement !== lastPlacement;
+			lastPlacement = placement;
+			if (editingId !== null) lastEditing = editingId;
+			const wanted = editingId ?? lastEditing ?? nodes[0]!.node.id;
+			const placed = nodes.find((n) => n.node.id === wanted) ?? nodes[0]!;
+			const point = anchorPoint(placed);
+			const prev = anchorPrev;
+			anchorPrev = { id: placed.node.id, ...point };
+			if (prev === null) pz.centerOn(point.x, point.y);
+			else if (prev.id === placed.node.id && (prev.x !== point.x || prev.y !== point.y)) pz.shiftContent(point.x - prev.x, point.y - prev.y);
+			// 離開編輯後處理完一次重排就把錨點還給根（編輯前後尺寸一樣時沒有重排，會留到下一次佈局變動才還）
+			if (editingId === null && changed) lastEditing = null;
 		});
 	});
 
 	/**
 	 * 麵包屑選到節點後把它置中。等下一個 frame 再做：收合狀態剛改完，新展開的節點要先量過尺寸、
-	 * 「根節點不動」的效果也要先跑完，置中才不會被蓋掉。
+	 * 錨點補償也要先跑完，置中才不會被蓋掉。
 	 */
-	const ui = getContext<NodeUi>(NODE_UI);
 	let canvas: HTMLElement | undefined = $state();
 	$effect(() => {
 		const request = ui.state.reveal;
@@ -129,17 +141,28 @@
 		return () => cancelAnimationFrame(frame);
 	});
 
-	/** observe 時 ResizeObserver 會先回報一次初始尺寸，不用另外量 */
+	/**
+	 * observe 時 ResizeObserver 會先回報一次初始尺寸，不用另外量。
+	 * attachment 依 id 快取：每次 placement 重算都給新的函式的話，Svelte 會把每個節點 unobserve 再 observe 一輪，
+	 * 全部節點重新回報初始尺寸，編輯中節點每長高一次就是一場風暴。
+	 */
+	const attachments = new Map<string, Attachment<HTMLElement>>();
 	function measure(id: string): Attachment<HTMLElement> {
-		return (el) => {
-			idOf.set(el, id);
-			observer.observe(el);
-			return () => {
-				observer.unobserve(el);
-				idOf.delete(el);
-				pending.delete(id);
+		let attachment = attachments.get(id);
+		if (!attachment) {
+			attachment = (el) => {
+				idOf.set(el, id);
+				observer.observe(el);
+				return () => {
+					observer.unobserve(el);
+					idOf.delete(el);
+					pending.delete(id);
+					attachments.delete(id);
+				};
 			};
-		};
+			attachments.set(id, attachment);
+		}
+		return attachment;
 	}
 </script>
 

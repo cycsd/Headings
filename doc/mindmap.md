@@ -206,6 +206,53 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
   在佔位框（data-drop-placeholder）上維持原決策、離開兩者才重新 elementFromPoint；自動平移時把內容位移量傳進 refreshDropTarget 移動錨點。
   小影子同時改成只留節點本體，複製時把所有 button（收合把手、icon 列、「…」）拿掉。
 
+### 編輯器尺寸共識 (2026-11-14)
+- 使用者回報進編輯節點會突然變很大：編輯器寬度原本撐到節點最大寬度，標題節點的編輯範圍又是整段原文，高度只受節點最大高度限制。
+- 新設定「編輯器自訂尺寸」（editorSizeEnabled，預設關）放在節點外觀那組；開著時才顯示「編輯器寬度」（200–1200，預設 360）與
+  「編輯器最大高度」（0 不限 / 120–1200，預設 320）。關：寬度 = 節點最大寬度、高度上限 = 節點內容最大高度（現狀）。
+- 寬度是固定寬不是上限：進編輯跳一次、之後打字只有高度在動；上限模式會每打一字變寬一點、整排兄弟跟著左右抖，換行點也會飄。
+- 高度兜底不綁開關：最後算出的上限為 0 時 CSS 用 50vh，節點不會比畫面高，超過在編輯器內捲動。
+- 保持在畫面內：編輯器掛好的下一個 frame 與每次 ResizeObserver 量到變大時 revealNode(ensure, flash=false)；
+  看得到就不動，有一部分被遮才最小平移 / 捲動；節點比視口大時 PanZoom.ensureVisible 對齊左上。reveal 多了 flash 欄位，編輯用的不閃光暈。
+- 實作：settings-model 的 editorSize() 解析成 HostState.editorWidth / editorMaxHeight；TreeNodeBox 以 --editor-width / --editor-max-height
+  畫 .editor，.node.editing 放開 max-width（自訂寬可比節點最大寬度大），flat 的 cell 內仍 max-width: 100%。
+- 抖動共識 (2026-11-14，取代上面「保持在畫面內」的 ResizeObserver 做法)：使用者回報進編輯會不自然地抖，起因是編輯器跟著內容長、
+  每次長高都重排加平移。改成**尺寸進入時一次定好、編輯期間不變**，內容多了在編輯器內捲動：
+  - 關閉自訂尺寸（預設）：依內容貼合。寬 = 原文最長一行的自然寬度，夾在「節點原本的寬」與「節點最大寬度」之間；
+    高 = 以該寬度量原文換行後的高度，夾在「節點原本的高」與「節點內容最大高度」（0 時 50vh）之間。
+    節點顯示的就是全部內容時幾乎不動；只顯示標題但底下有內容時長一次到剛好裝下。
+  - 開啟自訂尺寸：寬 = 設定值；高 = 量原文換行後的高度，至少 4 行、不超過「編輯器最大高度」（0 時 50vh）。
+  - 量測在掛 CodeMirror 之前用隱藏探針（editor-size.ts domMeasurer）做，TreeNodeBox 用 $effect.pre 在 DOM 換成編輯器前量節點原本的內容框。
+    resolveEditorBox 是純夾值函式，量測注入，有測試。
+  - 心智圖的錨點：平常根節點中心不動；編輯中改為編輯節點靠根那一側的上角不動（兄弟往外讓），離開編輯後的第一次重排也沿用。
+  - ensure 只在掛好後的下一個 frame 做一次；不再有 ResizeObserver。
+  - 編輯器右下角 CSS resize 把手讓使用者自己拉，不記憶。
+  - 游標放在開頭（標題行行首）；新增的節點放結尾、新段落全選佔位文字。
+  - 開關說明改成「關閉時依節點內容與原本大小決定」。
+- 渲染容器 (2026-11-15)：使用者覺得節點渲染出來跟 Canvas 文字節點不像，問是否改用唯讀編輯器顯示。查證：Canvas 沒編輯時用的也是
+  閱讀模式渲染（MarkdownRenderer），點進去才換 CodeMirror；差異來自本外掛的渲染 DOM 沒包在 `.markdown-preview-view.markdown-rendered`
+  裡，主題的標題字級、標籤膠囊、callout 樣式都沒套上。改法：onRenderMarkdown 包 `.markdown-embed-content > .markdown-preview-view.markdown-rendered`，
+  TreeNodeBox 把容器的整頁用樣式（height 100%、overflow、檔案邊距）歸零。渲染器維持 MarkdownRenderer，不換唯讀編輯器（幾百個 CM 實例太重）。
+  顯示時標題沒有 `#`、進編輯才有，使用者確認這是要的。
+- 尺寸修正共識 (2026-11-14)：使用者要「打開時高度剛好顯示全部內容、不出捲軸，之後多打才出」，而且太小的節點打開編輯器太窄。
+  原因是探針用內文字級量「# H1」，即時預覽把標題畫成大字，實際又高又寬。改法：
+  - 高度畫完再定：掛上時用估算，CodeMirror 畫完（兩個 frame 後、250ms 再補一次）量 activeCM.scrollDOM.scrollHeight + 4，
+    夾在同一組上下限（不低於節點原本的高、不高於上限）後經 onHeight 回給 TreeNodeBox 鎖住；使用者自己拉過就不再碰。可放大也可縮小。
+  - 寬度下限：關閉自訂時「節點原本的寬與 200px 取大者」；探針逐行套 --hN-size / --hN-weight / --hN-line-height、程式碼圍欄套等寬字。
+  - id 兩題定案：維持標題式 id；外部改動用鏡像與新文件的差異搬狀態，diffPatch 以「行」為單位找共同前綴 / 後綴
+    （字元級會把「在 B 前插入 New」算成「B 改名 New」而對錯節點），lastStarts 記上一次載入的樹的起點。
+- id 搬移 (2026-11-14)：使用者回報編輯後節點會自己展開 / 收合。節點 id 由標題（heading：父 id/標題）與序號（list item、section）組成，
+  改標題、插入或刪除兄弟都會讓 id 變，collapsed / iconsOpen / litTypes / selectedId / focusId 用舊 id 記就對不上，甚至跑到別的節點。
+  修法見 view/id-remap.ts：寫回前 collectStarts 記下每個節點的文字起點，DocumentEditor.apply / undo / redo 回傳實際套上的補丁
+  （ChangeSet 轉 TextPatch），cache 更新後 mapOffset 把起點穿過補丁、findByStart 在新樹找回同一個節點，remapHostState 搬狀態。
+  拖曳搬移的子樹起點對不回去，改用新位置節點的 id 換前綴；搬移的復原則會掉子樹狀態（已知限制）。
+  另外 cache 更新是非同步的，編輯中擱置的舊版可能比自己寫回的那版先到：pendingWrite 記 before / after，before 略過（連鏡像都不動）、
+  after 才搬狀態與處理 pendingNew、其他內容代表別人改了就放棄。有 mapOffset / buildIdMap 測試。
+- 當機修正 (2026-11-14)：第一版編輯中每次長高都走 revealNode，它會 clear + add 整個 collapsed 集合，三種佈局的 placement 全部重算；
+  心智圖的 measure attachment 又是每次 render 新函式，Svelte 會把所有節點 unobserve / observe 一輪，全部重新回報初始尺寸，
+  一個鍵就是一場風暴，畫面卡死、尺寸量到一半時佈局跑掉。改法：replaceCollapsed 內容相同就不寫；編輯用 requestReveal 只設 reveal 請求；
+  ResizeObserver 第一次回報只當基準、之後一個 frame 最多一次；measure attachment 依 id 快取。
+
 ## 進度 (2026-11-11)
 設計共識的 8 個步驟都已實作：分層重構、設定遷移、統一 view 與 YAML、三種佈局、節點互動、升級節點、PanZoom 雙指、BlockView 改名。
 以 vitest 與 svelte-check 驗證，尚未在 Obsidian 內手動測試，第一次實際開啟時要看的點：

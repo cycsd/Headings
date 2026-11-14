@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { getContext } from "svelte";
+	import { getContext, untrack } from "svelte";
 	import { setIcon, type IconName } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
+	import type { Box } from "./editor-size";
 	import { countNodes, sectionTypesOf, type SectionNode, type TreeNode } from "../core/tree";
 	import { DROP_PLACEHOLDER_ID } from "../core/tree-ops";
 	import { SECTION_TYPES } from "../core/section-types";
@@ -117,7 +118,7 @@
 	let flashing = $state(false);
 	$effect(() => {
 		const request = ui.state.reveal;
-		if (!request || request.id !== node.id) return;
+		if (!request || request.id !== node.id || !request.flash) return;
 		flashing = false;
 		let timer: number | undefined;
 		const frame = requestAnimationFrame(() =>
@@ -136,6 +137,24 @@
 	let hasIconRow = $derived(isHeading && (types.length > 0 || hasLinks));
 	/** 內容區最大高度，0 為不限制 */
 	let maxNodeHeight = $derived(ui.state.maxNodeHeight > 0 ? `${ui.state.maxNodeHeight}px` : "none");
+
+	/**
+	 * 編輯器尺寸：進入編輯時量一次，之後不變（內容多了在編輯器內捲動），節點外形在編輯期間就不會一直跳。
+	 * 用 $effect.pre 在 DOM 還沒換成編輯器之前量節點原本的大小當下限；離開編輯就清掉。
+	 */
+	let nodeEl: HTMLElement | undefined = $state();
+	let editorBox: Box | null = $state(null);
+	$effect.pre(() => {
+		if (!editing) {
+			editorBox = null;
+			return;
+		}
+		if (untrack(() => editorBox) === null) editorBox = ui.measureEditor(node, untrack(() => nodeEl));
+	});
+	/** CodeMirror 畫完後量到實際內容高度，鎖成這個高度（開啟時剛好裝下、不出捲軸） */
+	function lockHeight(h: number) {
+		if (editorBox) editorBox = { w: editorBox.w, h };
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
@@ -150,9 +169,11 @@
 	class:drop-target={dropTarget}
 	class:drag-subtree={dragSubtree}
 	class:placeholder
+	class:editing
 	class:flash={flashing}
 	data-node-id={placeholder ? undefined : node.id}
 	data-drop-placeholder={placeholder ? "" : undefined}
+	bind:this={nodeEl}
 	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}{placeholder ? ` width: ${placeholderSize.w}px; height: ${placeholderSize.h}px;` : ""}"
 	onclick={handleClick}
 	ondblclick={handleDoubleClick}
@@ -160,8 +181,8 @@
 >
 	{#if !placeholder}
 	{#if editing}
-		<!-- 編輯模式：Obsidian 的嵌入式編輯器取代標題列與內容區；Mod+Enter / Mod+S / 點外面離開並寫回 -->
-		<div class="editor" {@attach ui.mountEditor(node)}></div>
+		<!-- 編輯模式：Obsidian 的嵌入式編輯器取代標題列與內容區；Mod+Enter / 點外面離開並寫回。尺寸進入時定好，右下角可自己拉 -->
+		<div class="editor" style={editorBox ? `width: ${editorBox.w}px; height: ${editorBox.h}px;` : ""} {@attach ui.mountEditor(node, lockHeight)}></div>
 	{:else}
 	<!-- 從標題列按下可以拖曳（按鈕與連結除外）；移動超過門檻才算拖，點擊與雙擊照舊 -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -354,14 +375,22 @@
 			animation: none;
 		}
 	}
-	/* 編輯中：節點拉到最大寬度，讓編輯器有空間；內容超過最大高度也在節點內捲動 */
+	/* 編輯中：寬高由 inline style 一次定好，內容超過就在編輯器內捲動；右下角的拖拉把手讓使用者自己調，離開編輯就回復 */
 	.editor {
-		width: var(--max-node-width);
-		max-width: 100%;
-		max-height: var(--max-node-height);
+		box-sizing: border-box;
+		min-width: 80px;
+		min-height: 40px;
 		overflow: auto;
+		resize: both;
 		font-weight: normal;
 		cursor: text;
+	}
+	/* 自訂寬度可以比節點最大寬度大，編輯中放開節點的上限；Tree Table 的 cell 寬度由表格決定，編輯器不撐破它 */
+	.node.editing {
+		max-width: none;
+	}
+	.node.flat .editor {
+		max-width: 100%;
 	}
 	.editor :global(.cm-editor) {
 		background: transparent;
@@ -380,21 +409,29 @@
 		overflow-x: auto;
 		word-break: break-word;
 	}
-	.title :global(p),
-	.section :global(p) {
-		margin: 0;
+	/*
+	 * 渲染內容包在 .markdown-preview-view.markdown-rendered 裡（同 Canvas 文字節點），主題的閱讀模式樣式整套套上；
+	 * 但那個容器預設是整頁用的（height 100%、overflow auto、檔案邊距），在節點裡要拿掉
+	 */
+	.title :global(.markdown-preview-view),
+	.section :global(.markdown-preview-view) {
+		height: auto;
+		width: auto;
+		min-height: 0;
+		overflow: visible;
+		padding: 0;
 	}
-	/* 標題列保留 heading 原本的字級，但不要有段落間距 */
-	.title :global(:is(h1, h2, h3, h4, h5, h6)),
-	.section :global(:is(h1, h2, h3, h4, h5, h6)) {
-		margin: 0;
-		line-height: 1.3;
+	.title :global(.markdown-preview-view > :first-child),
+	.section :global(.markdown-preview-view > :first-child) {
+		margin-top: 0;
 	}
-	.title :global(pre),
-	.title :global(table),
-	.section :global(pre),
-	.section :global(table) {
-		margin: 4px 0;
+	.title :global(.markdown-preview-view > :last-child),
+	.section :global(.markdown-preview-view > :last-child) {
+		margin-bottom: 0;
+	}
+	/* 標題列只有一行標題，不要段落間距 */
+	.title :global(:is(h1, h2, h3, h4, h5, h6)) {
+		margin: 0;
 	}
 	.icons {
 		display: flex;

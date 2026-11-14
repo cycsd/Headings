@@ -2,6 +2,7 @@ import type { Attachment } from "svelte/attachments";
 import type { TreeNode } from "../core/tree";
 import type { DropPosition } from "../core/edit";
 import type { HostState } from "./host-state.svelte";
+import type { Box } from "./editor-size";
 import { selectNode } from "./tree-state";
 import { startNodeDrag } from "./node-drag";
 
@@ -23,8 +24,10 @@ export type NodeUi = {
 	select(id: string): void;
 	/** 進入節點內編輯 */
 	edit(id: string): void;
-	/** 把 Obsidian 的嵌入式編輯器掛到節點上，離開時寫回；由 view 實作 */
-	mountEditor(node: TreeNode): Attachment<HTMLElement>;
+	/** 把 Obsidian 的嵌入式編輯器掛到節點上，離開時寫回；畫完後量到實際高度會叫 onHeight。由 view 實作 */
+	mountEditor(node: TreeNode, onHeight: (height: number) => void): Attachment<HTMLElement>;
+	/** 進入編輯時算一次編輯器尺寸；nodeEl 是還沒換成編輯器的節點元素（量原本大小、字型與內距）。由 view 實作 */
+	measureEditor(node: TreeNode, nodeEl: HTMLElement | undefined): Box;
 	/** 鍵盤與選單共用的結構操作；由 view 實作 */
 	command(command: NodeCommand, node: TreeNode): void;
 	/** 從節點標題列按下開始拖曳；放到合法目標上就搬過去 */
@@ -36,7 +39,10 @@ export type NodeUi = {
 export type NodeCommand = "addSibling" | "addChild" | "delete" | "undo" | "redo";
 
 /** view 提供、需要 Obsidian app 的動作 */
-export type NodeActions = Pick<NodeUi, "showLinks" | "renderFrontmatter" | "showNodeMenu" | "edit" | "mountEditor" | "command" | "moveNode">;
+export type NodeActions = Pick<
+	NodeUi,
+	"showLinks" | "renderFrontmatter" | "showNodeMenu" | "edit" | "mountEditor" | "measureEditor" | "command" | "moveNode"
+>;
 
 export const NODE_UI = Symbol("headings-node-ui");
 
@@ -67,6 +73,7 @@ export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => 
 	},
 	edit: actions.edit,
 	mountEditor: actions.mountEditor,
+	measureEditor: actions.measureEditor,
 	command: actions.command,
 	startDrag(node, evt) {
 		startNodeDrag(state, node, evt, actions.moveNode);

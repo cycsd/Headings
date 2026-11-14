@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SETTINGS, defaultLitTypes, enabledNodeTypes, migrateSettings } from "../src/settings-model";
+import { DEFAULT_SETTINGS, defaultLitTypes, editorSize, enabledNodeTypes, migrateSettings } from "../src/settings-model";
 
 describe("migrateSettings", () => {
     it("null / undefined 回傳預設值並標記 migrated", () => {
@@ -26,6 +26,9 @@ describe("migrateSettings", () => {
             defaultExpandEnabled: true,
             defaultExpandDepth: 2,
             nodeStyle: { branchBorder: true, branchBackground: false },
+            editorSizeEnabled: true,
+            editorWidth: 400,
+            editorMaxHeight: 0,
         };
         const result = migrateSettings(input);
         expect(result.migrated).toBe(false);
@@ -59,6 +62,23 @@ describe("migrateSettings", () => {
         const on = migrateSettings({ defaultExpandDepth: 3 });
         expect(on.settings.defaultExpandEnabled).toBe(true);
         expect(on.settings.defaultExpandDepth).toBe(2);
+    });
+
+    it("編輯器尺寸：預設關閉、360 x 320；寬度夾 200–1200、高度 0 不限且下限 120；關閉時跟著節點尺寸", () => {
+        const { settings } = migrateSettings({});
+        expect(settings.editorSizeEnabled).toBe(false);
+        expect(settings.editorWidth).toBe(360);
+        expect(settings.editorMaxHeight).toBe(320);
+        expect(editorSize(settings)).toEqual({ width: 320, maxHeight: 320 });
+        expect(editorSize({ ...settings, maxNodeWidth: 500, maxNodeHeight: 0 })).toEqual({ width: 500, maxHeight: 0 });
+
+        const custom = migrateSettings({ editorSizeEnabled: true, editorWidth: 50, editorMaxHeight: 60 });
+        expect(custom.migrated).toBe(true);
+        expect(custom.settings.editorWidth).toBe(200);
+        expect(custom.settings.editorMaxHeight).toBe(120);
+        expect(editorSize(custom.settings)).toEqual({ width: 200, maxHeight: 120 });
+        expect(migrateSettings({ editorMaxHeight: 0 }).settings.editorMaxHeight).toBe(0);
+        expect(migrateSettings({ editorSizeEnabled: "yes" }).migrated).toBe(true);
     });
 
     it("nodeStyle 缺少時預設都套用分支顏色，型別錯的欄位退回預設並標記 migrated", () => {
