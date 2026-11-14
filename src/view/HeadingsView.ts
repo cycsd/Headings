@@ -267,11 +267,21 @@ export class HeadingsView extends ItemView {
         menu.showAtMouseEvent(evt);
     }
 
-    /** 節點右鍵 / 「…」選單：收合其他、以此為根、展開 / 收合子樹 */
+    /** 在 Markdown 編輯器裡定位到節點那一行的行首（根節點到檔案開頭）；分頁的尋找與開啟交給 docService */
+    private async locateInMarkdown(node: TreeNode) {
+        const file = this.loaded?.file;
+        if (!file) return;
+        const offset = node.kind === "root" ? 0 : node.range.from;
+        await this.docService.reveal(file, offset, offset);
+    }
+
+    /** 節點右鍵 / 「…」選單：定位、編輯與結構操作、收合其他、以此為根、展開 / 收合子樹 */
     private showNodeMenu(node: TreeNode, evt: MouseEvent) {
         const state = this.hostState;
         const isVisibleRoot = visibleRoot(state)?.id === node.id;
         const menu = new Menu();
+        menu.addItem((item) => item.setTitle(t("nodeMenuLocate")).setIcon("file-text").onClick(() => void this.locateInMarkdown(node)));
+        menu.addSeparator();
         menu.addItem((item) => item.setTitle(t("nodeMenuEdit")).setIcon("pencil").onClick(() => this.editing.startEdit(node.id)));
         menu.addItem((item) =>
             item

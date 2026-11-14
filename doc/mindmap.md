@@ -229,6 +229,12 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
   - 編輯器右下角 CSS resize 把手讓使用者自己拉，不記憶。
   - 游標放在開頭（標題行行首）；新增的節點放結尾、新段落全選佔位文字。
   - 開關說明改成「關閉時依節點內容與原本大小決定」。
+- 節點定位到 Markdown 共識 (2026-11-15)：節點選單最上面加「在 Markdown 文件定位」（file-text），只有這一個入口（使用者不要快捷鍵與 Mod+點擊）。
+  游標放在節點那一行的行首、不選取、捲到中央；根節點到檔案開頭。分頁：先找工作區裡已開著該檔的 Markdown 分頁（多個時優先最近用過的），
+  沒有才開：桌面 split、手機 tab。焦點移到編輯器。閱讀模式不切模式，用 setEphemeralState({ line }) 捲到那一行。
+  反向（編輯器游標 → 高亮節點）先不做，做法已討論：registerEditorExtension 的 updateListener 看 selectionSet、節流、offset 找最深包含的節點、
+  選取 + ensure、不展開收合、編輯 / 拖曳中與自己定位送出的變動略過、標題列開關預設關。
+  實作：document-service 的 locate / reveal 改掉只認自己開過的 view 的做法（Effect 版換成 async）。
 - 渲染容器 (2026-11-15)：使用者覺得節點渲染出來跟 Canvas 文字節點不像，問是否改用唯讀編輯器顯示。查證：Canvas 沒編輯時用的也是
   閱讀模式渲染（MarkdownRenderer），點進去才換 CodeMirror；差異來自本外掛的渲染 DOM 沒包在 `.markdown-preview-view.markdown-rendered`
   裡，主題的標題字級、標籤膠囊、callout 樣式都沒套上。改法：onRenderMarkdown 包 `.markdown-embed-content > .markdown-preview-view.markdown-rendered`，
