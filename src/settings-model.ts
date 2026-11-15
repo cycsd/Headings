@@ -5,6 +5,7 @@ import {
 	type PromotableSectionType,
 } from "./core/section-types";
 import { LAYOUT_IDS, type LayoutId } from "./layout/layout";
+import { MINDMAP_DIRECTIONS, type MindmapDirection } from "./layout/mindmap";
 
 /**
  * 設定的資料模型與遷移，不 import obsidian，方便單元測試。
@@ -40,7 +41,12 @@ export interface HeadingsSettings {
 	rememberFileViews: boolean;
 	/** 搜尋列上次用的模式，下次開啟沿用；設定頁不露出 */
 	searchMode: SearchMode;
+	/** 心智圖方向：both 左右分佈、right 全部往右；單一筆記可用 YAML 覆寫 */
+	mindmapDirection: MindmapDirection;
 }
+
+export const isMindmapDirection = (value: unknown): value is MindmapDirection =>
+	typeof value === "string" && (MINDMAP_DIRECTIONS as readonly string[]).includes(value);
 
 /** 搜尋列的兩種模式：search 整棵樹照畫、命中描色；filter 只留命中與祖先 */
 export const SEARCH_MODES = ["search", "filter"] as const;
@@ -66,6 +72,7 @@ export const DEFAULT_SETTINGS: HeadingsSettings = {
 	editorMaxHeight: 320,
 	rememberFileViews: true,
 	searchMode: "search",
+	mindmapDirection: "both",
 };
 
 export const MAX_NODE_WIDTH_RANGE = { min: 160, max: 1200, step: 20 } as const;
@@ -177,6 +184,10 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 	if (width.migrated) migrated = true;
 	const editorMaxHeight = readHeight(data.editorMaxHeight, DEFAULT_SETTINGS.editorMaxHeight, EDITOR_HEIGHT_RANGE);
 
+	let mindmapDirection = DEFAULT_SETTINGS.mindmapDirection;
+	if (isMindmapDirection(data.mindmapDirection)) mindmapDirection = data.mindmapDirection;
+	else if (data.mindmapDirection !== undefined) migrated = true;
+
 	let defaultExpandEnabled = DEFAULT_SETTINGS.defaultExpandEnabled;
 	let rawDepth = data.defaultExpandDepth;
 	if (typeof data.defaultExpandEnabled === "boolean") {
@@ -207,7 +218,7 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 	const known = new Set([
 		"nodeTypes", "defaultLitTypes", "defaultLayout", "maxNodeWidth", "maxNodeHeight",
 		"defaultExpandEnabled", "defaultExpandDepth", "nodeStyle", "editorSizeEnabled", "editorWidth", "editorMaxHeight",
-		"rememberFileViews", "searchMode", "fileViews",
+		"rememberFileViews", "searchMode", "fileViews", "mindmapDirection",
 	]);
 	for (const key of Object.keys(data)) {
 		if (!known.has(key)) migrated = true;
@@ -216,7 +227,7 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 	return {
 		settings: {
 			nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, maxNodeHeight, defaultExpandEnabled, defaultExpandDepth, nodeStyle,
-			editorSizeEnabled, editorWidth, editorMaxHeight, rememberFileViews, searchMode,
+			editorSizeEnabled, editorWidth, editorMaxHeight, rememberFileViews, searchMode, mindmapDirection,
 		},
 		migrated,
 	};

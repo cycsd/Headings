@@ -17,7 +17,7 @@
 	const sizes = new SvelteMap<string, Size>();
 	/** 拖曳中固定根的直接子節點左右分配：拖曳開始時記下來，結束就放掉；不然佔位塞進去會讓分支跳邊 */
 	let frozenSides: ReadonlyMap<string, Side> | undefined = $state();
-	let placement = $derived(mindmapLayout(tree, { sizes, collapsed, sides: frozenSides }));
+	let placement = $derived(mindmapLayout(tree, { sizes, collapsed, sides: frozenSides, direction: ui.state.mindmapDirection }));
 
 	/**
 	 * 所有節點共用一個 ResizeObserver，回報先收進 pending，
@@ -69,6 +69,18 @@
 	let lastEditing: string | null = null;
 	let lastPlacement: typeof placement | null = null;
 
+	/** 方向換了（雙向 ↔ 只往右）整張圖重排，當成第一次佈局重新擺放根節點；要宣告在錨點 effect 之前才會先跑 */
+	$effect(() => {
+		void ui.state.mindmapDirection;
+		anchorPrev = null;
+	});
+
+	/** 第一次佈局：雙向把根置中；只往右時根靠左（左緣在視口 10% 處）、垂直置中，右邊才有空間長 */
+	const placeRoot = (pz: NonNullable<typeof panZoom>, root: PlacedNode) => {
+		if (ui.state.mindmapDirection === "right") pz.positionAt(root.x, root.y + root.h / 2, 0.1, 0.5);
+		else pz.centerOn(root.x + root.w / 2, root.y + root.h / 2);
+	};
+
 	const anchorPoint = (placed: PlacedNode): { x: number; y: number } =>
 		placed.depth === 0
 			? { x: placed.x + placed.w / 2, y: placed.y + placed.h / 2 }
@@ -88,7 +100,7 @@
 			const point = anchorPoint(placed);
 			const prev = anchorPrev;
 			anchorPrev = { id: placed.node.id, ...point };
-			if (prev === null) pz.centerOn(point.x, point.y);
+			if (prev === null) placeRoot(pz, nodes[0]!);
 			else if (prev.id === placed.node.id && (prev.x !== point.x || prev.y !== point.y)) pz.shiftContent(point.x - prev.x, point.y - prev.y);
 			// 離開編輯後處理完一次重排就把錨點還給根（編輯前後尺寸一樣時沒有重排，會留到下一次佈局變動才還）
 			if (editingId === null && changed) lastEditing = null;

@@ -1,7 +1,7 @@
 import type { TreeNode } from "../core/tree";
 import { pathTo } from "../core/tree-ops";
 import { visibleChildren, type LayoutId } from "../layout/layout";
-import { mindmapLayout, type Side } from "../layout/mindmap";
+import { mindmapLayout, type MindmapDirection, type Side } from "../layout/mindmap";
 
 /**
  * 方向鍵在節點間移動：只在看得到的節點間走，到邊界回傳 null。
@@ -49,8 +49,14 @@ const navigateList = (root: TreeNode, collapsed: ReadonlySet<string>, selectedId
 	}
 };
 
-const navigateMindmap = (root: TreeNode, collapsed: ReadonlySet<string>, selectedId: string, key: NavKey): TreeNode | null => {
-	const placement = mindmapLayout(root, { collapsed });
+const navigateMindmap = (
+	root: TreeNode,
+	collapsed: ReadonlySet<string>,
+	selectedId: string,
+	key: NavKey,
+	direction: MindmapDirection,
+): TreeNode | null => {
+	const placement = mindmapLayout(root, { collapsed, direction });
 	const sides = new Map<string, Side>(placement.nodes.map((p) => [p.node.id, p.side]));
 	const current = placement.nodes.find((p) => p.node.id === selectedId);
 	if (!current) return null;
@@ -78,4 +84,6 @@ export const navigate = (
 	layoutId: LayoutId,
 	selectedId: string,
 	key: NavKey,
-): TreeNode | null => (layoutId === "mindmap" ? navigateMindmap(root, collapsed, selectedId, key) : navigateList(root, collapsed, selectedId, key));
+	direction: MindmapDirection = "both",
+): TreeNode | null =>
+	layoutId === "mindmap" ? navigateMindmap(root, collapsed, selectedId, key, direction) : navigateList(root, collapsed, selectedId, key);

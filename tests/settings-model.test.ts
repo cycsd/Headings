@@ -31,6 +31,7 @@ describe("migrateSettings", () => {
             editorMaxHeight: 0,
             rememberFileViews: false,
             searchMode: "filter",
+            mindmapDirection: "right",
         };
         const result = migrateSettings(input);
         expect(result.migrated).toBe(false);
@@ -81,6 +82,14 @@ describe("migrateSettings", () => {
         expect(editorSize(custom.settings)).toEqual({ width: 200, maxHeight: 120 });
         expect(migrateSettings({ editorMaxHeight: 0 }).settings.editorMaxHeight).toBe(0);
         expect(migrateSettings({ editorSizeEnabled: "yes" }).migrated).toBe(true);
+    });
+
+    it("mindmapDirection 預設 both；right 保留；其他值退回預設並標記 migrated", () => {
+        expect(migrateSettings({}).settings.mindmapDirection).toBe("both");
+        expect(migrateSettings({ mindmapDirection: "right" }).settings.mindmapDirection).toBe("right");
+        const bad = migrateSettings({ mindmapDirection: "left" });
+        expect(bad.settings.mindmapDirection).toBe("both");
+        expect(bad.migrated).toBe(true);
     });
 
     it("nodeStyle 缺少時預設都套用分支顏色，型別錯的欄位退回預設並標記 migrated", () => {

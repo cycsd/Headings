@@ -42,7 +42,12 @@ export type MindmapOptions = LayoutOptions & {
      * 不在表裡的節點（佔位）跟前一個兄弟同側，沒有前一個就跟後一個；沒給就依高度自動切。
      */
     sides?: ReadonlyMap<string, Side>;
+    /** both：根的子節點依高度切左右兩半（預設）；right：全部往右 */
+    direction?: MindmapDirection;
 };
+
+export const MINDMAP_DIRECTIONS = ["both", "right"] as const;
+export type MindmapDirection = (typeof MINDMAP_DIRECTIONS)[number];
 
 /** 1 右、-1 左、0 根 */
 export type Side = -1 | 0 | 1;
@@ -124,7 +129,7 @@ const measure = (node: TreeNode, depth: number, options: MindmapOptions, spacing
     const subs = visibleChildren(node, options).map((child) => measure(child, depth + 1, options, spacing));
     const base: Sub = { node, w: size.w, h: size.h, children: [], extentTop: -size.h / 2, extentBottom: size.h / 2 };
     if (subs.length === 0) return base;
-    if (depth === 0) return measureRoot(base, subs, spacing, options.sides);
+    if (depth === 0) return measureRoot(base, subs, spacing, options.direction === "right" ? ALL_RIGHT : options.sides);
 
     const { anchors, height } = stack(subs, (a, b) => (a.children.length || b.children.length ? spacing.groupGap : spacing.gapY));
     const anchor = (anchors[0]! + anchors.at(-1)!) / 2;
@@ -133,6 +138,9 @@ const measure = (node: TreeNode, depth: number, options: MindmapOptions, spacing
     base.extentBottom = Math.max(height - anchor, size.h / 2);
     return base;
 };
+
+/** 「只往右」：空表交給 fixedSides，查不到的一律往右 */
+const ALL_RIGHT: ReadonlyMap<string, Side> = new Map();
 
 /** 固定分配：查表；查不到的跟前一個兄弟同側，都查不到就跟後一個，再不然往右 */
 const fixedSides = (subs: Sub[], sides: ReadonlyMap<string, Side>): Side[] => {

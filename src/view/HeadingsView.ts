@@ -5,7 +5,8 @@ import type HeadingsPlugin from "../main";
 import LayoutHost from "./LayoutHost.svelte";
 import { createHostState, resetNodeState, watchFileMemory, type HostState } from "./host-state.svelte";
 import { LAYOUT_REGISTRY, availableLayoutIds } from "./layout-registry";
-import { FM_LAYOUT_KEY, FM_NODES_KEY, resolveLayoutId, resolveNodeTypes } from "./view-config";
+import { FM_LAYOUT_KEY, FM_MINDMAP_DIRECTION_KEY, FM_NODES_KEY, resolveLayoutId, resolveMindmapDirection, resolveNodeTypes } from "./view-config";
+import type { MindmapDirection } from "../layout/mindmap";
 import { EMBED_ICON, LINK_ICON } from "./section-icons";
 import { parseFrontmatter, renderProperties } from "./frontmatter-properties";
 import { PluginDocumentService } from "../service/document-service";
@@ -70,6 +71,7 @@ export class HeadingsView extends ItemView {
         tree: null,
         maxNodeWidth: this.plugin.settings.maxNodeWidth,
         maxNodeHeight: this.plugin.settings.maxNodeHeight,
+        mindmapDirection: this.plugin.settings.mindmapDirection,
         ...editorSizeState(this.plugin.settings),
         defaultLit: new Set(defaultLitTypes(this.plugin.settings)),
         branchBorder: this.plugin.settings.nodeStyle.branchBorder,
@@ -94,6 +96,7 @@ export class HeadingsView extends ItemView {
     private applyDefaultDepth = true;
     /** 使用者在這個 view 上剛改過、尚未等到 cache 更新的 override */
     private pendingLayout: LayoutId | null = null;
+    private pendingMindmapDirection: MindmapDirection | null = null;
     private pendingNodeTypes: PromotableSectionType[] | null = null;
     /** 正在記錄狀態的檔案路徑；換檔後到第一次建樹之間是 null，那段期間的清空不算變動 */
     private memoryPath: string | null = null;
@@ -232,6 +235,7 @@ export class HeadingsView extends ItemView {
             this.state = next;
             this.pendingLayout = null;
             this.pendingNodeTypes = null;
+            this.pendingMindmapDirection = null;
             // 節點 id 只在同一個檔案內穩定，換檔案就清掉；清掉到第一次建樹之間不記錄
             if (fileChanged) {
                 this.memoryPath = null;
@@ -294,6 +298,7 @@ export class HeadingsView extends ItemView {
         this.hostState.branchBorder = this.plugin.settings.nodeStyle.branchBorder;
         this.hostState.branchBackground = this.plugin.settings.nodeStyle.branchBackground;
         this.hostState.maxNodeHeight = this.plugin.settings.maxNodeHeight;
+        this.hostState.mindmapDirection = this.currentMindmapDirection();
         Object.assign(this.hostState, editorSizeState(this.plugin.settings));
         this.hostState.tree = promote(buildTree(cached, doc, file.name), promoteTypes(this.currentNodeTypes()), buildLinks(cached));
         if (this.applyDefaultDepth) {
@@ -501,6 +506,11 @@ export class HeadingsView extends ItemView {
         return this.pendingNodeTypes ?? resolveNodeTypes(this.loaded?.cached.frontmatter, this.plugin.settings);
     }
 
+    private currentMindmapDirection(): MindmapDirection {
+        return this.pendingMindmapDirection ?? resolveMindmapDirection(this.loaded?.cached.frontmatter, this.plugin.settings);
+    }
+
+    /** 佈局選單：三種佈局，加一個「心智圖只往右」的勾選項（任何佈局下都看得到，只在心智圖生效） */
     private showLayoutMenu(evt: MouseEvent) {
         const current = this.currentLayoutId();
         const menu = new Menu();
@@ -513,7 +523,22 @@ export class HeadingsView extends ItemView {
                     .onClick(() => this.chooseLayout(entry.id)),
             );
         }
+        menu.addSeparator();
+        const right = this.currentMindmapDirection() === "right";
+        menu.addItem((item) =>
+            item
+                .setTitle(t("menuMindmapRight"))
+                .setIcon("arrow-right-from-line")
+                .setChecked(right)
+                .onClick(() => this.chooseMindmapDirection(right ? "both" : "right")),
+        );
         menu.showAtMouseEvent(evt);
+    }
+
+    private chooseMindmapDirection(direction: MindmapDirection) {
+        this.pendingMindmapDirection = direction;
+        this.render();
+        void this.writeFrontmatter(FM_MINDMAP_DIRECTION_KEY, direction);
     }
 
     private showNodeTypesMenu(evt: MouseEvent) {

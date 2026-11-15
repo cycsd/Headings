@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, type HeadingsSettings } from "../../src/settings-model";
 import {
 	FM_LAYOUT_KEY,
+	FM_MINDMAP_DIRECTION_KEY,
 	FM_NODES_KEY,
 	frontmatterLayout,
 	frontmatterNodeTypes,
 	resolveLayoutId,
+	resolveMindmapDirection,
 	resolveNodeTypes,
 } from "../../src/view/view-config";
 
@@ -58,6 +60,16 @@ describe("resolveLayoutId", () => {
 	});
 	it("全域預設也沒註冊時用第一個已註冊的", () => {
 		expect(resolveLayoutId(undefined, settings, false, ["tree-table"])).toBe("tree-table");
+	});
+});
+
+describe("resolveMindmapDirection", () => {
+	it("沒有 YAML 時用全域設定；YAML 合法就覆寫；不合法視為沒有", () => {
+		expect(resolveMindmapDirection(undefined, settings)).toBe("both");
+		expect(resolveMindmapDirection(undefined, { ...settings, mindmapDirection: "right" })).toBe("right");
+		expect(resolveMindmapDirection({ [FM_MINDMAP_DIRECTION_KEY]: "right" }, settings)).toBe("right");
+		expect(resolveMindmapDirection({ [FM_MINDMAP_DIRECTION_KEY]: "both" }, { ...settings, mindmapDirection: "right" })).toBe("both");
+		expect(resolveMindmapDirection({ [FM_MINDMAP_DIRECTION_KEY]: "left" }, { ...settings, mindmapDirection: "right" })).toBe("right");
 	});
 });
 

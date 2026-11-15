@@ -1,6 +1,7 @@
 import { LAYOUT_IDS, type LayoutId } from "../layout/layout";
 import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
-import type { HeadingsSettings } from "../settings-model";
+import { isMindmapDirection, type HeadingsSettings } from "../settings-model";
+import type { MindmapDirection } from "../layout/mindmap";
 
 /**
  * 「這個檔案想怎麼被看」的解析：檔案 YAML 優先，沒有就退回全域設定。
@@ -11,6 +12,8 @@ import type { HeadingsSettings } from "../settings-model";
 export const FM_LAYOUT_KEY = "headings-layout";
 /** YAML 屬性：升為節點的 section 型別清單 */
 export const FM_NODES_KEY = "headings-nodes";
+/** YAML 屬性：心智圖方向，值為 both / right */
+export const FM_MINDMAP_DIRECTION_KEY = "headings-mindmap-direction";
 
 export type Frontmatter = Record<string, unknown> | undefined | null;
 
@@ -54,6 +57,16 @@ export const resolveLayoutId = (
 	if (available.includes(fromSettings)) return fromSettings;
 	return available[0] ?? "tree-table";
 };
+
+/** YAML 指定的心智圖方向；沒有或不合法回傳 undefined */
+export const frontmatterMindmapDirection = (fm: Frontmatter): MindmapDirection | undefined => {
+	const value = fm?.[FM_MINDMAP_DIRECTION_KEY];
+	return isMindmapDirection(value) ? value : undefined;
+};
+
+/** 決定心智圖方向：YAML 有指定就用 YAML，否則用全域設定 */
+export const resolveMindmapDirection = (fm: Frontmatter, settings: HeadingsSettings): MindmapDirection =>
+	frontmatterMindmapDirection(fm) ?? settings.mindmapDirection;
 
 /** 決定要升為節點的型別：YAML 有指定就用 YAML，否則用全域設定 */
 export const resolveNodeTypes = (fm: Frontmatter, settings: HeadingsSettings): PromotableSectionType[] =>

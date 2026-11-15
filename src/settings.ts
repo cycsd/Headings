@@ -28,8 +28,12 @@ const allOn = (settings: Record<string, unknown>, group: (typeof TOGGLE_GROUPS)[
 
 /** 高度類的滑桿：0 為不限制，0 到下限之間的值拉到下限 */
 const HEIGHT_KEYS: Record<string, number> = { maxNodeHeight: MAX_NODE_HEIGHT_RANGE.minLimit, editorMaxHeight: EDITOR_HEIGHT_RANGE.minLimit };
-const normalizeValue = (key: string, value: unknown): unknown =>
-	typeof value === "number" && key in HEIGHT_KEYS ? normalizeHeight(value, HEIGHT_KEYS[key]) : value;
+const normalizeValue = (key: string, value: unknown): unknown => {
+	if (typeof value === "number" && key in HEIGHT_KEYS) return normalizeHeight(value, HEIGHT_KEYS[key]);
+	// 心智圖方向在設定頁是開關（只往右），存的是 both / right
+	if (key === "mindmapDirection" && typeof value === "boolean") return value ? "right" : "both";
+	return value;
+};
 
 const layoutOptions = (): Record<string, string> =>
 	Object.fromEntries(LAYOUT_IDS.map((id) => [id, layoutLabel[id]()]));
@@ -97,6 +101,15 @@ export class HeadingsSettingTab extends PluginSettingTab {
 						.onChange((value) => this.applySetting(`defaultLayout.${platform}`, value)),
 				);
 		}
+
+		new Setting(containerEl)
+			.setName(t("settingMindmapRightName"))
+			.setDesc(t("settingMindmapRightDescription"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.mindmapDirection === "right")
+					.onChange((value) => this.applySetting("mindmapDirection", normalizeValue("mindmapDirection", value))),
+			);
 
 		new Setting(containerEl)
 			.setName(t("settingMaxNodeWidthName"))
@@ -252,6 +265,11 @@ export class HeadingsSettingTab extends PluginSettingTab {
 						control: { type: "dropdown", key: "defaultLayout.mobile", options: layoutOptions(), defaultValue: DEFAULT_SETTINGS.defaultLayout.mobile },
 					},
 					{
+						name: t("settingMindmapRightName"),
+						desc: t("settingMindmapRightDescription"),
+						control: { type: "toggle", key: "mindmapDirection", defaultValue: DEFAULT_SETTINGS.mindmapDirection === "right" },
+					},
+					{
 						name: t("settingMaxNodeWidthName"),
 						desc: t("settingMaxNodeWidthDescription"),
 						control: {
@@ -357,6 +375,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 	getControlValue(key: string): unknown {
 		const group = TOGGLE_GROUPS.find((g) => key === `${g.key}.*`);
 		if (group) return allOn(this.plugin.settings as unknown as Record<string, unknown>, group);
+		if (key === "mindmapDirection") return this.plugin.settings.mindmapDirection === "right";
 		return getPath(this.plugin.settings, key);
 	}
 

@@ -262,10 +262,15 @@
 
 	/** 讓內容座標 (x, y) 落在視口正中央 */
 	export function centerOn(x: number, y: number) {
+		positionAt(x, y, 0.5, 0.5);
+	}
+
+	/** 把內容座標 (x, y) 放到視口的相對位置 (fx, fy)，0–1；centerOn 就是 (0.5, 0.5) */
+	export function positionAt(x: number, y: number, fx: number, fy: number) {
 		if (!viewport) return;
 		const bounds = viewport.getBoundingClientRect();
-		panX = bounds.width / 2 - x * zoom;
-		panY = bounds.height / 2 - y * zoom;
+		panX = bounds.width * fx - x * zoom;
+		panY = bounds.height * fy - y * zoom;
 	}
 
 	/** 內容座標整體移動了 (dx, dy) 時呼叫，反向調整平移量，讓畫面上的東西不動 */

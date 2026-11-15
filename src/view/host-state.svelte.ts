@@ -1,6 +1,7 @@
 import { untrack } from "svelte";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import type { LayoutId } from "../layout/layout";
+import type { MindmapDirection } from "../layout/mindmap";
 import type { TreeNode } from "../core/tree";
 import type { DropPosition } from "../core/edit";
 import type { SearchMode } from "../settings-model";
@@ -53,6 +54,8 @@ export type HostState = {
 	branchBackground: boolean;
 	/** 全域設定：內容區最大高度 (px)，0 為不限制 */
 	maxNodeHeight: number;
+	/** 心智圖方向（YAML 或設定解析後的值）：both 左右分佈、right 全部往右 */
+	mindmapDirection: MindmapDirection;
 	/** 全域設定：編輯器是否用自訂尺寸；關閉時依內容貼合節點 */
 	editorSizeEnabled: boolean;
 	/** 全域設定（已解析）：自訂的編輯器寬度與最大高度 (px)，最大高度 0 為不限制（以視窗高度一半兜底） */
@@ -87,6 +90,7 @@ export function createHostState(
 		| "tree"
 		| "maxNodeWidth"
 		| "maxNodeHeight"
+		| "mindmapDirection"
 		| "editorSizeEnabled"
 		| "editorWidth"
 		| "editorMaxHeight"

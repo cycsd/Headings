@@ -146,7 +146,7 @@
 				revealNode(state, visible.id, "ensure");
 				return;
 			}
-			const next = navigate(visible, collapsed, state.layoutId, state.selectedId, arrow);
+			const next = navigate(visible, collapsed, state.layoutId, state.selectedId, arrow, state.mindmapDirection);
 			if (next) revealNode(state, next.id, "ensure");
 			return;
 		}
