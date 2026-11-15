@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src/core/tree";
-import { collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, findNode, maxDepth, pathTo, stepDepth, withDepth, withDropPlaceholder } from "../../src/core/tree-ops";
+import { collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, findNode, maxDepth, nodeAtOffset, pathTo, stepDepth, withDepth, withDropPlaceholder } from "../../src/core/tree-ops";
 
 const node = (id: string, children: TreeNode[] = []): TreeNode => ({
     id,
@@ -141,5 +141,31 @@ describe("withDropPlaceholder", () => {
         expect(after.children.map((n) => n.id)).toEqual(["A", DROP_PLACEHOLDER_ID, "B"]);
         expect(after.children[0]).toBe(root.children[0]);
         expect(withDropPlaceholder(root, "root", "before")).toBe(root);
+    });
+});
+
+describe("nodeAtOffset", () => {
+    const ranged = (id: string, from: number, to: number, children: TreeNode[] = []): TreeNode => ({ ...node(id, children), range: { from, to } });
+    // root
+    //   ├─ A 標題 10-20，內容區的段落 20-40
+    //   │   └─ A1 50-60
+    //   └─ B 70-80
+    const tree = (): TreeNode => {
+        const a = ranged("A", 10, 20, [ranged("A1", 50, 60)]);
+        a.sections = [{ kind: "section", id: "A-p", type: "paragraph", range: { from: 20, to: 40 }, children: [] }];
+        return ranged("root", 0, 0, [a, ranged("B", 70, 80)]);
+    };
+
+    it("標題行、內容區與子節點都找得到，子節點優先", () => {
+        expect(nodeAtOffset(tree(), 10)?.id).toBe("A");
+        expect(nodeAtOffset(tree(), 30)?.id).toBe("A");
+        expect(nodeAtOffset(tree(), 55)?.id).toBe("A1");
+        expect(nodeAtOffset(tree(), 70)?.id).toBe("B");
+    });
+
+    it("不在任何節點範圍內回傳 null；區間右端不算，只有 root 的空區間例外", () => {
+        expect(nodeAtOffset(tree(), 45)).toBeNull();
+        expect(nodeAtOffset(tree(), 80)).toBeNull();
+        expect(nodeAtOffset(tree(), 0)?.id).toBe("root");
     });
 });

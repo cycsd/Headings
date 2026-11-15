@@ -163,7 +163,7 @@
 {#if state.tree && visible}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_static_element_interactions -->
 	<div class="host" role="tree" tabindex="-1" bind:this={container} onkeydown={handleKeydown}>
-		<nav class="crumbs" aria-label="Breadcrumb">
+		<nav class="crumbs">
 			{#each crumbs as node, i (node.id)}
 				{#if i > 0}<span class="sep" {@attach icon("chevron-right")}></span>{/if}
 				<button

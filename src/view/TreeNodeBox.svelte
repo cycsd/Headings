@@ -202,7 +202,6 @@
 							class="ctl"
 							class:lit={lit.has(type)}
 							aria-label={contentTypeLabel(type)}
-							title={contentTypeLabel(type)}
 							onpointerdown={stop}
 							onclick={() => ui.toggleLit(node.id, type)}
 						>
@@ -210,7 +209,7 @@
 						</button>
 					{/each}
 					{#if hasLinks}
-						<button type="button" class="ctl" aria-label={t("tooltipLinks")} title={t("tooltipLinks")} onpointerdown={stop} onclick={(evt) => ui.showLinks(node, evt)}>
+						<button type="button" class="ctl" aria-label={t("tooltipLinks")} onpointerdown={stop} onclick={(evt) => ui.showLinks(node, evt)}>
 							<span class="ico" {@attach icon(LINK_ICON)}></span>
 						</button>
 					{/if}
@@ -219,14 +218,13 @@
 							type="button"
 							class="ctl"
 							aria-label={t("tooltipToggleContent")}
-							title={t("tooltipToggleContent")}
 							onpointerdown={stop}
 							onclick={() => ui.setLit(node.id, allLit ? [] : types)}
 						>
 							<span class="ico" {@attach icon(allLit ? "fold-vertical" : "unfold-vertical")}></span>
 						</button>
 					{/if}
-					<button type="button" class="ctl" aria-label={t("tooltipNodeMenu")} title={t("tooltipNodeMenu")} onpointerdown={stop} onclick={openMenu}>
+					<button type="button" class="ctl" aria-label={t("tooltipNodeMenu")} onpointerdown={stop} onclick={openMenu}>
 						<span class="ico" {@attach icon("ellipsis")}></span>
 					</button>
 					{#if !ui.state.showIcons}
@@ -236,21 +234,21 @@
 					{/if}
 				</div>
 			{:else if types.length > 0}
-				<button type="button" class="ctl badge" aria-label={t("menuNodeTypes")} title={t("menuNodeTypes")} onpointerdown={stop} onclick={() => ui.toggleIcons(node.id)}>
+				<button type="button" class="ctl badge" aria-label={t("menuNodeTypes")} onpointerdown={stop} onclick={() => ui.toggleIcons(node.id)}>
 					{types.length}
 				</button>
 			{:else}
-				<button type="button" class="ctl" aria-label={t("tooltipLinks")} title={t("tooltipLinks")} onpointerdown={stop} onclick={(evt) => ui.showLinks(node, evt)}>
+				<button type="button" class="ctl" aria-label={t("tooltipLinks")} onpointerdown={stop} onclick={(evt) => ui.showLinks(node, evt)}>
 					<span class="ico" {@attach icon(LINK_ICON)}></span>
 				</button>
 			{/if}
 		{:else if !isHeading && hasLinks}
-			<button type="button" class="ctl" aria-label={t("tooltipLinks")} title={t("tooltipLinks")} onpointerdown={stop} onclick={(evt) => ui.showLinks(node, evt)}>
+			<button type="button" class="ctl" aria-label={t("tooltipLinks")} onpointerdown={stop} onclick={(evt) => ui.showLinks(node, evt)}>
 				<span class="ico" {@attach icon(LINK_ICON)}></span>
 			</button>
 		{/if}
 		{#if !hasIconRow}
-			<button type="button" class="ctl" aria-label={t("tooltipNodeMenu")} title={t("tooltipNodeMenu")} onpointerdown={stop} onclick={openMenu}>
+			<button type="button" class="ctl" aria-label={t("tooltipNodeMenu")} onpointerdown={stop} onclick={openMenu}>
 				<span class="ico" {@attach icon("ellipsis")}></span>
 			</button>
 		{/if}
@@ -276,7 +274,6 @@
 			class="fork {handleSide}"
 			class:collapsed
 			aria-label={t("tooltipToggleChildren")}
-			title={t("tooltipToggleChildren")}
 			onpointerdown={stop}
 			onclick={(evt) => {
 				evt.stopPropagation();

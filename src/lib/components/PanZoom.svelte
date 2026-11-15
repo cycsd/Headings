@@ -320,17 +320,17 @@
 </script>
 
 <div class="pan-zoom-container">
-	<div class="pan-zoom-toolbar" aria-label="Canvas zoom controls">
-		<button type="button" aria-label="Zoom out" title="Zoom out" disabled={zoom <= minZoom} onclick={() => zoomFromToolbar(zoom - zoomStep)}>
+	<div class="pan-zoom-toolbar">
+		<button type="button" aria-label="Zoom out" disabled={zoom <= minZoom} onclick={() => zoomFromToolbar(zoom - zoomStep)}>
 			<span class="toolbar-icon" {@attach renderIcon("minus")}></span>
 		</button>
-		<button type="button" class="zoom-value" aria-label="Reset zoom" title="Reset zoom" onclick={() => zoomFromToolbar(1)}>
+		<button type="button" class="zoom-value" aria-label="Reset zoom" onclick={() => zoomFromToolbar(1)}>
 			{Math.round(zoom * 100)}%
 		</button>
-		<button type="button" aria-label="Zoom in" title="Zoom in" disabled={zoom >= maxZoom} onclick={() => zoomFromToolbar(zoom + zoomStep)}>
+		<button type="button" aria-label="Zoom in" disabled={zoom >= maxZoom} onclick={() => zoomFromToolbar(zoom + zoomStep)}>
 			<span class="toolbar-icon" {@attach renderIcon("plus")}></span>
 		</button>
-		<button type="button" class="reset-zoom" aria-label="Reset zoom" title="Reset zoom" disabled={zoom === 1} onclick={() => zoomFromToolbar(1)}>
+		<button type="button" class="reset-zoom" aria-label="Reset zoom" disabled={zoom === 1} onclick={() => zoomFromToolbar(1)}>
 			<span class="toolbar-icon" {@attach renderIcon("rotate-ccw")}></span>
 		</button>
 	</div>
@@ -338,7 +338,6 @@
 		class="pan-zoom-viewport"
 		class:panning={isPanning}
 		role="application"
-		aria-label="Canvas"
 		bind:this={viewport}
 		{@attach wheelListener()}
 		onpointerdown={handlePointerDown}

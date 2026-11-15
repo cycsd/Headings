@@ -1,4 +1,4 @@
-import { type CachedMetadata, type IconName, ItemView, MarkdownRenderer, Menu, Platform, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { type CachedMetadata, type IconName, ItemView, Keymap, MarkdownRenderer, Menu, type PaneType, Platform, resolveSubpath, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import { Effect } from "effect";
 import type HeadingsPlugin from "../main";
@@ -12,6 +12,7 @@ import { PluginDocumentService } from "../service/document-service";
 import { getFileCached } from "../extension/app";
 import { buildLinks, buildTree } from "../adapter/obsidian-tree";
 import { promote, promoteTypes, type TreeNode } from "../core/tree";
+import { nodeAtOffset } from "../core/tree-ops";
 import { taskLineOffsets, type DropPosition } from "../core/edit";
 import { PROMOTABLE_SECTION_TYPES, type PromotableSectionType } from "../core/section-types";
 import type { LayoutId } from "../layout/layout";
@@ -25,6 +26,7 @@ import {
     applyCollapseSubtree,
     applyDepth,
     applyExpandSubtree,
+    revealNode,
     setFocus,
     stepExpandDepth,
     visibleMaxDepth,
@@ -140,9 +142,18 @@ export class HeadingsView extends ItemView {
                     element.replaceChildren();
                     const host = element.createDiv({ cls: "markdown-embed-content" }).createDiv({ cls: "markdown-preview-view markdown-rendered" });
                     void MarkdownRenderer.render(this.plugin.app, text, host, this.state.file?.path ?? "", this);
-                    // 核取方塊：渲染出來的第 n 個對應原文第 n 個任務行；點了直接切換並寫回，畫面等 cache 更新重畫
                     const onClick = (evt: MouseEvent) => {
                         const target = evt.target;
+                        if (!(target instanceof Element)) return;
+                        // 內部連結：這不是 Markdown 視圖，Obsidian 不會替我們處理點擊，自己交給 openLinkText；同檔案的片段連結直接在視圖裡跳
+                        const link = target.closest<HTMLAnchorElement>("a.internal-link");
+                        if (link) {
+                            evt.preventDefault();
+                            const href = link.dataset.href ?? link.getAttribute("href");
+                            if (href) void this.followLink(href, Keymap.isModEvent(evt));
+                            return;
+                        }
+                        // 核取方塊：渲染出來的第 n 個對應原文第 n 個任務行；點了直接切換並寫回，畫面等 cache 更新重畫
                         if (!(target instanceof HTMLInputElement) || !target.classList.contains("task-list-item-checkbox")) return;
                         evt.stopPropagation();
                         const boxes = Array.from(host.querySelectorAll<HTMLInputElement>("input.task-list-item-checkbox"));
@@ -347,29 +358,46 @@ export class HeadingsView extends ItemView {
     }
 
     /**
-     * 節點內連結的選單：同檔案的 #片段 連結開不了別的心智圖所以略過，
-     * 解析不到檔案的顯示但不可點，點了在新的分割 leaf 開該檔的 Headings 視圖。
+     * 節點內連結的選單：同檔案的 #片段 連結在這個視圖裡跳到對應節點；
+     * 其他檔案的連結在新的分割 leaf 開該檔的 Headings 視圖，解析不到檔案的顯示但不可點。
      */
     private showLinksMenu(node: TreeNode, evt: MouseEvent) {
+        if (node.links.length === 0) return;
         const sourcePath = this.state.file?.path ?? "";
         const menu = new Menu();
-        let count = 0;
         for (const link of node.links) {
             const linkpath = link.target.split("#")[0] ?? "";
-            if (linkpath === "") continue;
-            const target = this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
-            count += 1;
             menu.addItem((item) => {
                 item.setTitle(link.display).setIcon(link.embed ? EMBED_ICON : LINK_ICON);
-                if (target) {
-                    item.onClick(() => void this.openInSplit(target));
-                } else {
-                    item.setDisabled(true);
+                if (linkpath === "") {
+                    item.onClick(() => void this.followLink(link.target));
+                    return;
                 }
+                const target = this.app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath);
+                if (target) item.onClick(() => void this.openInSplit(target));
+                else item.setDisabled(true);
             });
         }
-        if (count === 0) return;
         menu.showAtMouseEvent(evt);
+    }
+
+    /** 跟著連結走：同檔案的 #標題 / #^區塊 對得到節點就在視圖裡選取並帶到畫面上，否則交給 Obsidian 開 */
+    private async followLink(target: string, newLeaf: PaneType | boolean = false) {
+        if (target.startsWith("#") && this.revealSubpath(target)) return;
+        await this.app.workspace.openLinkText(target, this.state.file?.path ?? "", newLeaf);
+    }
+
+    /** 把 #片段 解析成文件位置，找含該位置的最深節點；解析不到或沒有對應節點回傳 false */
+    private revealSubpath(subpath: string): boolean {
+        const tree = this.hostState.tree;
+        const cached = this.loaded?.cached;
+        if (!tree || !cached) return false;
+        const resolved = resolveSubpath(cached, subpath);
+        if (!resolved) return false;
+        const node = nodeAtOffset(tree, resolved.start.offset);
+        if (!node) return false;
+        revealNode(this.hostState, node.id);
+        return true;
     }
 
     private async openInSplit(file: TFile) {

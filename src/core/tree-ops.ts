@@ -1,4 +1,4 @@
-import type { TreeNode } from "./tree";
+import { contentRange, type TreeNode } from "./tree";
 
 /**
  * 針對「子樹收合集合」的純運算：展開到第 N 層、收合其他、聚焦子樹。
@@ -13,6 +13,19 @@ export const findNode = (root: TreeNode, id: string): TreeNode | null => {
         if (found) return found;
     }
     return null;
+};
+
+/**
+ * 含文件位置 offset 的最深節點；heading 的範圍算到留在內容區的最後一個 section，和畫面上畫的一致。
+ * 同檔案的 #標題 / #^區塊 連結解析成位置後，用這個決定要跳到哪個節點；找不到回傳 null。
+ */
+export const nodeAtOffset = (root: TreeNode, offset: number): TreeNode | null => {
+    for (const child of root.children) {
+        const found = nodeAtOffset(child, offset);
+        if (found) return found;
+    }
+    const { from, to } = contentRange(root);
+    return from <= offset && (offset < to || offset === from) ? root : null;
 };
 
 /** root 到目標節點的路徑（含兩端）；找不到回傳空陣列 */
