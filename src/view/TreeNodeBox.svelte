@@ -43,7 +43,11 @@
 	let litSections = $derived(node.sections.filter((s) => lit.has(s.type)));
 	let allLit = $derived(types.length > 0 && types.every((type) => lit.has(type)));
 	let iconsOpen = $derived(ui.state.showIcons || ui.state.iconsOpen.has(node.id));
-	let collapsed = $derived(ui.state.collapsed.has(node.id));
+	/** 過濾中通往命中節點的路徑一律展開，收合狀態先不看；搜尋模式照舊 */
+	let collapsed = $derived(!ui.search.filtering && ui.state.collapsed.has(node.id));
+	/** 命中的描強調色（兩種模式都是）；過濾模式裡只是路過的祖先淡化，搜尋模式不淡化 */
+	let searchHit = $derived(ui.search.active && ui.search.hits.has(node.id));
+	let searchMiss = $derived(ui.search.filtering && ui.search.active && !searchHit);
 	let hiddenCount = $derived(collapsed ? countNodes(node) - 1 : 0);
 	let hasLinks = $derived(node.links.length > 0);
 	let hasChildren = $derived(node.children.length > 0);
@@ -101,7 +105,8 @@
 
 	/** 標題列按下開始拖曳；按鈕、連結、編輯中除外。實際是否算拖曳由移動距離決定 */
 	function handleHeadPointerDown(evt: PointerEvent) {
-		if (editing) return;
+		// 過濾中兄弟被藏起來，落點說不清楚，不拖
+		if (editing || ui.search.filtering) return;
 		if (evt.target instanceof Element && evt.target.closest(CONTROLS)) return;
 		ui.startDrag(node, evt);
 	}
@@ -174,6 +179,8 @@
 	class:placeholder
 	class:editing
 	class:flash={flashing}
+	class:search-hit={searchHit}
+	class:search-miss={searchMiss}
 	data-node-id={placeholder ? undefined : node.id}
 	data-drop-placeholder={placeholder ? "" : undefined}
 	bind:this={nodeEl}
@@ -267,7 +274,7 @@
 	{/if}
 	{/if}
 
-	{#if hasChildren && handleSide !== "none"}
+	{#if hasChildren && handleSide !== "none" && !ui.search.filtering}
 		<!-- 收合把手：壓在子節點那一側的邊緣中央，也就是連線接到節點的地方；收合時顯示隱藏的後代數 -->
 		<button
 			type="button"
@@ -331,6 +338,16 @@
 	.node.drag-source,
 	.node.drag-subtree {
 		opacity: 0.4;
+	}
+	/* 命中的節點描一圈強調色；過濾模式裡只是路過的祖先淡化；flat 節點往內描 */
+	.node.search-hit {
+		box-shadow: 0 0 0 2px var(--interactive-accent);
+	}
+	.node.flat.search-hit {
+		box-shadow: inset 0 0 0 2px var(--interactive-accent);
+	}
+	.node.search-miss {
+		opacity: 0.45;
 	}
 	/* 落點預覽：跟來源同尺寸的虛線框，強調色；不接事件才不會擋到 elementFromPoint */
 	.node.placeholder {

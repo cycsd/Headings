@@ -1,9 +1,25 @@
+import { untrack } from "svelte";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import type { LayoutId } from "../layout/layout";
 import type { TreeNode } from "../core/tree";
 import type { DropPosition } from "../core/edit";
+import type { SearchMode } from "../settings-model";
 
 export type RevealMode = "center" | "ensure";
+
+/**
+ * 搜尋列開著時的狀態。命中與修剪後的樹不放這裡：LayoutHost 依目前畫的樹（聚焦子樹）用 $derived 即時算，
+ * 聚焦改變、樹重建都會自動跟著重算。
+ */
+export type SearchState = {
+	query: string;
+	/** search：整棵樹照畫、命中描色；filter：只留命中與祖先 */
+	mode: SearchMode;
+	/** 目前跳到第幾個命中（依文件順序的 index），-1 為還沒跳 */
+	current: number;
+	/** 每次「開啟搜尋」加一，搜尋列靠它把焦點放回輸入框 */
+	seq: number;
+};
 
 export type DragState = {
 	sourceId: string;
@@ -60,6 +76,8 @@ export type HostState = {
 	iconsOpen: SvelteSet<string>;
 	/** 每個節點被點亮（顯示內容）的 section 型別 */
 	litTypes: SvelteMap<string, ReadonlySet<string>>;
+	/** 搜尋列；null 為關著 */
+	search: SearchState | null;
 };
 
 export function createHostState(
@@ -86,6 +104,7 @@ export function createHostState(
 		reveal: null,
 		editingId: null,
 		drag: null,
+		search: null,
 		collapsed: new SvelteSet<string>(),
 		iconsOpen: new SvelteSet<string>(),
 		litTypes: new SvelteMap<string, ReadonlySet<string>>(),
@@ -104,4 +123,22 @@ export function resetNodeState(state: HostState) {
 	state.reveal = null;
 	state.editingId = null;
 	state.drag = null;
+	state.search = null;
+}
+
+/**
+ * 監看每檔要記住的節點狀態（收合、聚焦、展開層數、點亮型別），任何一個變了就叫 onChange。
+ * 在 Svelte 元件之外用 $effect.root 建立，回傳停止監看的函式；建立時也會先叫一次。
+ */
+export function watchFileMemory(state: HostState, onChange: () => void): () => void {
+	return $effect.root(() => {
+		$effect(() => {
+			// 走訪集合與 map 的內容才會追蹤到新增與刪除；點亮型別是整個 Set 換掉，追蹤 map 的值就夠
+			void Array.from(state.collapsed);
+			void Array.from(state.litTypes.values());
+			void state.focusId;
+			void state.expandDepth;
+			untrack(onChange);
+		});
+	});
 }

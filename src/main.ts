@@ -2,6 +2,7 @@ import { Editor, MarkdownView, Plugin, View, WorkspaceLeaf, type Constructor, ty
 import "./app.css";
 import { DEFAULT_SETTINGS, HeadingsSettingTab, type HeadingsSettings as HeadingsSettings } from "./settings";
 import { migrateSettings } from "./settings-model";
+import { FileViewStore, readFileViews, sameMemory, type FileViewMemory } from "./view/view-memory";
 import { BlockView, VIEW_TYPE_BLOCKVIEW } from "./view/BlockView";
 import { HeadingsView, VIEW_ICON_HEADINGS, VIEW_TYPE_HEADINGS, type HeadingsViewState } from "./view/HeadingsView";
 import { getActiveViewOfType } from "./extension/workspace";
@@ -18,9 +19,19 @@ import { t } from './i18n';
 
 export default class HeadingsPlugin extends Plugin {
 	settings: HeadingsSettings = DEFAULT_SETTINGS;
+	/** 每個檔案記住的視圖狀態（收合、聚焦、展開層數、點亮型別），跟設定存在同一份 data.json */
+	fileViews = new FileViewStore();
 
 	async onload() {
 		await this.loadSettings();
+
+		// 檔案改名 / 搬移 / 刪除時，每檔記錄跟著走或清掉
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			if (this.fileViews.rename(oldPath, file.path)) void this.saveSettings();
+		}));
+		this.registerEvent(this.app.vault.on("delete", (file) => {
+			if (this.fileViews.remove(file.path)) void this.saveSettings();
+		}));
 
 		this.registerView(
 			VIEW_TYPE_HEADINGS,
@@ -146,16 +157,31 @@ export default class HeadingsPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		const { settings, migrated } = migrateSettings(await this.loadData());
+		const raw: unknown = await this.loadData();
+		const { settings, migrated } = migrateSettings(raw);
 		this.settings = settings;
+		this.fileViews = new FileViewStore(readFileViews(raw));
 		// 舊版欄位 (ex: listAsNode) 遷移後立刻寫回，data.json 只保留目前的結構
 		if (migrated) {
-			await this.saveData(settings);
+			await this.saveSettings();
 		}
 	}
 
+	/** 設定與每檔記錄一起寫進 data.json */
 	async saveSettings() {
-		await this.saveData(this.settings);
+		await this.saveData({ ...this.settings, fileViews: this.fileViews.toJSON() });
+	}
+
+	/** 視圖把某個檔案目前的狀態存下來；內容沒變就不寫檔 */
+	async rememberFileView(path: string, memory: FileViewMemory) {
+		if (sameMemory(this.fileViews.get(path), memory)) return;
+		this.fileViews.set(path, memory);
+		await this.saveSettings();
+	}
+
+	async clearFileViews() {
+		this.fileViews.clear();
+		await this.saveSettings();
 	}
 
 	// 設定變更後重新渲染已開啟的 tree table view
@@ -414,6 +440,16 @@ export default class HeadingsPlugin extends Plugin {
 			id: 'collapse-one-level',
 			name: t('commandCollapseLevel'),
 			checkCallback: headingsViewCommand(-1),
+		});
+		this.addCommand({
+			id: 'search-nodes',
+			name: t('commandSearchNodes'),
+			checkCallback: (checking: boolean) => {
+				const view = this.app.workspace.getActiveViewOfType(HeadingsView);
+				if (!view) return false;
+				if (!checking) view.showSearch();
+				return true;
+			},
 		});
 		// todo export hotkey
 		// 暫時不提供 heading view 的 hotkey。

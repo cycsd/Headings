@@ -29,6 +29,8 @@ describe("migrateSettings", () => {
             editorSizeEnabled: true,
             editorWidth: 400,
             editorMaxHeight: 0,
+            rememberFileViews: false,
+            searchMode: "filter",
         };
         const result = migrateSettings(input);
         expect(result.migrated).toBe(false);
@@ -138,6 +140,28 @@ describe("migrateSettings", () => {
         expect(migrateSettings({ maxNodeWidth: 10 }).settings.maxNodeWidth).toBe(160);
         expect(migrateSettings({ maxNodeWidth: 99999 }).settings.maxNodeWidth).toBe(1200);
         expect(migrateSettings({ maxNodeWidth: "wide" }).settings.maxNodeWidth).toBe(320);
+    });
+
+    it("rememberFileViews 預設開啟，非布林退回預設並標記 migrated", () => {
+        expect(DEFAULT_SETTINGS.rememberFileViews).toBe(true);
+        expect(migrateSettings({ rememberFileViews: false }).settings.rememberFileViews).toBe(false);
+        const bad = migrateSettings({ rememberFileViews: "yes" });
+        expect(bad.settings.rememberFileViews).toBe(true);
+        expect(bad.migrated).toBe(true);
+    });
+
+    it("searchMode 預設 search，不認識的值退回預設並標記 migrated", () => {
+        expect(DEFAULT_SETTINGS.searchMode).toBe("search");
+        expect(migrateSettings({ searchMode: "filter" }).settings.searchMode).toBe("filter");
+        const bad = migrateSettings({ searchMode: "regex" });
+        expect(bad.settings.searchMode).toBe("search");
+        expect(bad.migrated).toBe(true);
+    });
+
+    it("同一份 data.json 裡的 fileViews 不算未知欄位", () => {
+        const { settings, migrated } = migrateSettings({ ...DEFAULT_SETTINGS, fileViews: { "a.md": {} } });
+        expect(migrated).toBe(false);
+        expect("fileViews" in settings).toBe(false);
     });
 
     it("未知欄位會被丟掉並標記 migrated", () => {

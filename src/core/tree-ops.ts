@@ -28,6 +28,35 @@ export const nodeAtOffset = (root: TreeNode, offset: number): TreeNode | null =>
     return from <= offset && (offset < to || offset === from) ? root : null;
 };
 
+/** 子樹內所有節點的 id（含 root） */
+export const allIds = (root: TreeNode): Set<string> => {
+    const ids = new Set<string>();
+    const walkIds = (node: TreeNode) => {
+        ids.add(node.id);
+        node.children.forEach(walkIds);
+    };
+    walkIds(root);
+    return ids;
+};
+
+/**
+ * 搜尋過濾：只留命中的節點和它們的祖先，其他子樹整個拿掉；root 一定留著。
+ * hits 是命中的 id（不含只是路過的祖先），依文件順序（前序）。沒變動的子樹沿用原物件，佈局才不會整棵重畫。
+ */
+export const filterTree = (root: TreeNode, match: (node: TreeNode) => boolean): { tree: TreeNode; hits: string[] } => {
+    const hits: string[] = [];
+    const prune = (node: TreeNode): TreeNode | null => {
+        const hit = node !== root && match(node);
+        if (hit) hits.push(node.id);
+        const children = node.children.map(prune).filter((child): child is TreeNode => child !== null);
+        if (!hit && children.length === 0) return null;
+        const unchanged = children.length === node.children.length && children.every((child, i) => child === node.children[i]);
+        return unchanged ? node : { ...node, children };
+    };
+    const tree = prune(root) ?? { ...root, children: [] };
+    return { tree, hits };
+};
+
 /** root 到目標節點的路徑（含兩端）；找不到回傳空陣列 */
 export const pathTo = (root: TreeNode, id: string): TreeNode[] => {
     if (root.id === id) return [root];

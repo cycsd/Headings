@@ -3,12 +3,24 @@ import type { TreeNode } from "../core/tree";
 import type { DropPosition } from "../core/edit";
 import type { HostState } from "./host-state.svelte";
 import type { Box } from "./editor-size";
+import type { SearchMode } from "../settings-model";
 import { selectNode } from "./tree-state";
 import { startNodeDrag } from "./node-drag";
+
+/** LayoutHost 依目前畫的樹即時算出的搜尋結果；用 getter 包住 $derived，節點元件讀到的永遠是最新的 */
+export type SearchView = {
+	/** 搜尋列開著且 query 非空 */
+	readonly active: boolean;
+	/** 過濾模式開著（不論 query）：收合忽略、把手不畫、結構操作停用 */
+	readonly filtering: boolean;
+	/** 命中的節點 id（不含只是路過的祖先） */
+	readonly hits: ReadonlySet<string>;
+};
 
 /** 節點元件透過 Svelte context 拿到的操作介面，由 LayoutHost 建立 */
 export type NodeUi = {
 	state: HostState;
+	search: SearchView;
 	toggleCollapsed(id: string): void;
 	toggleIcons(id: string): void;
 	toggleLit(id: string, type: string): void;
@@ -34,6 +46,10 @@ export type NodeUi = {
 	startDrag(node: TreeNode, evt: PointerEvent): void;
 	/** 把 source 子樹搬到 target 的指定位置（放進去 / 插前面 / 插後面）；由 view 實作 */
 	moveNode(sourceId: string, targetId: string, position: DropPosition): void;
+	/** 開搜尋列，用上次記住的模式；由 view 實作（要讀設定） */
+	openSearch(): void;
+	/** 切換搜尋 / 過濾並記住；由 view 實作 */
+	setSearchMode(mode: SearchMode): void;
 };
 
 export type NodeCommand = "addSibling" | "addChild" | "delete" | "undo" | "redo";
@@ -41,13 +57,14 @@ export type NodeCommand = "addSibling" | "addChild" | "delete" | "undo" | "redo"
 /** view 提供、需要 Obsidian app 的動作 */
 export type NodeActions = Pick<
 	NodeUi,
-	"showLinks" | "renderFrontmatter" | "showNodeMenu" | "edit" | "mountEditor" | "measureEditor" | "command" | "moveNode"
+	"showLinks" | "renderFrontmatter" | "showNodeMenu" | "edit" | "mountEditor" | "measureEditor" | "command" | "moveNode" | "openSearch" | "setSearchMode"
 >;
 
 export const NODE_UI = Symbol("headings-node-ui");
 
-export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => ({
+export const createNodeUi = (state: HostState, actions: NodeActions, search: SearchView): NodeUi => ({
 	state,
+	search,
 	toggleCollapsed(id) {
 		if (state.collapsed.has(id)) state.collapsed.delete(id);
 		else state.collapsed.add(id);
@@ -79,4 +96,6 @@ export const createNodeUi = (state: HostState, actions: NodeActions): NodeUi => 
 		startNodeDrag(state, node, evt, actions.moveNode);
 	},
 	moveNode: actions.moveNode,
+	openSearch: actions.openSearch,
+	setSearchMode: actions.setSearchMode,
 });

@@ -36,7 +36,15 @@ export interface HeadingsSettings {
 	editorWidth: number;
 	/** 編輯器最大高度 (px)，超過在節點內捲動；0 為不限制（實際以視窗高度一半兜底） */
 	editorMaxHeight: number;
+	/** 每個檔案記住收合、聚焦、展開層數與點亮型別，下次開啟恢復；記錄本身存在 data.json 的 fileViews */
+	rememberFileViews: boolean;
+	/** 搜尋列上次用的模式，下次開啟沿用；設定頁不露出 */
+	searchMode: SearchMode;
 }
+
+/** 搜尋列的兩種模式：search 整棵樹照畫、命中描色；filter 只留命中與祖先 */
+export const SEARCH_MODES = ["search", "filter"] as const;
+export type SearchMode = (typeof SEARCH_MODES)[number];
 
 export const NODE_STYLE_KEYS = ["branchBorder", "branchBackground"] as const;
 export type NodeStyleKey = (typeof NODE_STYLE_KEYS)[number];
@@ -56,6 +64,8 @@ export const DEFAULT_SETTINGS: HeadingsSettings = {
 	editorSizeEnabled: false,
 	editorWidth: 360,
 	editorMaxHeight: 320,
+	rememberFileViews: true,
+	searchMode: "search",
 };
 
 export const MAX_NODE_WIDTH_RANGE = { min: 160, max: 1200, step: 20 } as const;
@@ -185,9 +195,19 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 
 	const nodeStyle = readToggles(data.nodeStyle, NODE_STYLE_KEYS, DEFAULT_SETTINGS.nodeStyle);
 
+	let rememberFileViews = DEFAULT_SETTINGS.rememberFileViews;
+	if (typeof data.rememberFileViews === "boolean") rememberFileViews = data.rememberFileViews;
+	else if (data.rememberFileViews !== undefined) migrated = true;
+
+	let searchMode = DEFAULT_SETTINGS.searchMode;
+	if (typeof data.searchMode === "string" && (SEARCH_MODES as readonly string[]).includes(data.searchMode)) searchMode = data.searchMode as SearchMode;
+	else if (data.searchMode !== undefined) migrated = true;
+
+	// fileViews 是跟設定放在同一份 data.json 裡的每檔視圖記錄（view/view-memory.ts 讀），不是設定，但也不是未知欄位
 	const known = new Set([
 		"nodeTypes", "defaultLitTypes", "defaultLayout", "maxNodeWidth", "maxNodeHeight",
 		"defaultExpandEnabled", "defaultExpandDepth", "nodeStyle", "editorSizeEnabled", "editorWidth", "editorMaxHeight",
+		"rememberFileViews", "searchMode", "fileViews",
 	]);
 	for (const key of Object.keys(data)) {
 		if (!known.has(key)) migrated = true;
@@ -196,7 +216,7 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 	return {
 		settings: {
 			nodeTypes, defaultLitTypes, defaultLayout, maxNodeWidth, maxNodeHeight, defaultExpandEnabled, defaultExpandDepth, nodeStyle,
-			editorSizeEnabled, editorWidth, editorMaxHeight,
+			editorSizeEnabled, editorWidth, editorMaxHeight, rememberFileViews, searchMode,
 		},
 		migrated,
 	};

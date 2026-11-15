@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src/core/tree";
-import { collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, findNode, maxDepth, nodeAtOffset, pathTo, stepDepth, withDepth, withDropPlaceholder } from "../../src/core/tree-ops";
+import { allIds, collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, filterTree, findNode, maxDepth, nodeAtOffset, pathTo, stepDepth, withDepth, withDropPlaceholder } from "../../src/core/tree-ops";
 
 const node = (id: string, children: TreeNode[] = []): TreeNode => ({
     id,
@@ -167,5 +167,35 @@ describe("nodeAtOffset", () => {
         expect(nodeAtOffset(tree(), 45)).toBeNull();
         expect(nodeAtOffset(tree(), 80)).toBeNull();
         expect(nodeAtOffset(tree(), 0)?.id).toBe("root");
+    });
+});
+
+describe("allIds / filterTree", () => {
+    it("allIds 含 root 與所有後代", () => {
+        expect([...allIds(tree())].sort()).toEqual(["A", "A1", "A1a", "A2", "B", "B1", "root"]);
+    });
+
+    it("只留命中與祖先，hits 依前序；沒命中的子樹整個拿掉", () => {
+        const root = tree();
+        const { tree: filtered, hits } = filterTree(root, (node) => node.id === "A1a" || node.id === "B1");
+        expect(hits).toEqual(["A1a", "B1"]);
+        expect(filtered.children.map((n) => n.id)).toEqual(["A", "B"]);
+        expect(filtered.children[0]!.children.map((n) => n.id)).toEqual(["A1"]);
+        expect(filtered.children[0]!.children[0]!.children.map((n) => n.id)).toEqual(["A1a"]);
+        // B 整棵沒變（B1 命中、沒有別的子節點被拿掉），沿用原物件；A 底下少了 A2，是新物件
+        expect(filtered.children[1]).toBe(root.children[1]);
+        expect(filtered.children[0]).not.toBe(root.children[0]);
+    });
+
+    it("全部沒命中只剩 root；root 自己不算命中", () => {
+        const { tree: filtered, hits } = filterTree(tree(), (node) => node.id === "root");
+        expect(hits).toEqual([]);
+        expect(filtered.id).toBe("root");
+        expect(filtered.children).toEqual([]);
+    });
+
+    it("全部命中時回傳同一棵樹", () => {
+        const root = tree();
+        expect(filterTree(root, () => true).tree).toBe(root);
     });
 });

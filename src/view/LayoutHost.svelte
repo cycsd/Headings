@@ -1,16 +1,17 @@
 <script lang="ts">
 	import { setContext } from "svelte";
-	import { Menu, Platform, setIcon, type IconName } from "obsidian";
+	import { Menu, Platform, prepareSimpleSearch, setIcon, type IconName } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
 	import type { HostState } from "./host-state.svelte";
 	import type { LayoutProps } from "./layout-props";
 	import { getLayout } from "./layout-registry";
-	import { createNodeUi, NODE_UI, type NodeActions, type NodeCommand } from "./node-ui";
-	import { findNode, pathTo, withDropPlaceholder } from "../core/tree-ops";
-	import type { TreeNode } from "../core/tree";
+	import { createNodeUi, NODE_UI, type NodeActions, type NodeCommand, type SearchView } from "./node-ui";
+	import { filterTree, findNode, pathTo, withDropPlaceholder } from "../core/tree-ops";
+	import { contentRange, type TreeNode } from "../core/tree";
 	import { crumbIcon, crumbLabel } from "./breadcrumb";
-	import { applyCollapseSubtree, applyExpandSubtree, requestReveal, revealNode, setFocus, visibleRoot } from "./tree-state";
+	import { applyCollapseSubtree, applyExpandSubtree, closeSearch, requestReveal, revealNode, setFocus, setSearchQuery, visibleRoot } from "./tree-state";
 	import { navigate, type NavKey } from "./keyboard-nav";
+	import SearchBar from "./SearchBar.svelte";
 
 	interface Props {
 		state: HostState;
@@ -21,14 +22,49 @@
 
 	let { state, actions, getText, onRenderMarkdown }: Props = $props();
 
-	// 節點元件透過 context 取得共享狀態與操作，不用一層層傳 props。
-	// state 物件本身在 view 的生命週期內不會換，只有欄位會變，所以取初始值即可。
-	// svelte-ignore state_referenced_locally
-	setContext(NODE_UI, createNodeUi(state, actions));
-
 	let entry = $derived(getLayout(state.layoutId));
-	/** 聚焦中只畫子樹；聚焦節點不存在時 visibleRoot 已退回完整樹 */
-	let visible = $derived(visibleRoot(state));
+
+	/**
+	 * 搜尋：範圍是目前畫的樹（聚焦中就是該子樹），標題與節點內容原文用 Obsidian 的簡單搜尋比對（分詞 AND、不分大小寫、引號片語）。
+	 * 命中與修剪後的樹在這裡用 $derived 算，聚焦改變、樹重建都自動重算；query 空時沒有命中、樹不修剪。
+	 */
+	let scope = $derived(visibleRoot(state));
+	let query = $derived(state.search?.query.trim() ?? "");
+	let matcher = $derived(query === "" ? null : prepareSimpleSearch(query));
+	const NONE: ReadonlySet<string> = new Set();
+	let result = $derived.by((): { tree: TreeNode | null; hits: ReadonlySet<string>; order: readonly string[] } => {
+		if (!scope || !matcher) return { tree: scope, hits: NONE, order: [] };
+		const test = matcher;
+		const textOf = (node: TreeNode): string => {
+			if (node.kind === "listItem") return node.text ?? "";
+			const { from, to } = contentRange(node);
+			return getText(from, to);
+		};
+		const { tree, hits } = filterTree(scope, (node) => test(textOf(node)) !== null);
+		return { tree, hits: new Set(hits), order: hits };
+	});
+	let filtering = $derived(state.search?.mode === "filter");
+	/** 過濾模式畫修剪過的樹，通往命中的路徑一律展開（不動真正的收合集合）；搜尋模式照畫 */
+	let visible = $derived(filtering ? result.tree : scope);
+	let collapsed = $derived(filtering ? NONE : state.collapsed);
+	/** 聚焦中搜尋列要提醒範圍：聚焦節點的標題 */
+	let scopeLabel = $derived(state.focusId !== null && scope && scope.id === state.focusId ? crumbLabel(scope, getText) : null);
+
+	// 節點元件透過 context 取得共享狀態與操作，不用一層層傳 props。
+	// state 物件本身在 view 的生命週期內不會換，只有欄位會變，所以取初始值即可；搜尋結果用 getter 包住 $derived。
+	const searchView: SearchView = {
+		get active() {
+			return query !== "";
+		},
+		get filtering() {
+			return filtering;
+		},
+		get hits() {
+			return result.hits;
+		},
+	};
+	// svelte-ignore state_referenced_locally
+	setContext(NODE_UI, createNodeUi(state, actions, searchView));
 
 	/** 聚焦節點在文件更新後消失就自動退回完整樹 */
 	$effect(() => {
@@ -86,6 +122,19 @@
 		if (state.editingId !== null || !visible) return;
 		const mod = Platform.isMacOS ? evt.metaKey : evt.ctrlKey;
 
+		// Mod+F 開搜尋列（已開著就把焦點放回輸入框）；搜尋列裡的按鍵自己攔掉，不會進到這裡
+		if (mod && !evt.altKey && !evt.shiftKey && evt.key.toLowerCase() === "f") {
+			evt.preventDefault();
+			actions.openSearch();
+			return;
+		}
+
+		// 過濾中兄弟與後代被藏起來，結構操作與收合說不清楚：Space / Enter / Tab / Delete 無聲忽略
+		if (filtering && !mod && (evt.key === " " || evt.key === "Enter" || evt.key === "Tab" || evt.key === "Delete")) {
+			evt.preventDefault();
+			return;
+		}
+
 		const arrow = ARROWS[evt.key];
 		if (arrow && !mod) {
 			evt.preventDefault();
@@ -93,7 +142,7 @@
 				revealNode(state, visible.id, "ensure");
 				return;
 			}
-			const next = navigate(visible, state.collapsed, state.layoutId, state.selectedId, arrow);
+			const next = navigate(visible, collapsed, state.layoutId, state.selectedId, arrow);
 			if (next) revealNode(state, next.id, "ensure");
 			return;
 		}
@@ -148,9 +197,9 @@
 		visible && state.drag?.overId && state.drag.overPosition ? withDropPlaceholder(visible, state.drag.overId, state.drag.overPosition) : visible,
 	);
 
-	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器 */
+	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器，搜尋中（Enter 跳到命中時）焦點留在輸入框 */
 	$effect(() => {
-		if (state.selectedId !== null && state.editingId === null) container?.focus({ preventScroll: true });
+		if (state.selectedId !== null && state.editingId === null && state.search === null) container?.focus({ preventScroll: true });
 	});
 
 	function icon(name: IconName): Attachment<HTMLElement> {
@@ -163,6 +212,18 @@
 {#if state.tree && visible}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_static_element_interactions -->
 	<div class="host" role="tree" tabindex="-1" bind:this={container} onkeydown={handleKeydown}>
+		<SearchBar
+			host={state}
+			order={result.order}
+			scope={scopeLabel}
+			onQuery={(q) => setSearchQuery(state, q)}
+			onMode={actions.setSearchMode}
+			onClearScope={() => setFocus(state, null)}
+			onClose={() => {
+				closeSearch(state);
+				container?.focus({ preventScroll: true });
+			}}
+		/>
 		<nav class="crumbs">
 			{#each crumbs as node, i (node.id)}
 				{#if i > 0}<span class="sep" {@attach icon("chevron-right")}></span>{/if}
@@ -181,7 +242,7 @@
 		<!-- 換佈局或換聚焦根都重新掛載，mindmap 才會把新的根置中 -->
 		{#key `${entry.id}:${state.focusId ?? ""}`}
 			{@const Layout = entry.component}
-			<Layout tree={displayTree ?? visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} collapsed={state.collapsed} />
+			<Layout tree={displayTree ?? visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} {collapsed} />
 		{/key}
 	</div>
 {/if}

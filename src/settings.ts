@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, type SettingDefinitionItem, type SettingGroupItem } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, type SettingDefinitionItem, type SettingGroupItem } from "obsidian";
 import HeadingsPlugin from "./main";
 import { t } from "./i18n";
 import { CONTENT_SECTION_TYPES, PROMOTABLE_SECTION_TYPES } from "./core/section-types";
@@ -138,6 +138,17 @@ export class HeadingsSettingTab extends PluginSettingTab {
 					.onChange((value) => this.applySetting("defaultExpandDepth", value)),
 			);
 
+		new Setting(containerEl)
+			.setName(t("settingRememberFileViewsName"))
+			.setDesc(t("settingRememberFileViewsDescription"))
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.rememberFileViews).onChange((value) => this.applySetting("rememberFileViews", value)),
+			);
+		new Setting(containerEl)
+			.setName(t("settingClearFileViewsName"))
+			.setDesc(t("settingClearFileViewsDescription"))
+			.addButton((button) => button.setButtonText(t("settingClearFileViewsButton")).onClick(() => void this.clearFileViews()));
+
 		new Setting(containerEl).setName(t("settingNodeStyleHeading")).setHeading();
 		for (const key of NODE_STYLE_KEYS) {
 			new Setting(containerEl)
@@ -176,6 +187,12 @@ export class HeadingsSettingTab extends PluginSettingTab {
 						.onChange((value) => this.applySetting("editorMaxHeight", normalizeValue("editorMaxHeight", value))),
 				);
 		}
+	}
+
+	/** 清掉所有檔案記住的視圖狀態；開著的視圖維持現況 */
+	private async clearFileViews() {
+		await this.plugin.clearFileViews();
+		new Notice(t("noticeFileViewsCleared"));
 	}
 
 	/** 舊版設定頁的「全部開啟 / 關閉」列 */
@@ -273,6 +290,17 @@ export class HeadingsSettingTab extends PluginSettingTab {
 							defaultValue: DEFAULT_SETTINGS.defaultExpandDepth,
 							displayFormat: (value: number) => (value === 0 ? t("expandDepthRootOnly") : String(value)),
 						},
+					},
+					{
+						name: t("settingRememberFileViewsName"),
+						desc: t("settingRememberFileViewsDescription"),
+						control: { type: "toggle", key: "rememberFileViews", defaultValue: DEFAULT_SETTINGS.rememberFileViews },
+					},
+					// 整列可點的動作項：清掉所有檔案記住的視圖狀態
+					{
+						name: t("settingClearFileViewsName"),
+						desc: t("settingClearFileViewsDescription"),
+						action: () => void this.clearFileViews(),
 					},
 				],
 			},
