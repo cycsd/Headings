@@ -15,6 +15,8 @@ export type SearchView = {
 	readonly filtering: boolean;
 	/** 命中的節點 id（不含只是路過的祖先） */
 	readonly hits: ReadonlySet<string>;
+	/** Enter 跳到的那個命中；還沒跳或 query 改過為 null */
+	readonly currentId: string | null;
 };
 
 /** 節點元件透過 Svelte context 拿到的操作介面，由 LayoutHost 建立 */

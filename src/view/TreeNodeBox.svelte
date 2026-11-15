@@ -47,6 +47,8 @@
 	let collapsed = $derived(!ui.search.filtering && ui.state.collapsed.has(node.id));
 	/** 命中的描強調色（兩種模式都是）；過濾模式裡只是路過的祖先淡化，搜尋模式不淡化 */
 	let searchHit = $derived(ui.search.active && ui.search.hits.has(node.id));
+	/** Enter 跳到的那個：顏色更深；跳過去時它同時是選取節點，選取外框照畫在內圈 */
+	let searchCurrent = $derived(searchHit && ui.search.currentId === node.id);
 	let searchMiss = $derived(ui.search.filtering && ui.search.active && !searchHit);
 	let hiddenCount = $derived(collapsed ? countNodes(node) - 1 : 0);
 	let hasLinks = $derived(node.links.length > 0);
@@ -180,6 +182,7 @@
 	class:editing
 	class:flash={flashing}
 	class:search-hit={searchHit}
+	class:search-current={searchCurrent}
 	class:search-miss={searchMiss}
 	data-node-id={placeholder ? undefined : node.id}
 	data-drop-placeholder={placeholder ? "" : undefined}
@@ -339,12 +342,23 @@
 	.node.drag-subtree {
 		opacity: 0.4;
 	}
-	/* 命中的節點描一圈強調色；過濾模式裡只是路過的祖先淡化；flat 節點往內描 */
+	/*
+	 * 搜尋命中：用 Obsidian 的搜尋高亮色（跟編輯器 Ctrl+F、==標記== 同一個）畫環並淡染背景，跟選取的強調色分得開；
+	 * 目前跳到的那個用 active 色加粗。flat 節點往內畫。過濾模式裡只是路過的祖先淡化。要放在分支背景之後才蓋得過去
+	 */
 	.node.search-hit {
-		box-shadow: 0 0 0 2px var(--interactive-accent);
+		box-shadow: 0 0 0 2px var(--text-highlight-bg);
+		background: color-mix(in srgb, var(--text-highlight-bg) 30%, var(--background-primary));
 	}
 	.node.flat.search-hit {
-		box-shadow: inset 0 0 0 2px var(--interactive-accent);
+		box-shadow: inset 0 0 0 2px var(--text-highlight-bg);
+	}
+	.node.search-current {
+		box-shadow: 0 0 0 3px var(--text-highlight-bg-active);
+		background: color-mix(in srgb, var(--text-highlight-bg-active) 40%, var(--background-primary));
+	}
+	.node.flat.search-current {
+		box-shadow: inset 0 0 0 3px var(--text-highlight-bg-active);
 	}
 	.node.search-miss {
 		opacity: 0.45;

@@ -62,6 +62,10 @@
 		get hits() {
 			return result.hits;
 		},
+		get currentId() {
+			const search = state.search;
+			return search && search.current >= 0 ? (result.order[search.current] ?? null) : null;
+		},
 	};
 	// svelte-ignore state_referenced_locally
 	setContext(NODE_UI, createNodeUi(state, actions, searchView));
