@@ -2,13 +2,14 @@ import { Notice, Platform, type App, type TFile } from "obsidian";
 import { untrack } from "svelte";
 import type { Attachment } from "svelte/attachments";
 import { insertNewlineAndIndent } from "@codemirror/commands";
+import { EditorSelection } from "@codemirror/state";
 import type { TreeNode } from "../core/tree";
 import { countNodes } from "../core/tree";
-import { findNode, pathTo } from "../core/tree-ops";
+import { findNode, makeNewNode, NEW_NODE_ID, pathTo } from "../core/tree-ops";
 import { commitEdit, deleteNode, editText, insertChild, insertSibling, moveNode, toggleTask, type DropPosition, type TextPatch } from "../core/edit";
 import { DocumentConflictError, DocumentEditor } from "../service/document-editor";
 import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
-import type { HostState } from "./host-state.svelte";
+import type { HostState, NewNodeState } from "./host-state.svelte";
 import type { NodeCommand } from "./node-ui";
 import { requestReveal, revealNode, selectNode } from "./tree-state";
 import { clampHeight, domMeasurer, heightBounds, innerBox, innerMaxWidth, resolveEditorBox, type Box, type HeightBounds } from "./editor-size";
@@ -101,6 +102,7 @@ export class NodeEditing {
 
 	startEdit(id: string) {
 		if (!this.state.tree || !findNode(this.state.tree, id)) return;
+		this.mountCursor = "start";
 		selectNode(this.state, id);
 		this.state.editingId = id;
 	}
@@ -111,12 +113,13 @@ export class NodeEditing {
 	 * 量它原本的內容框當下限、用它的字型與內距量文字；拿不到（節點一掛上就在編輯中）就沒有下限。
 	 */
 	measureEditor(node: TreeNode, nodeEl: HTMLElement | undefined): Box {
-		const { text } = editText(this.editor?.doc ?? "", node);
+		const text = this.textOf(node);
 		const s = this.state;
 		const measure = domMeasurer(nodeEl ?? document.body);
 		const input = {
 			text,
-			node: nodeEl ? innerBox(nodeEl) : { w: 0, h: 0 },
+			// 量不到原本的大小 = 節點一掛上就在編輯中（新增的節點），給打字用的起手尺寸
+			node: nodeEl ? innerBox(nodeEl) : null,
 			custom: { enabled: s.editorSizeEnabled, width: s.editorWidth, maxHeight: s.editorMaxHeight },
 			maxWidth: nodeEl ? innerMaxWidth(nodeEl, s.maxNodeWidth) : s.maxNodeWidth,
 			maxHeight: s.maxNodeHeight,
@@ -136,13 +139,12 @@ export class NodeEditing {
 	}
 
 	private mount(el: HTMLElement, node: TreeNode, onHeight: (height: number) => void): () => void {
-		const doc = this.editor?.doc ?? "";
-		const { text } = editText(doc, node);
+		const text = this.textOf(node);
 		// 編輯器若被重掛（佈局重算等），用上次的草稿而不是原文，打到一半的字不會不見
 		const draft = this.drafts.get(node.id);
 		const value = draft ?? text;
 		const cursor = draft === undefined ? this.mountCursor : "end";
-		this.mountCursor = "start";
+		// 不在這裡重設：編輯器可能被重掛（新增的節點在 cache 更新時會重掛兩次），重設會讓重掛後的游標跑到開頭；離開編輯才重設
 		const cursorLocation =
 			cursor === "all" ? { anchor: 0, head: value.length } : cursor === "end" ? { anchor: value.length, head: value.length } : { anchor: 0, head: 0 };
 		let finished = false;
@@ -160,8 +162,16 @@ export class NodeEditing {
 			onChange: () => this.drafts.set(node.id, editor.value),
 		});
 		if (this.editor) editor.owner.file = this.editor.file;
-		// 要等元件掛完才 focus 得到，原因同 BlockViewEditor
-		setTimeout(() => editor.editor.cm?.focus());
+		// 要等元件掛完才 focus 得到，原因同 BlockViewEditor。
+		// 聚焦後依文件實際長度放游標（掛上時文件剛設好，初始選取不一定對）；編輯器被重掛時 cursor 仍是同一個意圖
+		setTimeout(() => {
+			const cm = editor.activeCM;
+			if (!cm) return;
+			cm.focus();
+			const length = cm.state.doc.length;
+			const selection = cursor === "all" ? EditorSelection.range(0, length) : EditorSelection.cursor(cursor === "end" ? length : 0);
+			cm.dispatch({ selection, scrollIntoView: true });
+		});
 
 		// 尺寸：掛上時是估算值，CodeMirror 畫完即時預覽（下一兩個 frame）後量實際內容高度修正一次，
 		// 不低於節點原本的高、不高於上限，之後鎖住；使用者自己拉過就不再碰。修正完再 ensure 一次把節點露出來（看得到就不動），不閃光暈。
@@ -231,6 +241,14 @@ export class NodeEditing {
 	private async finishEdit(node: TreeNode, original: string, value: string) {
 		if (this.state.editingId !== node.id) return;
 		this.state.editingId = null;
+		this.mountCursor = "start";
+		const pending = this.state.newNode;
+		if (pending && node.id === NEW_NODE_ID) {
+			this.state.newNode = null;
+			await this.commitNewNode(pending, value);
+			this.onIdle();
+			return;
+		}
 		// 先寫回再通知 view：鏡像要維持進入編輯時的快照，寫回才偵測得到外部改動
 		if (value !== original && this.editor) {
 			await this.write([commitEdit(this.editor.doc, node, value)], value);
@@ -241,9 +259,9 @@ export class NodeEditing {
 	async run(command: NodeCommand, node: TreeNode) {
 		switch (command) {
 			case "addSibling":
-				return this.insert(node, insertSibling);
+				return this.insert(node, insertSibling, "after");
 			case "addChild":
-				return this.insert(node, insertChild);
+				return this.insert(node, insertChild, "into");
 			case "delete":
 				return this.delete(node);
 			case "undo":
@@ -253,12 +271,49 @@ export class NodeEditing {
 		}
 	}
 
-	private async insert(node: TreeNode, make: typeof insertSibling) {
-		if (!this.editor) return;
+	/**
+	 * 新增兄弟 / 子節點：檔案先不動，畫面放一個虛擬節點進入編輯，離開時才寫入（見 NewNodeState）。
+	 * 補丁照常用 core 算好，只是記下來晚一點套：分隔、縮排與位置都在進入時的文件快照上決定。
+	 */
+	private insert(node: TreeNode, make: typeof insertSibling, position: "after" | "into") {
+		if (!this.editor || this.state.newNode || this.isEditing) return;
 		const insertion = make(this.editor.doc, node, { placeholder: t("newParagraphPlaceholder") });
 		if (!insertion) return;
-		this.pendingNew = { start: insertion.nodeStart, edit: true, selectAll: node.kind === "section" };
-		await this.write([insertion.patch]);
+		// nodeStart 是新節點文字的起點，補丁裡在它之前的是分隔與縮排，之後是起始文字
+		const lead = insertion.patch.insert.slice(0, insertion.nodeStart - insertion.patch.from);
+		const text = insertion.patch.insert.slice(lead.length);
+		// 子節點會長在目標底下，目標收合著就看不到
+		if (position === "into") this.state.collapsed.delete(node.id);
+		this.state.newNode = {
+			anchorId: node.id,
+			position,
+			node: makeNewNode(node, position, text),
+			text,
+			lead,
+			indent: node.kind === "listItem" ? lead.slice(1) : "",
+			at: insertion.patch.from,
+		};
+		this.mountCursor = node.kind === "section" ? "all" : "end";
+		this.state.editingId = NEW_NODE_ID;
+	}
+
+	/** 新增節點離開編輯：空的（只有標記或沒改佔位文字）就丟棄，否則寫入一次，寫完 cache 更新後用起點找回節點並選取 */
+	private async commitNewNode(pending: NewNodeState, value: string) {
+		const body = value.trim();
+		if (body === "" || body === pending.text.trim()) {
+			selectNode(this.state, pending.anchorId);
+			return;
+		}
+		if (!this.editor) return;
+		const text = pending.indent === "" ? value : value.split("\n").map((line, i) => (i === 0 || line === "" ? line : pending.indent + line)).join("\n");
+		this.pendingNew = { start: pending.at + pending.lead.length, edit: false, selectAll: false };
+		await this.write([{ from: pending.at, to: pending.at, insert: pending.lead + text }], value);
+	}
+
+	/** 編輯器起始文字：新增中的節點是 NewNodeState.text，其他是原文的編輯範圍 */
+	private textOf(node: TreeNode): string {
+		if (node.id === NEW_NODE_ID && this.state.newNode) return this.state.newNode.text;
+		return editText(this.editor?.doc ?? "", node).text;
 	}
 
 	/** 切換 offset 所在行的核取方塊並寫回；補丁長度不變，編輯中也可以點（不影響編輯範圍的位置） */

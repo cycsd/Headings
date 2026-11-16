@@ -155,10 +155,8 @@ export const DROP_PLACEHOLDER_ID = "__drop_placeholder__";
  * 回傳一棵多一個佔位節點的樹：into 放在 target 的 children 最後，before / after 插在 target 父節點的 children 裡 target 的前 / 後。
  * 只淺拷貝 root 到被改 children 的那個節點的路徑，其他節點共用。target 不存在、或 target 是 root 卻要插前後，就原樣回傳。
  */
-export const withDropPlaceholder = (root: TreeNode, targetId: string, position: "into" | "before" | "after" = "into"): TreeNode => {
-    let path = pathTo(root, targetId);
-    if (path.length === 0) return root;
-    const placeholder: TreeNode = {
+export const withDropPlaceholder = (root: TreeNode, targetId: string, position: "into" | "before" | "after" = "into"): TreeNode =>
+    insertNodeAt(root, targetId, position, {
         id: DROP_PLACEHOLDER_ID,
         kind: "section",
         sectionType: "paragraph",
@@ -167,7 +165,12 @@ export const withDropPlaceholder = (root: TreeNode, targetId: string, position: 
         sections: [],
         links: [],
         children: [],
-    };
+    });
+
+/** 把任意節點放進樹：位置規則與路徑拷貝同 withDropPlaceholder（拖曳佔位與新增節點的虛擬節點共用） */
+export const insertNodeAt = (root: TreeNode, targetId: string, position: "into" | "before" | "after", placeholder: TreeNode): TreeNode => {
+    let path = pathTo(root, targetId);
+    if (path.length === 0) return root;
     let children: TreeNode[];
     if (position === "into") {
         children = [...path[path.length - 1]!.children, placeholder];
@@ -185,4 +188,19 @@ export const withDropPlaceholder = (root: TreeNode, targetId: string, position: 
         rebuilt = { ...node, children: node.children.map((c) => (c.id === path[i + 1]!.id ? rebuilt : c)) };
     }
     return rebuilt;
+};
+
+/** 新增節點在編輯期間的虛擬節點 id：檔案還沒寫入，畫面上先放這個節點讓使用者打字，離開編輯才寫入 */
+export const NEW_NODE_ID = "__new_node__";
+
+/**
+ * 新增節點的虛擬節點：anchor 是新增動作所在的節點，position 是 after（兄弟）或 into（子節點），text 是編輯器起始文字。
+ * 種類跟寫入檔案後會長成的一樣：標題層級同兄弟 / 加一層、清單項、升級段落。
+ */
+export const makeNewNode = (anchor: TreeNode, position: "after" | "into", text: string): TreeNode => {
+    const base = { id: NEW_NODE_ID, range: { from: 0, to: 0 }, sections: [], links: [], children: [] };
+    if (anchor.kind === "listItem") return { ...base, kind: "listItem", title: null, text };
+    if (anchor.kind === "section") return { ...base, kind: "section", title: null, sectionType: "paragraph" };
+    const level = position === "after" ? (anchor.level ?? 1) : Math.min(6, (anchor.level ?? 0) + 1);
+    return { ...base, kind: "heading", level, title: "" };
 };

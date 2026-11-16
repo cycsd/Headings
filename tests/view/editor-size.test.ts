@@ -44,6 +44,16 @@ describe("resolveEditorBox（關閉自訂：依內容貼合）", () => {
     });
 });
 
+describe("resolveEditorBox（新增的節點：量不到原本大小）", () => {
+    it("關閉自訂：寬 320 不超過節點最大寬度，高至少 4 行", () => {
+        expect(resolveEditorBox(measure, { ...base, node: null, text: "## " })).toEqual({ w: 300, h: 20 * MIN_EDITOR_LINES });
+        expect(resolveEditorBox(measure, { ...base, node: null, text: "## ", maxWidth: 600 })).toEqual({ w: 320, h: 20 * MIN_EDITOR_LINES });
+    });
+    it("開啟自訂：照自訂寬度，高一樣至少 4 行", () => {
+        expect(resolveEditorBox(measure, { ...base, node: null, text: "- ", custom: { enabled: true, width: 360, maxHeight: 320 } })).toEqual({ w: 360, h: 80 });
+    });
+});
+
 describe("resolveEditorBox（開啟自訂）", () => {
     const custom = { ...base, custom: { enabled: true, width: 360, maxHeight: 200 } };
 

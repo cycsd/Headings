@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src/core/tree";
-import { allIds, collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, filterTree, findNode, maxDepth, nodeAtOffset, pathTo, stepDepth, withDepth, withDropPlaceholder } from "../../src/core/tree-ops";
+import { allIds, collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, filterTree, findNode, maxDepth, nodeAtOffset, pathTo, stepDepth, withDepth, withDropPlaceholder, insertNodeAt, makeNewNode, NEW_NODE_ID } from "../../src/core/tree-ops";
 
 const node = (id: string, children: TreeNode[] = []): TreeNode => ({
     id,
@@ -197,5 +197,26 @@ describe("allIds / filterTree", () => {
     it("全部命中時回傳同一棵樹", () => {
         const root = tree();
         expect(filterTree(root, () => true).tree).toBe(root);
+    });
+});
+
+describe("insertNodeAt / makeNewNode", () => {
+    it("after 放在目標後面、into 放在目標 children 最後，原樹不變", () => {
+        const root = tree();
+        const virtual = makeNewNode(findNode(root, "A")!, "after", "## ");
+        expect(insertNodeAt(root, "A", "after", virtual).children.map((n) => n.id)).toEqual(["A", NEW_NODE_ID, "B"]);
+        expect(insertNodeAt(root, "A", "into", virtual).children[0]!.children.map((n) => n.id)).toEqual(["A1", "A2", NEW_NODE_ID]);
+        expect(root.children.map((n) => n.id)).toEqual(["A", "B"]);
+        expect(insertNodeAt(root, "nope", "after", virtual)).toBe(root);
+    });
+
+    it("虛擬節點的種類：標題同層 / 加一層（最多 6）、清單項、段落", () => {
+        const heading = { ...node("H"), level: 2 };
+        expect(makeNewNode(heading, "after", "## ")).toMatchObject({ kind: "heading", level: 2, title: "" });
+        expect(makeNewNode(heading, "into", "### ")).toMatchObject({ kind: "heading", level: 3 });
+        expect(makeNewNode({ ...heading, level: 6 }, "into", "")).toMatchObject({ level: 6 });
+        expect(makeNewNode({ ...node("root"), kind: "root", level: 0 }, "into", "# ")).toMatchObject({ kind: "heading", level: 1 });
+        expect(makeNewNode({ ...node("L"), kind: "listItem" }, "after", "- ")).toMatchObject({ kind: "listItem", text: "- ", title: null });
+        expect(makeNewNode({ ...node("S"), kind: "section" }, "after", "新段落")).toMatchObject({ kind: "section", sectionType: "paragraph" });
     });
 });

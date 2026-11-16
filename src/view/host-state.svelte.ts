@@ -10,6 +10,25 @@ import type { SearchMode } from "../settings-model";
 export type RevealMode = "center" | "ensure";
 
 /**
+ * 新增節點的草稿：新增兄弟 / 子節點時檔案先不動，畫面上放一個虛擬節點（node）讓使用者打字，離開編輯才寫入。
+ * 這樣編輯期間沒有 cache 更新、不會重建樹或重掛編輯器；離開時內容是空的就直接丟棄，檔案不留痕跡。
+ */
+export type NewNodeState = {
+	/** 新增動作所在的節點，虛擬節點放在它之後（after）或底下最後（into） */
+	anchorId: string;
+	position: "after" | "into";
+	node: TreeNode;
+	/** 編輯器起始文字：「## 」「- 」或新段落的佔位文字 */
+	text: string;
+	/** 寫入時接在文字前面的分隔與縮排（「\n\n」或「\n」加清單縮排） */
+	lead: string;
+	/** 清單縮排；多行內容的後續行要補回 */
+	indent: string;
+	/** 寫入檔案的位置 */
+	at: number;
+};
+
+/**
  * 搜尋列開著時的狀態。命中與修剪後的樹不放這裡：LayoutHost 依目前畫的樹（聚焦子樹）用 $derived 即時算，
  * 聚焦改變、樹重建都會自動跟著重算。
  */
@@ -70,8 +89,10 @@ export type HostState = {
 	selectedId: string | null;
 	/** 要求佈局把節點帶到畫面上；seq 遞增讓同一個 id 也能再觸發。center 置中、ensure 只在看不到時最小平移；flash 為 false 就不閃光暈 */
 	reveal: { id: string; seq: number; mode: RevealMode; flash: boolean } | null;
-	/** 正在節點內編輯的節點 id */
+	/** 正在節點內編輯的節點 id；新增中的節點是 NEW_NODE_ID */
 	editingId: string | null;
+	/** 新增中的節點草稿；null 為沒有 */
+	newNode: NewNodeState | null;
 	/** 拖曳中的狀態；物件在整段拖曳裡不換，只改欄位，讀 sourceId 的節點才不會跟著游標重算 */
 	drag: DragState | null;
 	/** 子樹被收合的節點 */
@@ -114,6 +135,7 @@ export function createHostState(
 		selectedId: null,
 		reveal: null,
 		editingId: null,
+		newNode: null,
 		drag: null,
 		search: null,
 		zoom: {},
@@ -136,6 +158,7 @@ export function resetNodeState(state: HostState) {
 	state.selectedId = null;
 	state.reveal = null;
 	state.editingId = null;
+	state.newNode = null;
 	state.drag = null;
 	state.search = null;
 	state.zoom = {};

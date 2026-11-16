@@ -6,7 +6,7 @@
 	import type { LayoutProps } from "./layout-props";
 	import { getLayout } from "./layout-registry";
 	import { createNodeUi, NODE_UI, type NodeActions, type NodeCommand, type SearchView } from "./node-ui";
-	import { filterTree, findNode, pathTo, withDropPlaceholder } from "../core/tree-ops";
+	import { filterTree, findNode, insertNodeAt, NEW_NODE_ID, pathTo, withDropPlaceholder } from "../core/tree-ops";
 	import { contentRange, type TreeNode } from "../core/tree";
 	import { crumbIcon, crumbLabel } from "./breadcrumb";
 	import { applyCollapseSubtree, applyExpandSubtree, closeSearch, requestReveal, revealNode, setFocus, setSearchQuery, visibleRoot } from "./tree-state";
@@ -197,9 +197,20 @@
 	 * 拖曳落點預覽：游標停在合法目標上時，多放一個佔位節點再排佈局（放進去 → 目標 children 最後；插前後 → 兄弟列的那個位置），
 	 * 其他節點會真的讓出空間，佔位畫成虛線框。來源留在原位淡化，不先拿掉。
 	 */
-	let displayTree = $derived(
-		visible && state.drag?.overId && state.drag.overPosition ? withDropPlaceholder(visible, state.drag.overId, state.drag.overPosition) : visible,
+	let withNew = $derived(
+		visible && state.newNode ? insertNodeAt(visible, state.newNode.anchorId, state.newNode.position === "after" ? "after" : "into", state.newNode.node) : visible,
 	);
+	let displayTree = $derived(
+		withNew && state.drag?.overId && state.drag.overPosition ? withDropPlaceholder(withNew, state.drag.overId, state.drag.overPosition) : withNew,
+	);
+
+	/** 新增中的節點放不進目前畫的樹（例如搜尋過濾把錨點濾掉）：編輯沒有地方顯示，取消新增 */
+	$effect(() => {
+		if (state.newNode && withNew && !findNode(withNew, NEW_NODE_ID)) {
+			state.newNode = null;
+			state.editingId = null;
+		}
+	});
 
 	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器，搜尋中（Enter 跳到命中時）焦點留在輸入框 */
 	$effect(() => {

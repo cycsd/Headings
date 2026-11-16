@@ -15,8 +15,8 @@ export type TextMeasurer = (text: string, width?: number) => Box;
 
 export type EditorSizeInput = {
 	text: string;
-	/** 節點進編輯前的內容框（扣掉內距與邊框） */
-	node: Box;
+	/** 節點進編輯前的內容框（扣掉內距與邊框）；null = 新增的節點（一掛上就在編輯中，量不到原本的大小） */
+	node: Box | null;
 	custom: { enabled: boolean; width: number; maxHeight: number };
 	/** 關閉自訂時的寬度上限：節點最大寬度扣掉內距與邊框 */
 	maxWidth: number;
@@ -28,6 +28,8 @@ export type EditorSizeInput = {
 export const MIN_EDITOR_LINES = 4;
 /** 關閉自訂時的寬度下限；太小的節點打開也要有可用的寬度。跟自訂寬度滑桿的最小值一致 */
 export const MIN_EDITOR_WIDTH = 200;
+/** 新增的節點：使用者接下來一定會打字，關閉自訂時給這個寬度（仍不超過節點最大寬度）、至少 MIN_EDITOR_LINES 行 */
+export const NEW_NODE_EDITOR_WIDTH = 320;
 
 const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(Math.max(lo, hi), value));
 
@@ -36,13 +38,17 @@ export type HeightBounds = { min: number; max: number };
 
 export const heightBounds = (input: Pick<EditorSizeInput, "node" | "custom" | "maxHeight" | "viewportHeight">, measure: TextMeasurer): HeightBounds => {
 	const cap = (max: number) => (max > 0 ? max : Math.round(input.viewportHeight / 2));
-	if (input.custom.enabled) return { min: measure("x").h * MIN_EDITOR_LINES, max: cap(input.custom.maxHeight) };
-	return { min: input.node.h, max: cap(input.maxHeight) };
+	const lines = () => measure("x").h * MIN_EDITOR_LINES;
+	if (input.custom.enabled) return { min: lines(), max: cap(input.custom.maxHeight) };
+	return { min: input.node ? input.node.h : lines(), max: cap(input.maxHeight) };
 };
 
 export const resolveEditorBox = (measure: TextMeasurer, input: EditorSizeInput): Box => {
 	const bounds = heightBounds(input, measure);
-	const w = input.custom.enabled ? input.custom.width : clamp(measure(input.text).w, Math.max(input.node.w, MIN_EDITOR_WIDTH), input.maxWidth);
+	let w: number;
+	if (input.custom.enabled) w = input.custom.width;
+	else if (input.node) w = clamp(measure(input.text).w, Math.max(input.node.w, MIN_EDITOR_WIDTH), input.maxWidth);
+	else w = clamp(NEW_NODE_EDITOR_WIDTH, MIN_EDITOR_WIDTH, input.maxWidth);
 	return { w, h: clamp(measure(input.text, w).h, bounds.min, bounds.max) };
 };
 
