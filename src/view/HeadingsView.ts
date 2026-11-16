@@ -7,6 +7,10 @@ import { createHostState, resetNodeState, watchFileMemory, type HostState } from
 import { LAYOUT_REGISTRY, availableLayoutIds } from "./layout-registry";
 import { FM_LAYOUT_KEY, FM_MINDMAP_DIRECTION_KEY, FM_NODES_KEY, resolveLayoutId, resolveMindmapDirection, resolveNodeTypes } from "./view-config";
 import type { MindmapDirection } from "../layout/mindmap";
+import type { ZoomPlatform } from "./view-memory";
+
+/** 縮放倍率依平台分開記：data.json 跟著 vault 同步，桌面的倍率拿到手機不適用 */
+const ZOOM_PLATFORM: ZoomPlatform = Platform.isMobile ? "mobile" : "desktop";
 import { EMBED_ICON, LINK_ICON } from "./section-icons";
 import { parseFrontmatter, renderProperties } from "./frontmatter-properties";
 import { PluginDocumentService } from "../service/document-service";
@@ -306,11 +310,15 @@ export class HeadingsView extends ItemView {
             // 有記住的狀態就用記住的；沒有才套設定的預設層數（root 以下幾層；內部 depth 從 root 算起且 0 = 全部，所以加 1）
             const memory = this.plugin.settings.rememberFileViews ? this.plugin.fileViews.get(file.path) : undefined;
             if (memory) {
-                restoreNodeState(this.hostState, memory);
+                restoreNodeState(this.hostState, memory, ZOOM_PLATFORM);
             } else {
                 const { defaultExpandEnabled, defaultExpandDepth } = this.plugin.settings;
                 applyDepth(this.hostState, defaultExpandEnabled ? defaultExpandDepth + 1 : 0);
+                this.hostState.zoom = {};
+                this.hostState.pan = {};
             }
+            // 新檔案：佈局把視口擺到記住的位置（沒有就預設位置）
+            this.hostState.viewportSeq += 1;
             // 從這裡開始的變動才屬於這個檔案
             this.memoryPath = file.path;
         }
@@ -350,7 +358,7 @@ export class HeadingsView extends ItemView {
         }
         const path = this.memoryPath;
         if (path === null || !this.plugin.settings.rememberFileViews) return;
-        void this.plugin.rememberFileView(path, snapshotNodeState(this.hostState));
+        void this.plugin.rememberFileView(path, snapshotNodeState(this.hostState, ZOOM_PLATFORM, this.plugin.fileViews.get(path)));
     }
 
     /** header 的「展開層級」選單：1 層 … 最大深度、全部 */

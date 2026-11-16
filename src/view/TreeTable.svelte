@@ -4,7 +4,7 @@
 	import type { LayoutProps } from "./layout-props";
 	import { branchStyle } from "./branch-color";
 	import TreeNodeBox from "./TreeNodeBox.svelte";
-	import { getContext } from "svelte";
+	import { getContext, untrack } from "svelte";
 	import { NODE_UI, type NodeUi } from "./node-ui";
 	import { edgePan, refreshDropTarget } from "./node-drag";
 
@@ -18,6 +18,26 @@
 	/** 麵包屑選到節點後把 cell 置中；等下一個 frame 讓剛展開的 cell 先渲染出來 */
 	let panZoom: ReturnType<typeof PanZoom> | undefined = $state();
 	let grid: HTMLElement | undefined = $state();
+
+	/** 每檔記住的視口參考點是表格左上角 (0, 0)：換檔時擺回記住的位置，沒有就貼視口左上 */
+	$effect(() => {
+		void ui.state.viewportSeq;
+		const pz = panZoom;
+		if (!pz) return;
+		untrack(() => {
+			const remembered = ui.state.pan["tree-table"];
+			pz.positionAt(0, 0, remembered?.x ?? 0, remembered?.y ?? 0);
+		});
+	});
+
+	/** 視口動了：記下表格左上角在視口的相對位置 */
+	const rememberViewport = () => {
+		if (!panZoom) return;
+		const point = panZoom.fractionOf(0, 0);
+		const prev = ui.state.pan["tree-table"];
+		if (prev && prev.x === point.x && prev.y === point.y) return;
+		ui.state.pan = { ...ui.state.pan, "tree-table": point };
+	};
 	$effect(() => {
 		const request = ui.state.reveal;
 		if (!request) return;
@@ -51,7 +71,15 @@
 
 </script>
 
-<PanZoom bind:this={panZoom} minZoom={0.1} maxZoom={5} zoomStep={0.05}>
+<PanZoom
+	bind:this={panZoom}
+	minZoom={0.1}
+	maxZoom={5}
+	zoomStep={0.05}
+	zoomLevel={ui.state.zoom["tree-table"] ?? 1}
+	onZoomChange={(z) => (ui.state.zoom = { ...ui.state.zoom, "tree-table": z })}
+	onViewportChange={rememberViewport}
+>
 	{#snippet children()}
 		<div class="tree-table" bind:this={grid} style="grid-template-columns: repeat({placement.columns}, minmax(0, 1fr));">
 			<div class="cell header grid-span" style="--col-start: 1; --col-span: {placement.columns}; --row-start: 1; --row-span: 1; {branchStyle(-1)}">

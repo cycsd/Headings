@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { setIcon } from "obsidian";
-	import type { Snippet } from "svelte";
+	import { untrack, type Snippet } from "svelte";
 	import type { Attachment } from "svelte/attachments";
 
 	interface Props {
@@ -8,6 +8,12 @@
 		minZoom?: number;
 		maxZoom?: number;
 		zoomStep?: number;
+		/** 由外部指定的倍率（例如每檔記住的）；變了就套用，不回呼 */
+		zoomLevel?: number;
+		/** 使用者用滾輪、雙指、工具列改了倍率；程式自己套 zoomLevel 不算 */
+		onZoomChange?: (zoom: number) => void;
+		/** 視口（平移或倍率）變了，不分使用者或程式；每檔記住視口位置用，拿 fractionOf 算參考點 */
+		onViewportChange?: () => void;
 	}
 
 	let {
@@ -15,9 +21,32 @@
 		minZoom = 0.1,
 		maxZoom = 5,
 		zoomStep = 0.01,
+		zoomLevel,
+		onZoomChange,
+		onViewportChange,
 	}: Props = $props();
 
-	let zoom = $state(1);
+	$effect(() => {
+		void panX;
+		void panY;
+		void zoom;
+		untrack(() => onViewportChange?.());
+	});
+
+	// svelte-ignore state_referenced_locally
+	let zoom = $state(clampZoom(zoomLevel ?? 1));
+
+	function clampZoom(value: number): number {
+		return Math.min(maxZoom, Math.max(minZoom, Math.round(value * 1000) / 1000));
+	}
+
+	/** 外部倍率變了（換檔還原記錄）就直接套，不經 setZoom 才不會再回呼出去 */
+	$effect(() => {
+		const level = zoomLevel;
+		untrack(() => {
+			if (level !== undefined && Math.abs(clampZoom(level) - zoom) > 1e-6) zoom = clampZoom(level);
+		});
+	});
 	let viewport: HTMLElement;
 	let content: HTMLElement;
 	let panX = $state(0);
@@ -33,8 +62,13 @@
 	/** 雙指手勢開始時的基準 */
 	let pinch: { distance: number; zoom: number; contentX: number; contentY: number } | null = null;
 
+	/** 使用者操作改倍率的唯一入口：變了就通知外面 */
 	function setZoom(value: number): number {
-		zoom = Math.min(maxZoom, Math.max(minZoom, Math.round(value * 1000) / 1000));
+		const next = clampZoom(value);
+		if (next !== zoom) {
+			zoom = next;
+			onZoomChange?.(next);
+		}
 		return zoom;
 	}
 
@@ -263,6 +297,15 @@
 	/** 讓內容座標 (x, y) 落在視口正中央 */
 	export function centerOn(x: number, y: number) {
 		positionAt(x, y, 0.5, 0.5);
+	}
+
+	/** positionAt 的反函式：內容座標 (x, y) 目前在視口的相對位置；視口還沒掛上回傳置中 */
+	export function fractionOf(x: number, y: number): { x: number; y: number } {
+		if (!viewport) return { x: 0.5, y: 0.5 };
+		const bounds = viewport.getBoundingClientRect();
+		if (bounds.width === 0 || bounds.height === 0) return { x: 0.5, y: 0.5 };
+		const round = (v: number) => Math.round(v * 10000) / 10000;
+		return { x: round((x * zoom + panX) / bounds.width), y: round((y * zoom + panY) / bounds.height) };
 	}
 
 	/** 把內容座標 (x, y) 放到視口的相對位置 (fx, fy)，0–1；centerOn 就是 (0.5, 0.5) */

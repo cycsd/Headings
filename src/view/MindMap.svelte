@@ -69,16 +69,36 @@
 	let lastEditing: string | null = null;
 	let lastPlacement: typeof placement | null = null;
 
-	/** 方向換了（雙向 ↔ 只往右）整張圖重排，當成第一次佈局重新擺放根節點；要宣告在錨點 effect 之前才會先跑 */
+	/** 方向換了（雙向 ↔ 只往右）或換了檔案，當成第一次佈局重新擺放根節點；要宣告在錨點 effect 之前才會先跑 */
 	$effect(() => {
 		void ui.state.mindmapDirection;
+		void ui.state.viewportSeq;
 		anchorPrev = null;
 	});
 
-	/** 第一次佈局：雙向把根置中；只往右時根靠左（左緣在視口 10% 處）、垂直置中，右邊才有空間長 */
+	/** 根節點中心：每檔記住的視口參考點 */
+	const rootCenter = (root: PlacedNode) => ({ x: root.x + root.w / 2, y: root.y + root.h / 2 });
+
+	/**
+	 * 第一次佈局擺放根節點：有記住的參考點就擺回去；沒有的話雙向置中、只往右時根靠左（左緣在視口 10% 處）垂直置中。
+	 * 之後尺寸量完的「錨點不動」補償會讓根留在那裡，最後畫面跟存檔時一樣
+	 */
 	const placeRoot = (pz: NonNullable<typeof panZoom>, root: PlacedNode) => {
-		if (ui.state.mindmapDirection === "right") pz.positionAt(root.x, root.y + root.h / 2, 0.1, 0.5);
-		else pz.centerOn(root.x + root.w / 2, root.y + root.h / 2);
+		const remembered = ui.state.pan.mindmap;
+		const center = rootCenter(root);
+		if (remembered) pz.positionAt(center.x, center.y, remembered.x, remembered.y);
+		else if (ui.state.mindmapDirection === "right") pz.positionAt(root.x, center.y, 0.1, 0.5);
+		else pz.centerOn(center.x, center.y);
+	};
+
+	/** 視口動了（使用者平移縮放、或程式置中）：記下根節點中心在視口的相對位置 */
+	const rememberViewport = () => {
+		const root = placement.nodes[0];
+		if (!root || !panZoom) return;
+		const point = panZoom.fractionOf(rootCenter(root).x, rootCenter(root).y);
+		const prev = ui.state.pan.mindmap;
+		if (prev && prev.x === point.x && prev.y === point.y) return;
+		ui.state.pan = { ...ui.state.pan, mindmap: point };
 	};
 
 	const anchorPoint = (placed: PlacedNode): { x: number; y: number } =>
@@ -178,7 +198,15 @@
 	}
 </script>
 
-<PanZoom bind:this={panZoom} minZoom={0.1} maxZoom={5} zoomStep={0.05}>
+<PanZoom
+	bind:this={panZoom}
+	minZoom={0.1}
+	maxZoom={5}
+	zoomStep={0.05}
+	zoomLevel={ui.state.zoom.mindmap ?? 1}
+	onZoomChange={(z) => (ui.state.zoom = { ...ui.state.zoom, mindmap: z })}
+	onViewportChange={rememberViewport}
+>
 	{#snippet children()}
 		<div class="mindmap" class:dragging={ui.state.drag !== null} bind:this={canvas} style="width: {placement.width}px; height: {placement.height}px;">
 			<svg class="edges" width={placement.width} height={placement.height} viewBox="0 0 {placement.width} {placement.height}">

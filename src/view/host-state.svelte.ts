@@ -2,6 +2,7 @@ import { untrack } from "svelte";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import type { LayoutId } from "../layout/layout";
 import type { MindmapDirection } from "../layout/mindmap";
+import type { PanPoint, ZoomLayout } from "./view-memory";
 import type { TreeNode } from "../core/tree";
 import type { DropPosition } from "../core/edit";
 import type { SearchMode } from "../settings-model";
@@ -81,6 +82,12 @@ export type HostState = {
 	litTypes: SvelteMap<string, ReadonlySet<string>>;
 	/** 搜尋列；null 為關著 */
 	search: SearchState | null;
+	/** 目前檔案在這個平台上手動縮放過的倍率，依佈局分；沒縮放過的佈局沒有 key（用 1） */
+	zoom: Partial<Record<ZoomLayout, number>>;
+	/** 參考點在視口的相對位置（心智圖是根節點中心、樹狀表格是左上角），依佈局分；沒有就用預設擺法 */
+	pan: Partial<Record<ZoomLayout, PanPoint>>;
+	/** 換檔時加一，佈局據此把視口重新擺到記住的位置（或預設位置） */
+	viewportSeq: number;
 };
 
 export function createHostState(
@@ -109,6 +116,9 @@ export function createHostState(
 		editingId: null,
 		drag: null,
 		search: null,
+		zoom: {},
+		pan: {},
+		viewportSeq: 0,
 		collapsed: new SvelteSet<string>(),
 		iconsOpen: new SvelteSet<string>(),
 		litTypes: new SvelteMap<string, ReadonlySet<string>>(),
@@ -128,6 +138,8 @@ export function resetNodeState(state: HostState) {
 	state.editingId = null;
 	state.drag = null;
 	state.search = null;
+	state.zoom = {};
+	state.pan = {};
 }
 
 /**
@@ -142,6 +154,9 @@ export function watchFileMemory(state: HostState, onChange: () => void): () => v
 			void Array.from(state.litTypes.values());
 			void state.focusId;
 			void state.expandDepth;
+			// 倍率與視口位置改了是整個物件換掉，讀屬性就追蹤得到
+			void state.zoom;
+			void state.pan;
 			untrack(onChange);
 		});
 	});

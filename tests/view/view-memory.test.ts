@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FileViewStore, MAX_FILE_VIEWS, pruneMemory, readFileViews, sameMemory, type FileViewMemory } from "../../src/view/view-memory";
+import { FileViewStore, MAX_FILE_VIEWS, pruneMemory, readFileViews, sameMemory, withViewport, type FileViewMemory } from "../../src/view/view-memory";
 
 const memory = (collapsed: string[] = [], focusId: string | null = null): FileViewMemory => ({
     collapsed,
@@ -37,6 +37,42 @@ describe("readFileViews", () => {
         expect(Object.keys(result)).toHaveLength(MAX_FILE_VIEWS);
         expect("0.md" in result).toBe(false);
         expect(`${MAX_FILE_VIEWS + 4}.md` in result).toBe(true);
+    });
+});
+
+describe("zoom", () => {
+    it("readFileViews 只留合理的平台 / 佈局 / 數字，沒有就不帶 zoom 欄位", () => {
+        const data = {
+            fileViews: {
+                "a.md": { ...memory(), zoom: { desktop: { mindmap: 0.8, "tree-table": 1.2, outline: 2 }, mobile: { mindmap: -1 }, tv: { mindmap: 1 } } },
+                "b.md": { ...memory(), zoom: "big" },
+                "c.md": memory(),
+            },
+        };
+        const views = readFileViews(data);
+        expect(views["a.md"]!.zoom).toEqual({ desktop: { mindmap: 0.8, "tree-table": 1.2 } });
+        expect("zoom" in views["b.md"]!).toBe(false);
+        expect("zoom" in views["c.md"]!).toBe(false);
+    });
+
+    it("pan 只留兩個座標都合理的點", () => {
+        const data = { fileViews: { "a.md": { ...memory(), pan: { desktop: { mindmap: { x: 0.3, y: 0.5 }, "tree-table": { x: 99, y: 0 } }, mobile: { mindmap: { x: "a", y: 0 } } } } } };
+        expect(readFileViews(data)["a.md"]!.pan).toEqual({ desktop: { mindmap: { x: 0.3, y: 0.5 } } });
+    });
+
+    it("withViewport 併入目前平台、保留其他平台；目前平台空了就拿掉；pruneMemory 不動 zoom / pan", () => {
+        const previous: FileViewMemory = { ...memory(), zoom: { mobile: { mindmap: 0.5 } }, pan: { mobile: { mindmap: { x: 0.5, y: 0.5 } } } };
+        const merged = withViewport(memory(), previous, "desktop", { zoom: { mindmap: 0.75 }, pan: { mindmap: { x: 0.2, y: 0.4 } } });
+        expect(merged.zoom).toEqual({ mobile: { mindmap: 0.5 }, desktop: { mindmap: 0.75 } });
+        expect(merged.pan).toEqual({ mobile: { mindmap: { x: 0.5, y: 0.5 } }, desktop: { mindmap: { x: 0.2, y: 0.4 } } });
+        const cleared = withViewport(memory(), merged, "desktop", { zoom: {}, pan: {} });
+        expect(cleared.zoom).toEqual({ mobile: { mindmap: 0.5 } });
+        expect(cleared.pan).toEqual({ mobile: { mindmap: { x: 0.5, y: 0.5 } } });
+        const empty = withViewport(memory(), undefined, "desktop", { zoom: {}, pan: {} });
+        expect("zoom" in empty).toBe(false);
+        expect("pan" in empty).toBe(false);
+        expect(pruneMemory(merged, new Set()).zoom).toEqual(merged.zoom);
+        expect(pruneMemory(merged, new Set()).pan).toEqual(merged.pan);
     });
 });
 

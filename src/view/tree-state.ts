@@ -1,7 +1,7 @@
 import type { TreeNode } from "../core/tree";
 import { allIds, collapseOthers, collapseSubtree, expandPath, expandSubtree, findNode, maxDepth, stepDepth, withDepth } from "../core/tree-ops";
 import type { HostState, RevealMode } from "./host-state.svelte";
-import { pruneMemory, type FileViewMemory } from "./view-memory";
+import { pruneMemory, withViewport, type FileViewMemory, type ZoomPlatform } from "./view-memory";
 import type { SearchMode } from "../settings-model";
 
 /**
@@ -88,16 +88,22 @@ export const requestReveal = (state: HostState, id: string, mode: RevealMode, fl
 	state.reveal = { id, seq: (state.reveal?.seq ?? 0) + 1, mode, flash };
 };
 
-/** 每檔要記住的部分：收合、聚焦、展開層數、點亮型別 */
-export const snapshotNodeState = (state: HostState): FileViewMemory => ({
-	collapsed: [...state.collapsed],
-	focusId: state.focusId,
-	expandDepth: state.expandDepth,
-	lit: Object.fromEntries([...state.litTypes].map(([id, types]) => [id, [...types]])),
-});
+/** 每檔要記住的部分：收合、聚焦、展開層數、點亮型別，加上目前平台的視口（倍率與參考點位置；其他平台的從 previous 保留） */
+export const snapshotNodeState = (state: HostState, platform: ZoomPlatform, previous: FileViewMemory | undefined): FileViewMemory =>
+	withViewport(
+		{
+			collapsed: [...state.collapsed],
+			focusId: state.focusId,
+			expandDepth: state.expandDepth,
+			lit: Object.fromEntries([...state.litTypes].map(([id, types]) => [id, [...types]])),
+		},
+		previous,
+		platform,
+		{ zoom: state.zoom, pan: state.pan },
+	);
 
 /** 開檔時把記住的狀態套回去；樹上已經沒有的 id 先去掉。要在 state.tree 建好之後叫 */
-export const restoreNodeState = (state: HostState, memory: FileViewMemory) => {
+export const restoreNodeState = (state: HostState, memory: FileViewMemory, platform: ZoomPlatform) => {
 	if (!state.tree) return;
 	const pruned = pruneMemory(memory, allIds(state.tree));
 	replaceCollapsed(state, new Set(pruned.collapsed));
@@ -105,6 +111,8 @@ export const restoreNodeState = (state: HostState, memory: FileViewMemory) => {
 	state.expandDepth = pruned.expandDepth;
 	state.litTypes.clear();
 	for (const [id, types] of Object.entries(pruned.lit)) state.litTypes.set(id, new Set(types));
+	state.zoom = { ...(pruned.zoom?.[platform] ?? {}) };
+	state.pan = { ...(pruned.pan?.[platform] ?? {}) };
 };
 
 /** 開搜尋列（mode 是上次記住的）；已經開著就只把焦點要回來（seq 加一），query 與模式保留 */
