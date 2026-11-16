@@ -141,9 +141,63 @@ describe("insertSibling / insertChild", () => {
         expect(inserted("- [/] doing", insertSibling)).toBe("\n- [ ] ");
         expect(inserted("* star", insertSibling)).toBe("\n* ");
         expect(inserted("+ [x] plus task", insertSibling)).toBe("\n+ [ ] ");
-        expect(inserted("1. [x] numbered task", insertSibling)).toBe("\n- [ ] ");
-        expect(inserted("1. numbered", insertSibling)).toBe("\n- ");
+        expect(inserted("1. [x] numbered task", insertSibling)).toBe("\n2. [ ] ");
+        expect(inserted("1. numbered", insertSibling)).toBe("\n2. ");
         expect(inserted("- plain", insertSibling)).toBe("\n- ");
+    });
+
+    describe("有序清單的編號", () => {
+        const lines = ["1. a", "2. b", "3. c"];
+        const build = () => {
+            let from = 0;
+            return lines.map((text) => {
+                const n = { id: `S:list:0:${from}`, kind: "listItem", title: null, text, range: { from, to: from + text.length }, sections: [], links: [], children: [] } as TreeNode;
+                from += text.length + 1;
+                return n;
+            });
+        };
+        const text = lines.join("\n");
+
+        it("新增兄弟：新項是來源加一，後面的兄弟依序順延，補丁一起套得到整齊的編號", () => {
+            const [a, b, c] = build();
+            const result = insertSibling(text, a!, { placeholder: "", following: [b!, c!] })!;
+            expect(result.patch.insert).toBe("\n2. ");
+            expect(applyPatches(text, [result.patch, ...(result.extra ?? [])])).toBe("1. a\n2. \n3. b\n4. c");
+        });
+
+        it("加在最後一項後面：沒有後續兄弟，只有新項", () => {
+            const [, , c] = build();
+            const result = insertSibling(text, c!, { placeholder: "", following: [] })!;
+            expect(result.patch.insert).toBe("\n4. ");
+            expect(result.extra).toBeUndefined();
+        });
+
+        it("全寫 1. 的清單視為不維護編號：新項同數字、不重排", () => {
+            const lazy = ["1. a", "1. b"];
+            const first = { id: "S:list:0:0", kind: "listItem", title: null, text: lazy[0], range: { from: 0, to: 4 }, sections: [], links: [], children: [] } as TreeNode;
+            const second = { ...first, id: "S:list:0:1", text: lazy[1], range: { from: 5, to: 9 } } as TreeNode;
+            const result = insertSibling(lazy.join("\n"), first, { placeholder: "", following: [second] })!;
+            expect(result.patch.insert).toBe("\n1. ");
+            expect(result.extra).toBeUndefined();
+        });
+
+        it("分隔符號跟隨來源（1) 維持 1)）；位數變多時只換數字", () => {
+            const nine = { id: "S:list:0:0", kind: "listItem", title: null, text: "9) a", range: { from: 0, to: 4 }, sections: [], links: [], children: [] } as TreeNode;
+            const ten = { ...nine, id: "S:list:0:1", text: "10) b", range: { from: 5, to: 10 } } as TreeNode;
+            const doc = "9) a\n10) b";
+            const result = insertSibling(doc, nine, { placeholder: "", following: [ten] })!;
+            expect(result.patch.insert).toBe("\n10) ");
+            expect(applyPatches(doc, [result.patch, ...(result.extra ?? [])])).toBe("9) a\n10) \n11) b");
+        });
+
+        it("新增子項：有序來源接在最後一個有序子項後面、沒有就從 1 起；無序來源的子項維持 -", () => {
+            const parent = { id: "S:list:0:0", kind: "listItem", title: null, text: "1. p", range: { from: 0, to: 4 }, sections: [], links: [], children: [] } as TreeNode;
+            expect(insertChild("1. p", parent, { placeholder: "" })!.patch.insert).toBe("\n\t1. ");
+            const kid = { ...parent, id: "S:list:0:0:0", text: "3. k", range: { from: 5, to: 9 } } as TreeNode;
+            expect(insertChild("1. p\n   3. k", { ...parent, children: [kid] }, { placeholder: "" })!.patch.insert).toContain("4. ");
+            const bullet = { ...parent, text: "- p" } as TreeNode;
+            expect(insertChild("- p", bullet, { placeholder: "" })!.patch.insert).toBe("\n\t- ");
+        });
     });
 
     it("升級段落的兄弟放佔位文字，不能加子節點；root 沒有兄弟", () => {

@@ -86,22 +86,64 @@ export type InsertOptions = {
     indentUnit?: string;
     /** 新段落的佔位文字；cache 不會為空行建 section，所以一定要有內容 */
     placeholder: string;
+    /** 新增兄弟時：來源在同一份清單裡排在後面的兄弟（由 followingSiblings 取得）；有序清單用它接編號與重排 */
+    following?: readonly TreeNode[];
 };
 
 export type Insertion = {
     patch: TextPatch;
     /** 新節點文字的起點，cache 更新後用它找到新節點 */
     nodeStart: number;
+    /** 跟著新增一起套的補丁（有序清單後面兄弟的重新編號）；位置都以原文為準，與 patch 不重疊 */
+    extra?: TextPatch[];
+};
+
+const ORDERED_MARKER = /^(\d+)([.)])(?=\s)/;
+
+const listSource = (doc: string, node: TreeNode): string => node.text ?? doc.slice(node.range.from, node.range.to);
+
+/** 有序清單項的編號與分隔符號（`1.` 或 `1)`）；不是有序項回傳 null */
+const orderedInfo = (doc: string, node: TreeNode): { num: number; delim: string; digits: number } | null => {
+    const match = ORDERED_MARKER.exec(listSource(doc, node));
+    return match ? { num: Number(match[1]), delim: match[2]!, digits: match[1]!.length } : null;
+};
+
+/** 新清單項的起始文字：符號與任務狀態的規則見 insertSibling / insertChild */
+const newListItemText = (doc: string, node: TreeNode, marker: string): string => {
+    const isTask = /^(?:[-*+]|\d+[.)])[ \t]+\[[^\]]\]/.test(listSource(doc, node));
+    return isTask ? `${marker} [ ] ` : `${marker} `;
 };
 
 /**
- * 新清單項的起始文字：符號跟隨來源（`-`、`*`、`+`；有序清單不自動編號，一律用 `-`），來源是任務清單（含自訂狀態）就帶空的 `[ ] `。
+ * 新增兄弟的符號與重新編號：
+ * - 無序：跟隨來源的 `-`、`*`、`+`。
+ * - 有序：編號是來源加一，後面同一份清單的有序兄弟依序順延（只換數字那幾個字元，補丁放 extra）。
+ *   來源與下一個兄弟編號相同（全寫 1. 的懶人寫法）就視為使用者不維護編號：新項用同一個數字、不重排。
  */
-const newListItemText = (doc: string, node: TreeNode): string => {
-    const source = node.text ?? doc.slice(node.range.from, node.range.to);
-    const bullet = /^([-*+])\s/.exec(source)?.[1] ?? "-";
-    const isTask = /^(?:[-*+]|\d+[.)])[ \t]+\[[^\]]\]/.test(source);
-    return isTask ? `${bullet} [ ] ` : `${bullet} `;
+const siblingMarker = (doc: string, node: TreeNode, following: readonly TreeNode[]): { marker: string; extra: TextPatch[] } => {
+    const info = orderedInfo(doc, node);
+    if (!info) return { marker: /^([-*+])\s/.exec(listSource(doc, node))?.[1] ?? "-", extra: [] };
+    const next = following[0] ? orderedInfo(doc, following[0]) : null;
+    if (next && next.delim === info.delim && next.num === info.num) return { marker: `${info.num}${info.delim}`, extra: [] };
+    const extra: TextPatch[] = [];
+    let num = info.num + 1;
+    for (const sibling of following) {
+        const sibInfo = orderedInfo(doc, sibling);
+        if (!sibInfo || sibInfo.delim !== info.delim) break;
+        num += 1;
+        if (sibInfo.num !== num) extra.push({ from: sibling.range.from, to: sibling.range.from + sibInfo.digits, insert: String(num) });
+        else break;
+    }
+    return { marker: `${info.num + 1}${info.delim}`, extra };
+};
+
+/** 新增子項的符號：來源是有序清單就接在最後一個有序子項後面（沒有就從 1 起），否則跟隨來源的無序符號 */
+const childMarker = (doc: string, node: TreeNode): string => {
+    const info = orderedInfo(doc, node);
+    if (!info) return /^([-*+])\s/.exec(listSource(doc, node))?.[1] ?? "-";
+    const last = node.children.at(-1);
+    const lastInfo = last ? orderedInfo(doc, last) : null;
+    return `${lastInfo && lastInfo.delim === info.delim ? lastInfo.num + 1 : 1}${info.delim}`;
 };
 
 /**
@@ -114,7 +156,12 @@ export const insertSibling = (doc: string, node: TreeNode, options: InsertOption
     if (node.kind === "listItem") {
         const indent = lineIndent(doc, node.range.from);
         // list item 的 range 從「-」開始，不含縮排，所以新節點的起點要跳過縮排
-        return { patch: { from: at, to: at, insert: `\n${indent}${newListItemText(doc, node)}` }, nodeStart: at + 1 + indent.length };
+        const { marker, extra } = siblingMarker(doc, node, options.following ?? []);
+        return {
+            patch: { from: at, to: at, insert: `\n${indent}${newListItemText(doc, node, marker)}` },
+            nodeStart: at + 1 + indent.length,
+            ...(extra.length > 0 ? { extra } : {}),
+        };
     }
     const body = node.kind === "heading" ? headingPrefix(node.level ?? 1) : options.placeholder;
     return { patch: { from: at, to: at, insert: `\n\n${body}` }, nodeStart: at + 2 };
@@ -129,7 +176,7 @@ export const insertChild = (doc: string, node: TreeNode, options: InsertOptions)
     const at = subtreeRange(node).to;
     if (node.kind === "listItem") {
         const indent = lineIndent(doc, node.range.from) + (options.indentUnit ?? detectIndentUnit(doc));
-        return { patch: { from: at, to: at, insert: `\n${indent}${newListItemText(doc, node)}` }, nodeStart: at + 1 + indent.length };
+        return { patch: { from: at, to: at, insert: `\n${indent}${newListItemText(doc, node, childMarker(doc, node))}` }, nodeStart: at + 1 + indent.length };
     }
     const level = (node.level ?? 0) + 1;
     return { patch: { from: at, to: at, insert: `\n\n${headingPrefix(level)}` }, nodeStart: at + 2 };

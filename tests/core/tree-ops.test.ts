@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src/core/tree";
-import { allIds, collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, filterTree, findNode, maxDepth, nodeAtOffset, pathTo, stepDepth, withDepth, withDropPlaceholder, insertNodeAt, makeNewNode, NEW_NODE_ID } from "../../src/core/tree-ops";
+import { allIds, collapseOthers, collapseSubtree, DROP_PLACEHOLDER_ID, expandPath, expandSubtree, filterTree, findNode, maxDepth, nodeAtOffset, pathTo, stepDepth, withDepth, withDropPlaceholder, followingSiblings, insertNodeAt, makeNewNode, NEW_NODE_ID } from "../../src/core/tree-ops";
 
 const node = (id: string, children: TreeNode[] = []): TreeNode => ({
     id,
@@ -197,6 +197,18 @@ describe("allIds / filterTree", () => {
     it("全部命中時回傳同一棵樹", () => {
         const root = tree();
         expect(filterTree(root, () => true).tree).toBe(root);
+    });
+});
+
+describe("followingSiblings", () => {
+    const item = (id: string): TreeNode => ({ ...node(id), kind: "listItem", title: null });
+
+    it("只取同一份清單（id 去掉最後一段的前綴相同）、連續相鄰、排在後面的兄弟，遇到別份清單就停", () => {
+        const root = node("root", [item("H:list:0:0"), item("H:list:0:1"), item("H:list:0:2"), item("H:list:1:0"), item("H:list:1:1")]);
+        expect(followingSiblings(root, "H:list:0:0").map((n) => n.id)).toEqual(["H:list:0:1", "H:list:0:2"]);
+        expect(followingSiblings(root, "H:list:0:2")).toEqual([]);
+        expect(followingSiblings(root, "H:list:1:0").map((n) => n.id)).toEqual(["H:list:1:1"]);
+        expect(followingSiblings(root, "root")).toEqual([]);
     });
 });
 

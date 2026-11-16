@@ -204,3 +204,22 @@ export const makeNewNode = (anchor: TreeNode, position: "after" | "into", text: 
     const level = position === "after" ? (anchor.level ?? 1) : Math.min(6, (anchor.level ?? 0) + 1);
     return { ...base, kind: "heading", level, title: "" };
 };
+
+/**
+ * 來源在「同一份清單」裡排在後面、連續相鄰的兄弟。
+ * 清單項的 id 是「所屬清單區塊 id : 序號」，去掉最後一段的前綴相同就是同一份清單；
+ * 升級後同一個標題底下的好幾份清單都攤平在 children 裡，靠這個前綴分開，遇到別份清單就停。
+ */
+export const followingSiblings = (root: TreeNode, id: string): TreeNode[] => {
+    const path = pathTo(root, id);
+    if (path.length < 2) return [];
+    const parent = path[path.length - 2]!;
+    const index = parent.children.findIndex((c) => c.id === id);
+    const prefix = id.slice(0, id.lastIndexOf(":"));
+    const out: TreeNode[] = [];
+    for (const sibling of parent.children.slice(index + 1)) {
+        if (sibling.kind !== "listItem" || sibling.id.slice(0, sibling.id.lastIndexOf(":")) !== prefix) break;
+        out.push(sibling);
+    }
+    return out;
+};

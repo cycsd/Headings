@@ -4,7 +4,7 @@ import type { LayoutId } from "../layout/layout";
 import type { MindmapDirection } from "../layout/mindmap";
 import type { PanPoint, ZoomLayout } from "./view-memory";
 import type { TreeNode } from "../core/tree";
-import type { DropPosition } from "../core/edit";
+import type { DropPosition, TextPatch } from "../core/edit";
 import type { SearchMode } from "../settings-model";
 
 export type RevealMode = "center" | "ensure";
@@ -26,6 +26,8 @@ export type NewNodeState = {
 	indent: string;
 	/** 寫入檔案的位置 */
 	at: number;
+	/** 跟著一起寫入的補丁（有序清單後面兄弟的重新編號），位置以進入時的文件為準 */
+	extra: TextPatch[];
 };
 
 /**

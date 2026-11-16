@@ -5,7 +5,7 @@ import { insertNewlineAndIndent } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import type { TreeNode } from "../core/tree";
 import { countNodes } from "../core/tree";
-import { findNode, makeNewNode, NEW_NODE_ID, pathTo } from "../core/tree-ops";
+import { findNode, followingSiblings, makeNewNode, NEW_NODE_ID, pathTo } from "../core/tree-ops";
 import { commitEdit, deleteNode, editText, insertChild, insertSibling, moveNode, toggleTask, type DropPosition, type TextPatch } from "../core/edit";
 import { DocumentConflictError, DocumentEditor } from "../service/document-editor";
 import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-editor";
@@ -277,7 +277,8 @@ export class NodeEditing {
 	 */
 	private insert(node: TreeNode, make: typeof insertSibling, position: "after" | "into") {
 		if (!this.editor || this.state.newNode || this.isEditing) return;
-		const insertion = make(this.editor.doc, node, { placeholder: t("newParagraphPlaceholder") });
+		const following = position === "after" && this.state.tree ? followingSiblings(this.state.tree, node.id) : [];
+		const insertion = make(this.editor.doc, node, { placeholder: t("newParagraphPlaceholder"), following });
 		if (!insertion) return;
 		// nodeStart 是新節點文字的起點，補丁裡在它之前的是分隔與縮排，之後是起始文字
 		const lead = insertion.patch.insert.slice(0, insertion.nodeStart - insertion.patch.from);
@@ -292,6 +293,7 @@ export class NodeEditing {
 			lead,
 			indent: node.kind === "listItem" ? lead.slice(1) : "",
 			at: insertion.patch.from,
+			extra: insertion.extra ?? [],
 		};
 		this.mountCursor = node.kind === "section" ? "all" : "end";
 		this.state.editingId = NEW_NODE_ID;
@@ -307,7 +309,8 @@ export class NodeEditing {
 		if (!this.editor) return;
 		const text = pending.indent === "" ? value : value.split("\n").map((line, i) => (i === 0 || line === "" ? line : pending.indent + line)).join("\n");
 		this.pendingNew = { start: pending.at + pending.lead.length, edit: false, selectAll: false };
-		await this.write([{ from: pending.at, to: pending.at, insert: pending.lead + text }], value);
+		// 有序清單後面兄弟的重新編號一起套：補丁位置都以原文為準、互不重疊，同一個交易所以復原仍是一步
+		await this.write([{ from: pending.at, to: pending.at, insert: pending.lead + text }, ...pending.extra], value);
 	}
 
 	/** 編輯器起始文字：新增中的節點是 NewNodeState.text，其他是原文的編輯範圍 */
