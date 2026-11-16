@@ -325,8 +325,10 @@
 		white-space: nowrap;
 	}
 	/* 拖曳中整個 app 不要選到文字、游標用抓取 */
-	:global(body.headings-dragging) {
-		user-select: none;
+	:global(body.headings-dragging),
+	:global(body.headings-dragging *) {
+		/* Obsidian 的渲染區塊與編輯器自己設了 user-select: text，只設在 body 會被蓋過 */
+		user-select: none !important;
 		cursor: grabbing;
 	}
 	/* 跟著游標走的小影子：節點的完整複製縮小後跟著游標；定位、z-index、pointer-events 由 node-drag.ts 寫 inline（scoped 的 .node 樣式比這裡 specific）。太高就裁掉並在底部淡出 */

@@ -95,6 +95,16 @@ export type Insertion = {
 };
 
 /**
+ * 新清單項的起始文字：符號跟隨來源（`-`、`*`、`+`；有序清單不自動編號，一律用 `-`），來源是任務清單（含自訂狀態）就帶空的 `[ ] `。
+ */
+const newListItemText = (doc: string, node: TreeNode): string => {
+    const source = node.text ?? doc.slice(node.range.from, node.range.to);
+    const bullet = /^([-*+])\s/.exec(source)?.[1] ?? "-";
+    const isTask = /^(?:[-*+]|\d+[.)])[ \t]+\[[^\]]\]/.test(source);
+    return isTask ? `${bullet} [ ] ` : `${bullet} `;
+};
+
+/**
  * 新增兄弟：插在節點整個子樹之後。heading 同層級前綴、list item 同縮排、升級段落放佔位文字。
  * root 沒有兄弟，回傳 null。
  */
@@ -104,7 +114,7 @@ export const insertSibling = (doc: string, node: TreeNode, options: InsertOption
     if (node.kind === "listItem") {
         const indent = lineIndent(doc, node.range.from);
         // list item 的 range 從「-」開始，不含縮排，所以新節點的起點要跳過縮排
-        return { patch: { from: at, to: at, insert: `\n${indent}- ` }, nodeStart: at + 1 + indent.length };
+        return { patch: { from: at, to: at, insert: `\n${indent}${newListItemText(doc, node)}` }, nodeStart: at + 1 + indent.length };
     }
     const body = node.kind === "heading" ? headingPrefix(node.level ?? 1) : options.placeholder;
     return { patch: { from: at, to: at, insert: `\n\n${body}` }, nodeStart: at + 2 };
@@ -119,7 +129,7 @@ export const insertChild = (doc: string, node: TreeNode, options: InsertOptions)
     const at = subtreeRange(node).to;
     if (node.kind === "listItem") {
         const indent = lineIndent(doc, node.range.from) + (options.indentUnit ?? detectIndentUnit(doc));
-        return { patch: { from: at, to: at, insert: `\n${indent}- ` }, nodeStart: at + 1 + indent.length };
+        return { patch: { from: at, to: at, insert: `\n${indent}${newListItemText(doc, node)}` }, nodeStart: at + 1 + indent.length };
     }
     const level = (node.level ?? 0) + 1;
     return { patch: { from: at, to: at, insert: `\n\n${headingPrefix(level)}` }, nodeStart: at + 2 };

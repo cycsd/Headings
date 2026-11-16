@@ -132,6 +132,20 @@ describe("insertSibling / insertChild", () => {
         expect(applyPatch(doc, child.patch).slice(child.nodeStart, child.nodeStart + 2)).toBe("- ");
     });
 
+    it("來源是任務清單項：新的帶空的 [ ]（不複製 [x]）；符號跟隨來源，有序清單用 -", () => {
+        const item = (text: string, from = 0) =>
+            ({ id: "x", kind: "listItem", title: null, text, range: { from, to: from + text.length }, sections: [], links: [], children: [] }) as TreeNode;
+        const inserted = (text: string, make: typeof insertSibling) => make(text, item(text), options)!.patch.insert;
+        expect(inserted("- [x] done", insertSibling)).toBe("\n- [ ] ");
+        expect(inserted("- [ ] todo", insertChild)).toBe("\n\t- [ ] ");
+        expect(inserted("- [/] doing", insertSibling)).toBe("\n- [ ] ");
+        expect(inserted("* star", insertSibling)).toBe("\n* ");
+        expect(inserted("+ [x] plus task", insertSibling)).toBe("\n+ [ ] ");
+        expect(inserted("1. [x] numbered task", insertSibling)).toBe("\n- [ ] ");
+        expect(inserted("1. numbered", insertSibling)).toBe("\n- ");
+        expect(inserted("- plain", insertSibling)).toBe("\n- ");
+    });
+
     it("升級段落的兄弟放佔位文字，不能加子節點；root 沒有兄弟", () => {
         const root = promote(buildTree(metadata, doc, fileName), promoteTypes(["code"]), []);
         const code = byTitle(root, "7. 程式碼").children.find((c) => c.kind === "section")!;

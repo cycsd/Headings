@@ -63,6 +63,8 @@ export function startNodeDrag(
 		// 真的被裁到才做底部淡出，矮的節點不要莫名淡掉
 		if (clone.scrollHeight > clone.clientHeight + 1) clone.classList.add("is-clipped");
 		document.body.classList.add("headings-dragging");
+		// 門檻前瀏覽器可能已經選到字，開始拖曳就清掉
+		window.getSelection()?.removeAllRanges();
 
 		const subtreeIds = new Set<string>();
 		const collect = (node: TreeNode) => {
@@ -101,6 +103,7 @@ export function startNodeDrag(
 		window.removeEventListener("pointerup", onUp);
 		window.removeEventListener("pointercancel", onCancel);
 		window.removeEventListener("keydown", onKey, true);
+		document.removeEventListener("selectstart", blockSelect, true);
 		clone?.remove();
 		clone = null;
 		anchor = null;
@@ -128,6 +131,9 @@ export function startNodeDrag(
 		finish(false);
 	};
 
+	// 從標題列按下就是在拖節點，不是在選字：按下到放開之間擋掉原生選取（門檻前就會開始選，所以不能等拖曳開始才擋）
+	const blockSelect = (e: Event) => e.preventDefault();
+	document.addEventListener("selectstart", blockSelect, true);
 	window.addEventListener("pointermove", onMove);
 	window.addEventListener("pointerup", onUp);
 	window.addEventListener("pointercancel", onCancel);
