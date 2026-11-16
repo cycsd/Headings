@@ -1,4 +1,4 @@
-import { type CachedMetadata, type IconName, ItemView, Keymap, MarkdownRenderer, Menu, type PaneType, Platform, resolveSubpath, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { type CachedMetadata, type IconName, ItemView, Keymap, MarkdownRenderer, Menu, type PaneType, Platform, resolveSubpath, Scope, TFile, type ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import { Effect } from "effect";
 import type HeadingsPlugin from "../main";
@@ -115,6 +115,9 @@ export class HeadingsView extends ItemView {
 
     constructor(leaf: WorkspaceLeaf, private plugin: HeadingsPlugin) {
         super(leaf);
+        // ItemView 預設沒有 Scope（診斷確認 hasScope 為 false）；自己建一個，父層接全域的，沒註冊的快捷鍵照常往上找。
+        // 視圖成為作用中的分頁時 Obsidian 會啟用它
+        this.scope = new Scope(this.app.scope);
     }
 
     getViewType(): string {
@@ -133,6 +136,15 @@ export class HeadingsView extends ItemView {
         // 佈局元件靠 flex 吃滿內容區的高度，不依賴 height: 100% 的百分比解析
         this.contentEl.addClass("headings-view-content");
         this.contentEl.setCssProps({ display: "flex", "flex-direction": "column", overflow: "hidden" });
+
+        // 進入節點編輯：F2。F2 是 Obsidian 內建「重新命名檔案」的預設快捷鍵，註冊在視圖自己的 Scope（建構時建立）上，
+        // 視圖作用中時優先於全域快捷鍵。編輯中不處理（交給編輯器）；回傳 false 代表已處理、不再往上找
+        this.scope?.register([], "F2", () => {
+            const state = this.hostState;
+            if (state.editingId !== null || state.selectedId === null) return undefined;
+            this.editing.startEdit(state.selectedId);
+            return false;
+        });
 
         this.host = mount(LayoutHost, {
             target: this.contentEl,

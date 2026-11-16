@@ -104,7 +104,7 @@
 	}
 
 	/**
-	 * 鍵盤：方向鍵在看得到的節點間移動；Space / Shift+Space 收合展開；Enter / Tab / F2 / Delete 是結構操作；Mod+Z / Mod+Shift+Z / Mod+Y 復原。
+	 * 鍵盤：方向鍵在看得到的節點間移動；Space / Shift+Space 收合展開；Enter / Tab / Delete 是結構操作（F2 / Alt+F2 進編輯在視圖的 Scope）；Mod+Z / Mod+Shift+Z / Mod+Y 復原。
 	 * 編輯中交給編輯器自己處理，這裡不碰。
 	 */
 	// bind:this 在掛載時就設好，effect 跑的時候已經有值；不用 $state 是因為這裡的 prop 叫 state，會跟 rune 撞名
@@ -177,13 +177,7 @@
 		else if (!mod && evt.key === "Enter") command = "addSibling";
 		else if (!mod && evt.key === "Tab") command = "addChild";
 		else if (!mod && evt.key === "Delete") command = "delete";
-		else if (!mod && evt.key === "F2") {
-			const node = selectedNode();
-			if (!node) return;
-			evt.preventDefault();
-			actions.edit(node.id);
-			return;
-		}
+		// F2 / Alt+F2 進入編輯不在這裡：F2 是 Obsidian 內建快捷鍵，要註冊在視圖的 Scope（HeadingsView.onOpen）才搶得到
 		if (!command) return;
 
 		const node = selectedNode() ?? (command === "undo" || command === "redo" ? visible : null);
