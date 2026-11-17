@@ -3,7 +3,7 @@
 	"name": "Headings",
 	"version": "1.0.9",
 	"minAppVersion": "1.5.11",
-	"description": "Navigate, copy, select, align, and move Markdown headings.",
+	"description": "Mind map, outline and tree table views of your note's headings. Navigate, edit in place, and drag and drop to restructure sections; plus commands to go to, copy, align and move headings.",
 	"author": "cycsd",
 	"authorUrl": "https://github.com/cycsd",
 	"fundingUrl": "https://ko-fi.com/graychen29796",

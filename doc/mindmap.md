@@ -278,10 +278,93 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
 - 選取節點後 Space 切換它的子節點（同分叉把手），Shift+Space 切換整棵子樹（子樹裡有任何收合就全部展開，否則全部收合）。
   沒有子節點不做事、不往上收父層（左右鍵已是導覽）。展開後 requestReveal(ensure, 不閃)，收合不動。不另外註冊 Obsidian 指令（使用者不要）。
 
+### README 與 description (2026-11-15)
+- 七個語言的 README 在簡介後、Commands 前新增「Headings view」一節：佈局、節點、瀏覽、編輯、拖曳、鍵盤表、設定、注意；開頭留待補圖註解。
+  簡介改成先講 view 再講指令。package.json 與 manifest.json 的 description 改成以 mind map / outline / drag and drop 等搜尋詞開頭的句子；
+  package.json 補 keywords。示範文件 doc/demo/headings-view-demo.md 與錄製腳本 doc/demo/recording-script.md 給使用者截圖用。
+
+### 連結點擊與重複提示 (2026-11-15)
+- 非 MarkdownView 容器裡 MarkdownRenderer 畫出的 a.internal-link 沒人處理：onRenderMarkdown 接 click → openLinkText（Mod 開新 leaf）。
+  同檔案的 #標題 / #^區塊 用 resolveSubpath 轉成位置、core nodeAtOffset 找含該位置的最深節點 → revealNode，不離開視圖。連結選單原本略過同檔連結（節點只有這種連結時選單是空的、按鈕像壞掉），現在列出並走同一條路。
+- Obsidian 會替 aria-label 自動顯示 tooltip，元素再加 title 就兩個；PanZoom 視口的 aria-label="Canvas" 變成常駐提示。全部拿掉 title，容器層（視口、工具列、麵包屑 nav）不放 aria-label。
+
+### 重開 Obsidian 視圖空白 (2026-11-15)
+- HeadingsView 沒覆寫 getState()，workspace.json 存到空物件，重開後 setState 沒有檔案。現在 getState 回 { filePath }，setState 用 getAbstractFileByPath 解析回 TFile；
+  cache 可能還沒建好，metadataCache resolved 時若還沒 loaded 再 refresh 一次。檔案與分頁的對應放 workspace.json，不進 data.json。
+
+### 每檔記住視圖狀態 (2026-11-15)
+- 記收合、聚焦、展開層數、各節點點亮型別；不記選取與 icon 列。有記錄就用記錄，沒有才套「開檔時限制展開層數」。分割視窗各自獨立，最後寫的贏。
+- 存 data.json 的 fileViews（路徑 → FileViewMemory），跟設定同一份、saveSettings 一起寫；migrateSettings 把 fileViews 列為已知欄位不丟。
+  view/view-memory.ts：讀取驗證（壞的單筆丟掉）、pruneMemory（去掉樹上沒有的 id）、FileViewStore（Map 插入順序當 LRU，上限 200）。
+- 寫入：host-state watchFileMemory 用 $effect.root 監看四個欄位 → 500ms debounce → plugin.rememberFileView（內容沒變不寫檔）；換檔與關閉視圖立即 flush。
+  memoryPath 在換檔 reset 到第一次建樹之間為 null，那段的清空不算變動，否則會用空狀態蓋掉新檔的記錄。
+- 還原：render() 第一次建樹時 restoreNodeState。vault rename / delete 事件搬 / 刪記錄。設定 rememberFileViews（預設開）＋「清除所有記錄」整列動作（SettingDefinitionAction）。
+
+### 搜尋與過濾節點 (2026-11-15)
+- 一條搜尋列、兩種模式（漏斗鈕切換，settings.searchMode 記住上次，設定頁不露出）。入口：header 按鈕、指令 search-nodes、LayoutHost 的 Mod+F。
+  HostState.search 只放 { query, mode, current, seq }；命中與修剪後的樹在 LayoutHost 用 $derived 算（範圍 visibleRoot，即聚焦子樹；prepareSimpleSearch 比對 contentRange 原文或 listItem.text；core filterTree），
+  聚焦改變、樹重建都自動重算，view 不用手動觸發。節點元件經 NodeUi.search（getter 包 $derived）讀 active / filtering / hits。
+- 搜尋模式：整棵樹照畫、不淡化。命中用 --text-highlight-bg 畫 2px 環＋淡染背景，目前命中（NodeUi.search.currentId = order[current]）用 --text-highlight-bg-active 3px，跟編輯器 Ctrl+F 同色、與選取的 accent 外框分得開；選取外框照畫在內圈。Enter / Shift+Enter stepSearch 走 revealNode（真的展開路徑、會被每檔記住），所有操作照常。打字不自動跳。
+- 過濾模式：LayoutHost 畫修剪後的樹、collapsed 傳空集合；路過祖先淡化；把手不畫、不拖；Space / Enter / Tab / Delete 無聲忽略；
+  節點選單的新增 / 刪除 / 收合其他 / 展開收合子樹變灰，以此為根保留（在過濾結果上再縮小範圍）。stepSearch 只選取＋requestReveal，不寫 collapsed。
+- 聚焦中搜尋列顯示「在『節點』內」標籤，點了 setFocus(null) 回整份檔案。不用模糊搜尋：內文長時子序列幾乎全中。第一版不在內文 mark 字。
+
+### 心智圖只往右 (2026-11-15)
+- 做成心智圖的方向選項而不是第四個佈局 id（使用者的考量：獨立 id 會讓每個 `layoutId === "mindmap"` 判斷都要記兩個，選項以後加「往左」「由上往下」也只是多一個值）。
+- 走「設定預設 + YAML 覆寫 + 標題列選單」同一套：設定 `mindmapDirection`（both / right，設定頁是開關「心智圖只往右」），
+  YAML `headings-mindmap-direction`，佈局選單底下加分隔線與勾選項「心智圖只往右」（寫 YAML，任何佈局下可見、只在心智圖生效）。
+- mindmapLayout 的 `direction: "right"` 等於 sides 全部往右（measureRoot 走 fixedSides 空表）。第一次佈局根不置中，改成左緣在視口 10%、垂直置中
+  （PanZoom.positionAt）；方向切換時把錨點歸零當第一次佈局。鍵盤導覽把 direction 傳進 mindmapLayout，規則不變。
+
+### 記住縮放倍率 (2026-11-15)
+- 使用者問要不要把倍率記進每檔記錄。結論：記（倍率是對文件調的，Canvas 也記；重開回 1.0 每次都要重調），只記倍率不記平移位置
+  （位置跟量測後的座標綁在一起，重開會重新置中），依佈局（mindmap / tree-table）再依平台（desktop / mobile）分開，因為 data.json 會跟 vault 同步。
+- 實作：FileViewMemory 多 `zoom?: { desktop?: {...}, mobile?: {...} }`，readFileViews 只留合理值；withZoom 併入目前平台、保留另一平台。
+  HostState.zoom 是目前平台的倍率表；PanZoom 加 `zoomLevel` prop（變了就套、不回呼）與 `onZoomChange`（滾輪 / 雙指 / 工具列才回呼），
+  MindMap / TreeTable 把它接到 HostState.zoom；watchFileMemory 多追蹤 zoom。沒記錄或關掉記住功能時 zoom 為空，倍率 1。
+  設定說明七種語言補上「與縮放倍率（桌面與手機分開記）」。
+- 視口位置也記 (2026-11-16)：使用者質疑「記平移會不準」。精確說法：直接存 panX / panY 不準（畫布座標隨尺寸量測與留白變、第一次佈局用預設
+  尺寸、還會主動置中），但存「參考點在視口的相對位置」是準的：心智圖存根節點中心的 (fx, fy)、樹狀表格存左上角 (0, 0) 的 (fx, fy)。
+  重開時第一次佈局用 positionAt 擺回去，之後「錨點不動」補償會讓它留在那裡。PanZoom 加 onViewportChange（任何平移縮放都叫）與 fractionOf；
+  HostState.pan + viewportSeq（換檔加一，佈局據此重擺）；FileViewMemory.pan 與 zoom 同樣依平台、佈局分，withViewport 一起併。
+
+### 新節點的游標與尺寸 (2026-11-16)
+- 使用者回報新增標題節點游標在開頭（清單項正常）。程式碼兩者都是 set(value) 後 dispatch 到結尾，差別看不出來；修法不猜：
+  聚焦的 setTimeout 裡依 cm.state.doc.length 再 dispatch 一次選取（all / end / start），以最終文件為準。
+- 新節點一掛上就在編輯中，量不到原本大小（EditorSizeInput.node 為 null）：關閉自訂時寬 320（夾在 200 與節點最大寬度之間）、高至少 4 行；
+  開啟自訂時寬照設定、高至少 4 行。既有節點規則不變。佔位文字「新段落」維持全選。
+
+### 新增節點延後寫入 (2026-11-16)
+- 診斷結果：新增一個標題 / 清單項時編輯器被重掛三次（第一次游標在結尾、之後被重設到開頭）。使用者推論是新增當下就把 `## ` 寫進檔案、
+  觸發 cache 更新所致。改成「檔案先不動」：HostState.newNode 記下 anchorId / position（after、into）/ 虛擬節點 / 起始文字 / lead（分隔與縮排）/ at，
+  LayoutHost 用 insertNodeAt 把虛擬節點（id NEW_NODE_ID）放進顯示的樹，進入編輯；離開時才寫入一次（lead + 內容，清單後續行補縮排），
+  寫完 cache 更新後用起點找回節點並選取。編輯期間沒有 cache 更新，不重建樹、不重掛編輯器。
+- 離開時內容是空的（只有標記、或沒改佔位文字）直接丟棄、檔案不留痕跡，並選回錨點。Esc 維持編輯器原本的行為，不另外攔。
+- 衝突沿用鏡像快照：寫入時檔案與鏡像不同就放棄並把內容放進剪貼簿。新增子節點時先展開目標。錨點被搜尋過濾濾掉等放不進樹時取消新增。
+- 已知的小代價：寫入到 cache 更新之間（毫秒級）虛擬節點已消失、真節點還沒出現，可能閃一下。
+
+### 進入編輯的快捷鍵 (2026-11-16)
+- 使用者回報 F2 進不了編輯。一開始推測是 F2 被 Obsidian 內建「重新命名檔案」搶走，改註冊在視圖 Scope 後仍沒反應；加診斷發現
+  `this.scope` 是 null（ItemView 預設沒有 Scope，`this.scope?.register` 靜默什麼都沒做）。真正的原因是這個。
+  修法：HeadingsView 建構時 `this.scope = new Scope(this.app.scope)`（父層接全域，沒註冊的快捷鍵照常往上找），onOpen 註冊 F2：
+  選取節點進入編輯，編輯中不處理（交給編輯器），回傳 false 代表已處理。LayoutHost 裡原本掛在 DOM 的 F2 分支移除。
+- 曾試過 Alt+F2 與 F3 當替代，使用者實測 F2 可用後決定只留 F2，README 七個語言維持「F2 或雙擊」。
+
+### 新增清單項的符號與編號 (2026-11-16)
+- 來源是任務清單（`[ ]`、`[x]`、自訂狀態）：新項預設 `- [ ] `，一律未完成；符號跟隨來源的 `-`、`*`、`+`。不打字離開仍視為空、丟棄。
+- 有序清單改成自動編號：新增兄弟 = 來源編號加一，分隔符號跟隨來源（`.` / `)`）；後面同一份清單的有序兄弟依序順延，
+  只換數字那幾個字元（補丁放 Insertion.extra，與插入補丁同一個交易，所以復原仍一步；NewNodeState.extra 延後到離開編輯才寫）。
+  來源與下一個兄弟編號相同（全寫 1. 的懶人寫法）視為不維護編號：新項同數字、不重排。
+- 找「同一份清單的後續兄弟」靠樹加 id，不掃文字：清單項 id 是「清單區塊 id : 序號」，去掉最後一段的前綴相同就是同一份
+  （tree-ops.followingSiblings，遇到別份清單或非清單項就停）。先前我說「樹分不出來」是錯的，使用者指出後更正。
+- 新增子項：有序來源接在最後一個有序子項後面（沒有就從 1 起），無序來源的子項維持原符號。
+- 已知取捨：數字位數變多（9 → 10）標記變寬，子項縮排理論上要跟著多一格，Obsidian 對 2 / 4 空格與 Tab 都容忍，需實測。
+  Obsidian 對「有序清單緊接無序清單、中間無空行」算一個還是兩個區塊未實測，followingSiblings 之後以標記格式判斷會在換種類處停下，結果仍對。
+
 ## 候選功能 (2026-11-15，待使用者篩選)
 設計過但延後：反向跟隨（編輯器游標 → 高亮節點，做法見上）、Alt+↑/↓ 移動兄弟順序（順便修搬移復原掉子樹狀態）、
 大綱 / 樹狀表格讓位 FLIP 過渡、文件內段落連結畫虛線、區塊縮放、BlockView 第四種佈局、心智圖只往右、手機一輪驗證（拖曳、選取複製、軟鍵盤）。
-建議補的：每檔記住收合 / 聚焦 / 展開層數、搜尋過濾節點、checkbox 勾選寫回、點亮內容進視口才渲染、匯出 PNG / SVG / Markdown 大綱。
+建議補的：點亮內容進視口才渲染、匯出 PNG / SVG / Markdown 大綱。（每檔記住狀態、搜尋過濾、checkbox 勾選寫回已做，見上。）
 另外建議開新功能前先在 Obsidian 內實測這兩天沒驗證的點（Scope 攔 Mod+Enter、衝突 Notice、刪除確認、閱讀模式定位、貼合尺寸）。
 
 ## 延後項目
