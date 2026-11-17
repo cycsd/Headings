@@ -1,0 +1,181 @@
+import { describe, expect, it } from "vitest";
+import { DEFAULT_SETTINGS, defaultLitTypes, editorSize, enabledNodeTypes, migrateSettings } from "../src/settings-model";
+
+describe("migrateSettings", () => {
+    it("null / undefined 回傳預設值並標記 migrated", () => {
+        expect(migrateSettings(null)).toEqual({ settings: DEFAULT_SETTINGS, migrated: true });
+        expect(migrateSettings(undefined).settings).toEqual(DEFAULT_SETTINGS);
+    });
+
+    it("預設值：9 種型別全部關閉、預設顯示內容 10 種全部關閉、桌面 mindmap、手機 outline、寬度 320", () => {
+        expect(Object.keys(DEFAULT_SETTINGS.nodeTypes)).toHaveLength(9);
+        expect(Object.values(DEFAULT_SETTINGS.nodeTypes).every((v) => v === false)).toBe(true);
+        expect(Object.keys(DEFAULT_SETTINGS.defaultLitTypes)).toHaveLength(10);
+        expect(Object.values(DEFAULT_SETTINGS.defaultLitTypes).every((v) => v === false)).toBe(true);
+        expect(DEFAULT_SETTINGS.defaultLayout).toEqual({ desktop: "mindmap", mobile: "outline" });
+        expect(DEFAULT_SETTINGS.maxNodeWidth).toBe(320);
+    });
+
+    it("完整且正確的設定原樣保留，migrated 為 false", () => {
+        const input = {
+            nodeTypes: { ...DEFAULT_SETTINGS.nodeTypes, code: true },
+            defaultLitTypes: { ...DEFAULT_SETTINGS.defaultLitTypes, code: true, yaml: true },
+            defaultLayout: { desktop: "tree-table", mobile: "outline" },
+            maxNodeWidth: 400,
+            maxNodeHeight: 0,
+            defaultExpandEnabled: true,
+            defaultExpandDepth: 2,
+            nodeStyle: { branchBorder: true, branchBackground: false },
+            editorSizeEnabled: true,
+            editorWidth: 400,
+            editorMaxHeight: 0,
+            rememberFileViews: false,
+            searchMode: "filter",
+            mindmapDirection: "right",
+        };
+        const result = migrateSettings(input);
+        expect(result.migrated).toBe(false);
+        expect(result.settings).toEqual(input);
+    });
+
+    it("maxNodeHeight 0 為不限制，介於 0 與下限之間拉到下限，非數字退回預設", () => {
+        expect(migrateSettings({ maxNodeHeight: 0 }).settings.maxNodeHeight).toBe(0);
+        expect(migrateSettings({ maxNodeHeight: 0 }).migrated).toBe(false);
+        expect(migrateSettings({ maxNodeHeight: 50 }).settings.maxNodeHeight).toBe(120);
+        expect(migrateSettings({ maxNodeHeight: 50 }).migrated).toBe(true);
+        expect(migrateSettings({ maxNodeHeight: "tall" }).settings.maxNodeHeight).toBe(320);
+        expect(migrateSettings({}).settings.maxNodeHeight).toBe(320);
+    });
+
+    it("defaultExpandEnabled 預設關閉，defaultExpandDepth 夾在 0–9、預設 1", () => {
+        const { settings } = migrateSettings({});
+        expect(settings.defaultExpandEnabled).toBe(false);
+        expect(settings.defaultExpandDepth).toBe(1);
+        const explicit = migrateSettings({ defaultExpandEnabled: true, defaultExpandDepth: 99 }).settings;
+        expect(explicit.defaultExpandEnabled).toBe(true);
+        expect(explicit.defaultExpandDepth).toBe(9);
+        expect(migrateSettings({ defaultExpandEnabled: true, defaultExpandDepth: -1 }).settings.defaultExpandDepth).toBe(0);
+    });
+
+    it("舊格式 defaultExpandDepth（0 = 全部、N = 含 root 的層數）轉成開關 + root 以下層數", () => {
+        const off = migrateSettings({ defaultExpandDepth: 0 });
+        expect(off.migrated).toBe(true);
+        expect(off.settings.defaultExpandEnabled).toBe(false);
+        expect(off.settings.defaultExpandDepth).toBe(1);
+        const on = migrateSettings({ defaultExpandDepth: 3 });
+        expect(on.settings.defaultExpandEnabled).toBe(true);
+        expect(on.settings.defaultExpandDepth).toBe(2);
+    });
+
+    it("編輯器尺寸：預設關閉、360 x 320；寬度夾 200–1200、高度 0 不限且下限 120；關閉時跟著節點尺寸", () => {
+        const { settings } = migrateSettings({});
+        expect(settings.editorSizeEnabled).toBe(false);
+        expect(settings.editorWidth).toBe(360);
+        expect(settings.editorMaxHeight).toBe(320);
+        expect(editorSize(settings)).toEqual({ width: 320, maxHeight: 320 });
+        expect(editorSize({ ...settings, maxNodeWidth: 500, maxNodeHeight: 0 })).toEqual({ width: 500, maxHeight: 0 });
+
+        const custom = migrateSettings({ editorSizeEnabled: true, editorWidth: 50, editorMaxHeight: 60 });
+        expect(custom.migrated).toBe(true);
+        expect(custom.settings.editorWidth).toBe(200);
+        expect(custom.settings.editorMaxHeight).toBe(120);
+        expect(editorSize(custom.settings)).toEqual({ width: 200, maxHeight: 120 });
+        expect(migrateSettings({ editorMaxHeight: 0 }).settings.editorMaxHeight).toBe(0);
+        expect(migrateSettings({ editorSizeEnabled: "yes" }).migrated).toBe(true);
+    });
+
+    it("mindmapDirection 預設 both；right 保留；其他值退回預設並標記 migrated", () => {
+        expect(migrateSettings({}).settings.mindmapDirection).toBe("both");
+        expect(migrateSettings({ mindmapDirection: "right" }).settings.mindmapDirection).toBe("right");
+        const bad = migrateSettings({ mindmapDirection: "left" });
+        expect(bad.settings.mindmapDirection).toBe("both");
+        expect(bad.migrated).toBe(true);
+    });
+
+    it("nodeStyle 缺少時預設都套用分支顏色，型別錯的欄位退回預設並標記 migrated", () => {
+        expect(migrateSettings({}).settings.nodeStyle).toEqual({ branchBorder: true, branchBackground: true });
+        const { settings, migrated } = migrateSettings({ nodeStyle: { branchBorder: false, branchBackground: "no" } });
+        expect(migrated).toBe(true);
+        expect(settings.nodeStyle).toEqual({ branchBorder: false, branchBackground: true });
+    });
+
+    it("舊版 listAsNode: true 遷移成 nodeTypes.list，並標記 migrated", () => {
+        const { settings, migrated } = migrateSettings({ listAsNode: true });
+        expect(migrated).toBe(true);
+        expect(settings.nodeTypes.list).toBe(true);
+        expect(enabledNodeTypes(settings)).toEqual(["list"]);
+        expect("listAsNode" in settings).toBe(false);
+    });
+
+    it("listAsNode 與 nodeTypes.list 同時存在時以 nodeTypes.list 為準", () => {
+        const { settings } = migrateSettings({ listAsNode: true, nodeTypes: { list: false } });
+        expect(settings.nodeTypes.list).toBe(false);
+    });
+
+    it("部分 nodeTypes 補上缺少的型別", () => {
+        const { settings, migrated } = migrateSettings({
+            nodeTypes: { code: true },
+            defaultLayout: DEFAULT_SETTINGS.defaultLayout,
+            maxNodeWidth: 320,
+        });
+        expect(migrated).toBe(false);
+        expect(settings.nodeTypes.code).toBe(true);
+        expect(settings.nodeTypes.paragraph).toBe(false);
+    });
+
+    it("舊資料沒有 defaultLitTypes 時補上全部關閉，不算 migrated", () => {
+        const { settings, migrated } = migrateSettings({
+            nodeTypes: DEFAULT_SETTINGS.nodeTypes,
+            defaultLayout: DEFAULT_SETTINGS.defaultLayout,
+            maxNodeWidth: 320,
+        });
+        expect(migrated).toBe(false);
+        expect(defaultLitTypes(settings)).toEqual([]);
+    });
+
+    it("defaultLitTypes 只接受認識的型別與布林值", () => {
+        const { settings, migrated } = migrateSettings({ defaultLitTypes: { code: true, yaml: "yes", heading: true } });
+        expect(migrated).toBe(true);
+        expect(defaultLitTypes(settings)).toEqual(["code"]);
+    });
+
+    it("不合法的 layout id 退回預設並標記 migrated", () => {
+        const { settings, migrated } = migrateSettings({ defaultLayout: { desktop: "radial", mobile: "tree-table" } });
+        expect(migrated).toBe(true);
+        expect(settings.defaultLayout).toEqual({ desktop: "mindmap", mobile: "tree-table" });
+    });
+
+    it("maxNodeWidth 超出範圍會被夾住，非數字退回預設", () => {
+        expect(migrateSettings({ maxNodeWidth: 10 }).settings.maxNodeWidth).toBe(160);
+        expect(migrateSettings({ maxNodeWidth: 99999 }).settings.maxNodeWidth).toBe(1200);
+        expect(migrateSettings({ maxNodeWidth: "wide" }).settings.maxNodeWidth).toBe(320);
+    });
+
+    it("rememberFileViews 預設開啟，非布林退回預設並標記 migrated", () => {
+        expect(DEFAULT_SETTINGS.rememberFileViews).toBe(true);
+        expect(migrateSettings({ rememberFileViews: false }).settings.rememberFileViews).toBe(false);
+        const bad = migrateSettings({ rememberFileViews: "yes" });
+        expect(bad.settings.rememberFileViews).toBe(true);
+        expect(bad.migrated).toBe(true);
+    });
+
+    it("searchMode 預設 search，不認識的值退回預設並標記 migrated", () => {
+        expect(DEFAULT_SETTINGS.searchMode).toBe("search");
+        expect(migrateSettings({ searchMode: "filter" }).settings.searchMode).toBe("filter");
+        const bad = migrateSettings({ searchMode: "regex" });
+        expect(bad.settings.searchMode).toBe("search");
+        expect(bad.migrated).toBe(true);
+    });
+
+    it("同一份 data.json 裡的 fileViews 不算未知欄位", () => {
+        const { settings, migrated } = migrateSettings({ ...DEFAULT_SETTINGS, fileViews: { "a.md": {} } });
+        expect(migrated).toBe(false);
+        expect("fileViews" in settings).toBe(false);
+    });
+
+    it("未知欄位會被丟掉並標記 migrated", () => {
+        const { settings, migrated } = migrateSettings({ ...DEFAULT_SETTINGS, legacyThing: 1 });
+        expect(migrated).toBe(true);
+        expect("legacyThing" in settings).toBe(false);
+    });
+});

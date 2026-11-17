@@ -1,0 +1,339 @@
+<script lang="ts">
+	import { setContext } from "svelte";
+	import { Menu, Platform, prepareSimpleSearch, setIcon, type IconName } from "obsidian";
+	import type { Attachment } from "svelte/attachments";
+	import type { HostState } from "./host-state.svelte";
+	import type { LayoutProps } from "./layout-props";
+	import { getLayout } from "./layout-registry";
+	import { createNodeUi, NODE_UI, type NodeActions, type NodeCommand, type SearchView } from "./node-ui";
+	import { filterTree, findNode, insertNodeAt, NEW_NODE_ID, pathTo, withDropPlaceholder } from "../core/tree-ops";
+	import { contentRange, type TreeNode } from "../core/tree";
+	import { crumbIcon, crumbLabel } from "./breadcrumb";
+	import { applyCollapseSubtree, applyExpandSubtree, closeSearch, requestReveal, revealNode, setFocus, setSearchQuery, visibleRoot } from "./tree-state";
+	import { navigate, type NavKey } from "./keyboard-nav";
+	import SearchBar from "./SearchBar.svelte";
+
+	interface Props {
+		state: HostState;
+		actions: NodeActions;
+		getText: LayoutProps["getText"];
+		onRenderMarkdown: LayoutProps["onRenderMarkdown"];
+	}
+
+	let { state, actions, getText, onRenderMarkdown }: Props = $props();
+
+	let entry = $derived(getLayout(state.layoutId));
+
+	/**
+	 * 搜尋：範圍是目前畫的樹（聚焦中就是該子樹），標題與節點內容原文用 Obsidian 的簡單搜尋比對（分詞 AND、不分大小寫、引號片語）。
+	 * 命中與修剪後的樹在這裡用 $derived 算，聚焦改變、樹重建都自動重算；query 空時沒有命中、樹不修剪。
+	 */
+	let scope = $derived(visibleRoot(state));
+	let query = $derived(state.search?.query.trim() ?? "");
+	let matcher = $derived(query === "" ? null : prepareSimpleSearch(query));
+	const NONE: ReadonlySet<string> = new Set();
+	let result = $derived.by((): { tree: TreeNode | null; hits: ReadonlySet<string>; order: readonly string[] } => {
+		if (!scope || !matcher) return { tree: scope, hits: NONE, order: [] };
+		const test = matcher;
+		const textOf = (node: TreeNode): string => {
+			if (node.kind === "listItem") return node.text ?? "";
+			const { from, to } = contentRange(node);
+			return getText(from, to);
+		};
+		const { tree, hits } = filterTree(scope, (node) => test(textOf(node)) !== null);
+		return { tree, hits: new Set(hits), order: hits };
+	});
+	let filtering = $derived(state.search?.mode === "filter");
+	/** 過濾模式畫修剪過的樹，通往命中的路徑一律展開（不動真正的收合集合）；搜尋模式照畫 */
+	let visible = $derived(filtering ? result.tree : scope);
+	let collapsed = $derived(filtering ? NONE : state.collapsed);
+	/** 聚焦中搜尋列要提醒範圍：聚焦節點的標題 */
+	let scopeLabel = $derived(state.focusId !== null && scope && scope.id === state.focusId ? crumbLabel(scope, getText) : null);
+
+	// 節點元件透過 context 取得共享狀態與操作，不用一層層傳 props。
+	// state 物件本身在 view 的生命週期內不會換，只有欄位會變，所以取初始值即可；搜尋結果用 getter 包住 $derived。
+	const searchView: SearchView = {
+		get active() {
+			return query !== "";
+		},
+		get filtering() {
+			return filtering;
+		},
+		get hits() {
+			return result.hits;
+		},
+		get currentId() {
+			const search = state.search;
+			return search && search.current >= 0 ? (result.order[search.current] ?? null) : null;
+		},
+	};
+	// svelte-ignore state_referenced_locally
+	setContext(NODE_UI, createNodeUi(state, actions, searchView));
+
+	/** 聚焦節點在文件更新後消失就自動退回完整樹 */
+	$effect(() => {
+		if (state.tree && state.focusId !== null && pathTo(state.tree, state.focusId).length === 0) setFocus(state, null);
+	});
+
+	/**
+	 * 麵包屑：檔名 → … → 選取節點的完整路徑，不因聚焦截短。
+	 * 還沒選或選取節點已不存在時只有檔名那段。
+	 */
+	let crumbs = $derived.by((): TreeNode[] => {
+		if (!state.tree) return [];
+		const path = state.selectedId !== null ? pathTo(state.tree, state.selectedId) : [];
+		return path.length > 0 ? path : [state.tree];
+	});
+
+	/** 點某一段：列出它父層的全部 children（檔名那段列第一層），自己打勾；選了就帶到畫面上 */
+	function showSiblings(index: number, evt: MouseEvent) {
+		const parent = index === 0 ? crumbs[0] : crumbs[index - 1];
+		const current = index === 0 ? crumbs[1] : crumbs[index];
+		if (!parent || parent.children.length === 0) return;
+		const menu = new Menu();
+		for (const sibling of parent.children) {
+			menu.addItem((item) =>
+				item
+					.setTitle(crumbLabel(sibling, getText))
+					.setIcon(crumbIcon(sibling))
+					.setChecked(sibling.id === current?.id)
+					.onClick(() => revealNode(state, sibling.id)),
+			);
+		}
+		menu.showAtMouseEvent(evt);
+	}
+
+	/**
+	 * 鍵盤：方向鍵在看得到的節點間移動；Space / Shift+Space 收合展開；Enter / Tab / Delete 是結構操作（F2 / Alt+F2 進編輯在視圖的 Scope）；Mod+Z / Mod+Shift+Z / Mod+Y 復原。
+	 * 編輯中交給編輯器自己處理，這裡不碰。
+	 */
+	// bind:this 在掛載時就設好，effect 跑的時候已經有值；不用 $state 是因為這裡的 prop 叫 state，會跟 rune 撞名
+	// svelte-ignore non_reactive_update
+	let container: HTMLElement | undefined;
+	const ARROWS: Record<string, NavKey> = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+
+	function selectedNode(): TreeNode | null {
+		return state.tree && state.selectedId !== null ? findNode(state.tree, state.selectedId) : null;
+	}
+
+	/** 子樹裡（含自己）有沒有任何有子節點的節點是收合著的 */
+	function anyCollapsed(node: TreeNode, collapsed: ReadonlySet<string>): boolean {
+		if (node.children.length > 0 && collapsed.has(node.id)) return true;
+		return node.children.some((child) => anyCollapsed(child, collapsed));
+	}
+
+	function handleKeydown(evt: KeyboardEvent) {
+		if (state.editingId !== null || !visible) return;
+		const mod = Platform.isMacOS ? evt.metaKey : evt.ctrlKey;
+
+		// Mod+F 開搜尋列（已開著就把焦點放回輸入框）；搜尋列裡的按鍵自己攔掉，不會進到這裡
+		if (mod && !evt.altKey && !evt.shiftKey && evt.key.toLowerCase() === "f") {
+			evt.preventDefault();
+			actions.openSearch();
+			return;
+		}
+
+		// 過濾中兄弟與後代被藏起來，結構操作與收合說不清楚：Space / Enter / Tab / Delete 無聲忽略
+		if (filtering && !mod && (evt.key === " " || evt.key === "Enter" || evt.key === "Tab" || evt.key === "Delete")) {
+			evt.preventDefault();
+			return;
+		}
+
+		const arrow = ARROWS[evt.key];
+		if (arrow && !mod) {
+			evt.preventDefault();
+			if (state.selectedId === null) {
+				revealNode(state, visible.id, "ensure");
+				return;
+			}
+			const next = navigate(visible, collapsed, state.layoutId, state.selectedId, arrow, state.mindmapDirection);
+			if (next) revealNode(state, next.id, "ensure");
+			return;
+		}
+
+		// Space 切換選取節點的子節點（同分叉把手）；Shift+Space 切換整棵子樹（有任何後代收合著就全部展開，否則全部收合）
+		if (!mod && evt.key === " ") {
+			const node = selectedNode();
+			if (!node || node.children.length === 0) return;
+			evt.preventDefault();
+			let expanded: boolean;
+			if (evt.shiftKey) {
+				expanded = anyCollapsed(node, state.collapsed);
+				if (expanded) applyExpandSubtree(state, node.id);
+				else applyCollapseSubtree(state, node.id);
+			} else {
+				expanded = state.collapsed.has(node.id);
+				if (expanded) state.collapsed.delete(node.id);
+				else state.collapsed.add(node.id);
+			}
+			// 展開後節點會因錨點補償稍微移動，帶回畫面；收合不動
+			if (expanded) requestReveal(state, node.id, "ensure", false);
+			return;
+		}
+
+		let command: NodeCommand | null = null;
+		if (mod && !evt.altKey && evt.key.toLowerCase() === "z") command = evt.shiftKey ? "redo" : "undo";
+		else if (mod && !evt.altKey && evt.key.toLowerCase() === "y") command = "redo";
+		else if (!mod && evt.key === "Enter") command = "addSibling";
+		else if (!mod && evt.key === "Tab") command = "addChild";
+		else if (!mod && evt.key === "Delete") command = "delete";
+		// F2 / Alt+F2 進入編輯不在這裡：F2 是 Obsidian 內建快捷鍵，要註冊在視圖的 Scope（HeadingsView.onOpen）才搶得到
+		if (!command) return;
+
+		const node = selectedNode() ?? (command === "undo" || command === "redo" ? visible : null);
+		if (!node) return;
+		evt.preventDefault();
+		evt.stopPropagation();
+		actions.command(command, node);
+	}
+
+	/**
+	 * 拖曳落點預覽：游標停在合法目標上時，多放一個佔位節點再排佈局（放進去 → 目標 children 最後；插前後 → 兄弟列的那個位置），
+	 * 其他節點會真的讓出空間，佔位畫成虛線框。來源留在原位淡化，不先拿掉。
+	 */
+	let withNew = $derived(
+		visible && state.newNode ? insertNodeAt(visible, state.newNode.anchorId, state.newNode.position === "after" ? "after" : "into", state.newNode.node) : visible,
+	);
+	let displayTree = $derived(
+		withNew && state.drag?.overId && state.drag.overPosition ? withDropPlaceholder(withNew, state.drag.overId, state.drag.overPosition) : withNew,
+	);
+
+	/** 新增中的節點放不進目前畫的樹（例如搜尋過濾把錨點濾掉）：編輯沒有地方顯示，取消新增 */
+	$effect(() => {
+		if (state.newNode && withNew && !findNode(withNew, NEW_NODE_ID)) {
+			state.newNode = null;
+			state.editingId = null;
+		}
+	});
+
+	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器，搜尋中（Enter 跳到命中時）焦點留在輸入框 */
+	$effect(() => {
+		if (state.selectedId !== null && state.editingId === null && state.search === null) container?.focus({ preventScroll: true });
+	});
+
+	function icon(name: IconName): Attachment<HTMLElement> {
+		return (el) => {
+			setIcon(el, name);
+		};
+	}
+</script>
+
+{#if state.tree && visible}
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_static_element_interactions -->
+	<div class="host" role="tree" tabindex="-1" bind:this={container} onkeydown={handleKeydown}>
+		<SearchBar
+			host={state}
+			order={result.order}
+			scope={scopeLabel}
+			onQuery={(q) => setSearchQuery(state, q)}
+			onMode={actions.setSearchMode}
+			onClearScope={() => setFocus(state, null)}
+			onClose={() => {
+				closeSearch(state);
+				container?.focus({ preventScroll: true });
+			}}
+		/>
+		<nav class="crumbs">
+			{#each crumbs as node, i (node.id)}
+				{#if i > 0}<span class="sep" {@attach icon("chevron-right")}></span>{/if}
+				<button
+					type="button"
+					class="crumb"
+					class:current={i === crumbs.length - 1}
+					disabled={i === 0 ? node.children.length === 0 : false}
+					onclick={(evt) => showSiblings(i, evt)}
+				>
+					<span class="ico" {@attach icon(crumbIcon(node))}></span>
+					<span class="label">{crumbLabel(node, getText)}</span>
+				</button>
+			{/each}
+		</nav>
+		<!-- 換佈局或換聚焦根都重新掛載，mindmap 才會把新的根置中 -->
+		{#key `${entry.id}:${state.focusId ?? ""}`}
+			{@const Layout = entry.component}
+			<Layout tree={displayTree ?? visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} {collapsed} />
+		{/key}
+	</div>
+{/if}
+
+<style>
+	/* 容器吃滿 view 的內容區，裡面再是 flex column：麵包屑 + 佈局 */
+	.host {
+		display: flex;
+		flex-direction: column;
+		flex: 1 1 auto;
+		min-height: 0;
+		outline: none;
+	}
+	.crumbs {
+		flex: none;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 2px;
+		padding: 4px 12px;
+		border-bottom: 1px solid var(--background-modifier-border);
+		background: var(--background-primary);
+		font-size: var(--font-ui-small);
+	}
+	.crumb {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		height: 24px;
+		padding: 0 6px;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+		box-shadow: none;
+	}
+	.crumb:hover:not(:disabled) {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
+	}
+	.crumb.current {
+		color: var(--text-normal);
+		font-weight: 600;
+	}
+	.sep,
+	.ico {
+		display: inline-flex;
+		width: 14px;
+		height: 14px;
+		color: var(--text-faint);
+	}
+	.sep :global(svg),
+	.ico :global(svg) {
+		width: 14px;
+		height: 14px;
+	}
+	.crumb .ico {
+		color: inherit;
+	}
+	.label {
+		max-width: 240px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	/* 拖曳中整個 app 不要選到文字、游標用抓取 */
+	:global(body.headings-dragging),
+	:global(body.headings-dragging *) {
+		/* Obsidian 的渲染區塊與編輯器自己設了 user-select: text，只設在 body 會被蓋過 */
+		user-select: none !important;
+		cursor: grabbing;
+	}
+	/* 跟著游標走的小影子：節點的完整複製縮小後跟著游標；定位、z-index、pointer-events 由 node-drag.ts 寫 inline（scoped 的 .node 樣式比這裡 specific）。太高就裁掉並在底部淡出 */
+	:global(.headings-drag-clone) {
+		overflow: hidden;
+		transform-origin: top left;
+		pointer-events: none;
+		box-shadow: var(--shadow-l);
+		opacity: 0.95;
+	}
+	:global(.headings-drag-clone.is-clipped) {
+		mask-image: linear-gradient(to bottom, black calc(100% - 40px), transparent);
+	}
+</style>

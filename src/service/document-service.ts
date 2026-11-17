@@ -1,8 +1,7 @@
-import { MarkdownView, type CachedMetadata, type TFile } from "obsidian";
+import { MarkdownView, Platform, type CachedMetadata, type TFile } from "obsidian";
 import type HeadingsPlugin from "../main";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { getFileCached } from "../extension/app";
-import { getActiveViewOfType } from "../extension/workspace";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { NoSuchElementError, UnknownError } from "effect/Cause";
@@ -30,40 +29,46 @@ export class PluginDocumentService implements DocumentService {
     private constructor(private plugin: HeadingsPlugin) {
 
     }
-    private markdown_view: MarkdownView | null = null;
+    /** 定位並把焦點移到編輯器（閱讀模式沒有游標，只捲動並把分頁設為作用中） */
     async reveal(file: TFile, anchor: number, head: number) {
-        const program = Effect.gen({ self: this }, function* () {
-            const view = yield* Effect.promise(() => this.locate(file, anchor, head));
-            view.editor.focus();
-        });
-
-        return Effect.runPromise(program);
+        const view = await this.locate(file, anchor, head);
+        this.plugin.app.workspace.setActiveLeaf(view.leaf, { focus: true });
+        if (view.getMode() !== "preview") view.editor.focus();
     }
 
-    async locate(file: TFile, anchor: number, head: number) {
-        const program = Effect.gen({ self: this }, function* () {
-            const view = yield* Option.fromNullishOr(this.markdown_view)
-                .pipe(Option.filter(v => v.file?.path === file.path),
-                    Effect.fromOption,
-                    Effect.catchCause(() => this.open_file(file)));
-
-            this.locate_view(view, anchor, head);
-            return view;
-        });
-        return Effect.runPromise(program);
+    /**
+     * 找到或打開該檔的 Markdown 分頁並定位：先用工作區裡已經開著這個檔案的分頁（任何位置），
+     * 沒有才開新的（桌面在旁邊 split、手機開新分頁）。
+     */
+    async locate(file: TFile, anchor: number, head: number): Promise<MarkdownView> {
+        const view = this.findMarkdownView(file) ?? (await this.openMarkdownView(file));
+        await this.plugin.app.workspace.revealLeaf(view.leaf);
+        this.locate_view(view, anchor, head);
+        return view;
     }
-    open_file(file: TFile) {
-        const program = Effect.gen({ self: this }, function* () {
-            yield* Effect.tryPromise(() => {
-                return this.plugin.app.workspace.getLeaf('split').openFile(file);
-            });
-            this.markdown_view = yield* getActiveViewOfType(this.plugin.app.workspace, MarkdownView);
-            return this.markdown_view;
-        });
 
-        return program;
+    private findMarkdownView(file: TFile): MarkdownView | null {
+        const workspace = this.plugin.app.workspace;
+        const leaves = workspace.getLeavesOfType("markdown");
+        const views = leaves.flatMap((leaf) => (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path ? [leaf.view] : []));
+        // 同一檔開在多個分頁時優先用最近用過的那個
+        const recent = workspace.getMostRecentLeaf();
+        return views.find((view) => view.leaf === recent) ?? views[0] ?? null;
     }
+
+    private async openMarkdownView(file: TFile): Promise<MarkdownView> {
+        const leaf = this.plugin.app.workspace.getLeaf(Platform.isMobile ? "tab" : "split");
+        await leaf.openFile(file);
+        if (!(leaf.view instanceof MarkdownView)) throw new Error("headings: opened leaf is not a markdown view");
+        return leaf.view;
+    }
+
+    /** 編輯模式：設游標並捲到中央；閱讀模式：不切模式，用 ephemeral state 捲到那一行 */
     locate_view(view: MarkdownView, anchor: number, head: number) {
+        if (view.getMode() === "preview") {
+            view.setEphemeralState({ line: view.editor.offsetToPos(anchor).line });
+            return;
+        }
         const range = EditorSelection.range(anchor, head);
         view.editor.cm.dispatch({
             selection: range,
@@ -72,15 +77,9 @@ export class PluginDocumentService implements DocumentService {
     }
 
     async openFile(file: TFile, anchor: number, head?: number) {
-        const program = Effect.gen({ self: this }, function* () {
-            const view = yield* this.open_file(file);
-
-            this.locate_view(view, anchor, head ?? anchor);
-        });
-
-        return Effect.runPromise(program);
-
-    };
+        const view = await this.openMarkdownView(file);
+        this.locate_view(view, anchor, head ?? anchor);
+    }
     getCache(file: TFile) {
         return Effect.fromNullishOr(this.cachedData)
             .pipe(Effect.catchCause(() => getFileCached(this.plugin.app, file)))

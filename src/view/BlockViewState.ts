@@ -1,13 +1,13 @@
 import { type CachedMetadata, TFile } from "obsidian";
 
 
-export type MindMapMdViewState = {
+export type BlockViewState = {
     filePath: string|null;
     file: TFile|null;
     doc: string | null;
 }
 
-export type MindMapMdViewStateSave = Pick<MindMapMdViewState, "filePath">;
+export type BlockViewStateSave = Pick<BlockViewState, "filePath">;
 
 export type ComponentState = {
     cached: CachedMetadata;

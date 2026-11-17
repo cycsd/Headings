@@ -1,10 +1,13 @@
-import { Editor, MarkdownView, Plugin, View, type Constructor, type MarkdownFileInfo } from 'obsidian';
+import { Editor, MarkdownView, Plugin, View, WorkspaceLeaf, type Constructor, type MarkdownFileInfo } from 'obsidian';
 import "./app.css";
-import { DEFAULT_SETTINGS, type HeadingsSettings as HeadingsSettings } from "./settings";
-import { HeadingsView, VIEW_TYPE_MINDMAPMD } from "./view/MindMapMdView";
+import { DEFAULT_SETTINGS, HeadingsSettingTab, type HeadingsSettings as HeadingsSettings } from "./settings";
+import { migrateSettings } from "./settings-model";
+import { FileViewStore, readFileViews, sameMemory, type FileViewMemory } from "./view/view-memory";
+import { BlockView, VIEW_TYPE_BLOCKVIEW } from "./view/BlockView";
+import { HeadingsView, VIEW_ICON_HEADINGS, VIEW_TYPE_HEADINGS, type HeadingsViewState } from "./view/HeadingsView";
 import { getActiveViewOfType } from "./extension/workspace";
 import { Context, Effect, Layer, pipe } from "effect";
-import type { MindMapMdViewState } from './view/MindMapMd';
+import type { BlockViewState } from "./view/BlockViewState";
 import { HeadingSuggester, HeadingSuggesterService, type Heading } from './handlers/HeadingSuggester';
 import { HeadingHandlers, HeadingHandlersLive, } from './handlers/HeadingHandlers';
 import { EditorService } from './service/editor-service';
@@ -16,23 +19,41 @@ import { t } from './i18n';
 
 export default class HeadingsPlugin extends Plugin {
 	settings: HeadingsSettings = DEFAULT_SETTINGS;
+	/** 每個檔案記住的視圖狀態（收合、聚焦、展開層數、點亮型別），跟設定存在同一份 data.json */
+	fileViews = new FileViewStore();
 
 	async onload() {
 		await this.loadSettings();
 
+		// 檔案改名 / 搬移 / 刪除時，每檔記錄跟著走或清掉
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			if (this.fileViews.rename(oldPath, file.path)) void this.saveSettings();
+		}));
+		this.registerEvent(this.app.vault.on("delete", (file) => {
+			if (this.fileViews.remove(file.path)) void this.saveSettings();
+		}));
+
+		this.registerView(
+			VIEW_TYPE_HEADINGS,
+			(leaf: WorkspaceLeaf) => new HeadingsView(leaf, this));
+		this.addRibbonIcon(VIEW_ICON_HEADINGS, t('commandOpenHeadingsView'), async () => {
+			await Effect.runPromiseExit(
+				Effect.firstSuccessOf([this.activateHeadingsView(), this.turnOnMarkdownView(HeadingsView)]));
+		});
+
 		// todo 暫時不提供 heading view 功能
 		// this.registerView(
-		// 	VIEW_TYPE_MINDMAPMD,
-		// 	(leaf: WorkspaceLeaf) => new MindMapMdView(leaf, this));
+		// 	VIEW_TYPE_BLOCKVIEW,
+		// 	(leaf: WorkspaceLeaf) => new BlockView(leaf, this));
 		// // This creates an icon in the left ribbon.
-		// this.addRibbonIcon(VIEW_ICON_MINDMAPMD, 'Toggle Mind Map MD View', (evt: MouseEvent) => {
+		// this.addRibbonIcon(VIEW_ICON_BLOCKVIEW, 'Toggle Mind Map MD View', (evt: MouseEvent) => {
 		// 	// Called when the user clicks the icon.
 		// 	// new Notice('This is a notice! just kidding');
-		// 	this.toggleMindMapMdView();
+		// 	this.toggleBlockView();
 		// });
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		// this.addSettingTab(new MindMapMdSettingTab(this.app, this));
+		this.addSettingTab(new HeadingsSettingTab(this.app, this));
 
 		//todo : open file with mind map md view from file explorer context menu
 		// 使用者有可能從左側 file explorer 開啟檔案的 context menu 來開啟 mind map md view，
@@ -40,9 +61,9 @@ export default class HeadingsPlugin extends Plugin {
 		// this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
 		// 	menu.addItem((item) => {
 		// 		item.setTitle('Mind Map MD View')
-		// 			.setIcon(VIEW_ICON_MINDMAPMD)
+		// 			.setIcon(VIEW_ICON_BLOCKVIEW)
 		// 			.onClick(async () => {
-		// 				Effect.runPromise(this.turnOnMindMapMdView);
+		// 				Effect.runPromise(this.turnOnBlockView);
 		// 			});
 		// 	})
 		// }));
@@ -54,9 +75,9 @@ export default class HeadingsPlugin extends Plugin {
 		// this.app.workspace.on('editor-menu', (menu, editor, view) => {
 		// 	menu.addItem((item) => {
 		// 		item.setTitle('Mind Map MD View')
-		// 			.setIcon(VIEW_ICON_MINDMAPMD)
+		// 			.setIcon(VIEW_ICON_BLOCKVIEW)
 		// 			.onClick(async () => {
-		// 				Effect.runPromise(this.turnOnMindMapMdView);
+		// 				Effect.runPromise(this.turnOnBlockView);
 		// 			});
 		// 	})
 		// });
@@ -64,12 +85,30 @@ export default class HeadingsPlugin extends Plugin {
 	}
 
 
-	createMindMapViewCheckCallback(action: (view: HeadingsView) => void) {
+	activateHeadingsView() {
+		return Effect.gen({ self: this }, function* () {
+			const { workspace } = this.app;
+
+			const view = yield* getActiveViewOfType(this.app.workspace, MarkdownView);
+			const leaf = view.leaf;
+			const headings_view_state: HeadingsViewState = {
+				filePath: view?.file?.path || "",
+				file: view?.file || null,
+				doc: view?.editor.getValue() || null,
+			};
+			yield* Effect.tryPromise(() => leaf?.setViewState({ type: VIEW_TYPE_HEADINGS, active: true, state: headings_view_state }));
+			if (leaf) {
+				yield* Effect.tryPromise(() => workspace.revealLeaf(leaf));
+			}
+		});
+	}
+
+	createBlockViewCheckCallback(action: (view: BlockView) => void) {
 		return (checking: boolean) => {
 			//checking 為 true, 代表使用者正在使用 Ctrl + P 開啟 obsidian command palette ，
 			//回傳值為 true or false 決定是否顯示這個 command (true-顯示, false-不顯示)。
 			if (checking) {
-				const is_view_esist = getActiveViewOfType(this.app.workspace, HeadingsView)
+				const is_view_esist = getActiveViewOfType(this.app.workspace, BlockView)
 					.pipe(Effect.map(v => {
 						return true;
 					}),
@@ -80,7 +119,7 @@ export default class HeadingsPlugin extends Plugin {
 			//使用者選取這個 command 或直接按下 hotkey，checking 為 false。
 			else {
 				const program = Effect.gen({ self: this }, function* () {
-					const view = yield* getActiveViewOfType(this.app.workspace, HeadingsView);
+					const view = yield* getActiveViewOfType(this.app.workspace, BlockView);
 					action(view);
 					return true;
 				})
@@ -118,11 +157,38 @@ export default class HeadingsPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<HeadingsSettings>);
+		const raw: unknown = await this.loadData();
+		const { settings, migrated } = migrateSettings(raw);
+		this.settings = settings;
+		this.fileViews = new FileViewStore(readFileViews(raw));
+		// 舊版欄位 (ex: listAsNode) 遷移後立刻寫回，data.json 只保留目前的結構
+		if (migrated) {
+			await this.saveSettings();
+		}
 	}
 
+	/** 設定與每檔記錄一起寫進 data.json */
 	async saveSettings() {
-		await this.saveData(this.settings);
+		await this.saveData({ ...this.settings, fileViews: this.fileViews.toJSON() });
+	}
+
+	/** 視圖把某個檔案目前的狀態存下來；內容沒變就不寫檔 */
+	async rememberFileView(path: string, memory: FileViewMemory) {
+		if (sameMemory(this.fileViews.get(path), memory)) return;
+		this.fileViews.set(path, memory);
+		await this.saveSettings();
+	}
+
+	async clearFileViews() {
+		this.fileViews.clear();
+		await this.saveSettings();
+	}
+
+	// 設定變更後重新渲染已開啟的 tree table view
+	async refreshHeadingsViews() {
+		const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_HEADINGS)
+			.flatMap(leaf => leaf.view instanceof HeadingsView ? [leaf.view] : []);
+		await Promise.all(views.map(view => view.refresh()));
 	}
 
 	//todo orElese get markdown view
@@ -131,14 +197,14 @@ export default class HeadingsPlugin extends Plugin {
 	// 所以如果 active view 沒有找到，可能需要查看一下所有 leaf 中，是否有 active 的 markdown view。
 	// 如果主畫面有分割視窗，分頁 workspace-tab-header 的 class 都會顯示 is-active ，但似乎最後一個失焦的分頁會有 mod-active 的標記
 	// 先抓這個來判斷就好
-	//this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAPMD)
+	//this.app.workspace.getLeavesOfType(VIEW_TYPE_BLOCKVIEW)
 	// const workspace_leaf = this.containerEl.parentElement;
 	// if (workspace_leaf?.classList.contains("mod-active"))
-	turnOnMindMapMdView = pipe(
+	turnOnBlockView = pipe(
 		getActiveViewOfType(this.app.workspace, MarkdownView),
 		Effect.andThen(v => Effect.tryPromise(() => {
 			//state 存入 workspace.json 中的內容
-			const mind_map_view_state: MindMapMdViewState = {
+			const mind_map_view_state: BlockViewState = {
 				filePath: v.file?.path || "",
 				file: v.file,
 				doc: v.editor.getValue(),
@@ -146,7 +212,7 @@ export default class HeadingsPlugin extends Plugin {
 
 			return v.leaf.setViewState(
 				{
-					type: VIEW_TYPE_MINDMAPMD,
+					type: VIEW_TYPE_BLOCKVIEW,
 					active: true,
 					state: mind_map_view_state,
 				});
@@ -154,25 +220,27 @@ export default class HeadingsPlugin extends Plugin {
 	);
 
 
-	turnOnMarkdownView = Effect.gen({ self: this }, function* () {
-		const view = yield* getActiveViewOfType(this.app.workspace, HeadingsView);
+	turnOnMarkdownView<V extends BlockView | HeadingsView>(type: Constructor<V>) {
+		return Effect.gen({ self: this }, function* () {
+			const view = yield* getActiveViewOfType(this.app.workspace, type);
 
-		const file = yield* pipe(
-			Effect.fromNullishOr(view.state?.file),
-			Effect.mapError(() => new Error(`No file associated with view: ${view.getViewType()}`))
-		);
+			const file = yield* pipe(
+				Effect.fromNullishOr(view.state?.file),
+				Effect.mapError(() => new Error(`No file associated with view: ${view}`))
+			);
 
-		yield* Effect.tryPromise(() => {
-			return view.leaf.openFile(file);
+			yield* Effect.tryPromise(() => {
+				return view.leaf.openFile(file);
+			});
 		});
-	});
+	}
 
-	async toggleMindMapMdView() {
+	async toggleBlockView() {
 		const { workspace } = this.app;
 
 		Effect.runPromise(
-			this.turnOnMindMapMdView.pipe(
-				Effect.catchCause(() => this.turnOnMarkdownView),
+			this.turnOnBlockView.pipe(
+				Effect.catchCause(() => this.turnOnMarkdownView(BlockView)),
 				Effect.andThen((_) => getActiveViewOfType(workspace, MarkdownView)),
 			)
 		).catch((e) => { console.error(e) });
@@ -355,13 +423,41 @@ export default class HeadingsPlugin extends Plugin {
 			name: t('commandSelectHeadingContent'),
 			editorCallback: openHeadingSuggester(handler => handler.selectContent)
 		});
+
+		// Headings 視圖的展開層級：只在目前 active 的 leaf 是 Headings 視圖時可用
+		const headingsViewCommand = (delta: 1 | -1) => (checking: boolean) => {
+			const view = this.app.workspace.getActiveViewOfType(HeadingsView);
+			if (!view) return false;
+			if (!checking) view.stepExpandDepth(delta);
+			return true;
+		};
+		this.addCommand({
+			id: 'expand-one-level',
+			name: t('commandExpandLevel'),
+			checkCallback: headingsViewCommand(1),
+		});
+		this.addCommand({
+			id: 'collapse-one-level',
+			name: t('commandCollapseLevel'),
+			checkCallback: headingsViewCommand(-1),
+		});
+		this.addCommand({
+			id: 'search-nodes',
+			name: t('commandSearchNodes'),
+			checkCallback: (checking: boolean) => {
+				const view = this.app.workspace.getActiveViewOfType(HeadingsView);
+				if (!view) return false;
+				if (!checking) view.showSearch();
+				return true;
+			},
+		});
 		// todo export hotkey
 		// 暫時不提供 heading view 的 hotkey。
 		// this.addCommand({
 		// 	id: 'edit-block',
 		// 	name: 'Edit Block',
 		// 	hotkeys: [{ modifiers: ["Shift"], key: "F2", }],
-		// 	checkCallback: this.createMindMapViewCheckCallback((view) => {
+		// 	checkCallback: this.createBlockViewCheckCallback((view) => {
 		// 		view.component?.edit_block();
 		// 	})
 		// })
