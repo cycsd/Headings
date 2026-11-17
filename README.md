@@ -20,7 +20,7 @@ The view shows the note that is currently open, and updates when you switch note
 
 
 
-https://github.com/user-attachments/assets/76b024fe-7555-4cb9-8676-26c319119ac1
+[!intro](https://github.com/user-attachments/assets/76b024fe-7555-4cb9-8676-26c319119ac1)
 
 
 
