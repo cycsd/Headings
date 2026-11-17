@@ -1,6 +1,6 @@
 {
 	"name": "headings",
-	"version": "1.0.9",
+	"version": "2.0.0",
 	"description": "Mind map, outline and tree table views of your note's headings. Navigate, edit in place, and drag and drop to restructure sections; plus commands to go to, copy, align and move headings.",
 	"main": "main.js",
 	"type": "module",
