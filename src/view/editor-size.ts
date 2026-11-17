@@ -68,8 +68,7 @@ const lineStyle = (line: string, inFence: boolean): string => {
  * 掛編輯器之前就能算，不用等 CodeMirror 畫完；標籤膠囊、表格等裝飾的誤差由畫完後的修正補。
  */
 export const domMeasurer = (host: HTMLElement): TextMeasurer => (text, width) => {
-	const doc = host.ownerDocument;
-	const probe = doc.createElement("div");
+	const probe = host.createDiv();
 	probe.style.cssText =
 		"position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;box-sizing:border-box;padding:4px 2px;" +
 		"font-family:var(--font-text);font-size:var(--font-text-size);line-height:var(--line-height-normal);font-weight:normal;word-break:break-word;" +
@@ -77,17 +76,14 @@ export const domMeasurer = (host: HTMLElement): TextMeasurer => (text, width) =>
 	let fence: string | null = null;
 	for (const line of text.split("\n")) {
 		const open = /^\s*(```+|~~~+)/.exec(line);
-		const row = doc.createElement("div");
+		const row = probe.createDiv({ text: line.length > 0 ? line : " " });
 		row.style.cssText = lineStyle(line, fence !== null && !open);
-		row.textContent = line.length > 0 ? line : " ";
-		probe.appendChild(row);
 		if (open) {
 			const marker = open[1]!;
 			if (fence === null) fence = marker[0]!.repeat(3);
 			else if (marker.startsWith(fence)) fence = null;
 		}
 	}
-	host.appendChild(probe);
 	const box = { w: probe.offsetWidth, h: probe.offsetHeight };
 	probe.remove();
 	return box;

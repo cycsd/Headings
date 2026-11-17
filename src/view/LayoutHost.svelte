@@ -326,6 +326,13 @@
 		cursor: grabbing;
 	}
 	/* 跟著游標走的小影子：節點的完整複製縮小後跟著游標；定位、z-index、pointer-events 由 node-drag.ts 寫 inline（scoped 的 .node 樣式比這裡 specific）。太高就裁掉並在底部淡出 */
+	/* 選擇器要比節點自己的 scoped 樣式 .node.svelte-xxx（0,2,0）更 specific，不然 .node 的 position: relative 會蓋掉 fixed */
+	:global(body > .headings-drag-clone.node) {
+		position: fixed;
+		margin: 0;
+		pointer-events: none;
+		z-index: var(--layer-popover, 30);
+	}
 	:global(.headings-drag-clone) {
 		overflow: hidden;
 		transform-origin: top left;

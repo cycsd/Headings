@@ -5,7 +5,7 @@ import { migrateSettings } from "./settings-model";
 import { FileViewStore, readFileViews, sameMemory, type FileViewMemory } from "./view/view-memory";
 import { BlockView, VIEW_TYPE_BLOCKVIEW } from "./view/BlockView";
 import { HeadingsView, VIEW_ICON_HEADINGS, VIEW_TYPE_HEADINGS, type HeadingsViewState } from "./view/HeadingsView";
-import { getActiveViewOfType } from "./extension/workspace";
+import { getActiveViewOfType, revealLeaf } from "./extension/workspace";
 import { Context, Effect, Layer, pipe } from "effect";
 import type { BlockViewState } from "./view/BlockViewState";
 import { HeadingSuggester, HeadingSuggesterService, type Heading } from './handlers/HeadingSuggester';
@@ -98,7 +98,7 @@ export default class HeadingsPlugin extends Plugin {
 			};
 			yield* Effect.tryPromise(() => leaf?.setViewState({ type: VIEW_TYPE_HEADINGS, active: true, state: headings_view_state }));
 			if (leaf) {
-				yield* Effect.tryPromise(() => workspace.revealLeaf(leaf));
+				yield* Effect.tryPromise(() => revealLeaf(workspace, leaf));
 			}
 		});
 	}
@@ -226,7 +226,7 @@ export default class HeadingsPlugin extends Plugin {
 
 			const file = yield* pipe(
 				Effect.fromNullishOr(view.state?.file),
-				Effect.mapError(() => new Error(`No file associated with view: ${view}`))
+				Effect.mapError(() => new Error(`No file associated with view: ${view.getViewType()}`))
 			);
 
 			yield* Effect.tryPromise(() => {

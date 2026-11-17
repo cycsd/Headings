@@ -14,6 +14,7 @@ const ZOOM_PLATFORM: ZoomPlatform = Platform.isMobile ? "mobile" : "desktop";
 import { EMBED_ICON, LINK_ICON } from "./section-icons";
 import { parseFrontmatter, renderProperties } from "./frontmatter-properties";
 import { PluginDocumentService } from "../service/document-service";
+import { revealLeaf } from "../extension/workspace";
 import { getFileCached } from "../extension/app";
 import { buildLinks, buildTree } from "../adapter/obsidian-tree";
 import { promote, promoteTypes, type TreeNode } from "../core/tree";
@@ -135,7 +136,6 @@ export class HeadingsView extends ItemView {
     async onOpen() {
         // 佈局元件靠 flex 吃滿內容區的高度，不依賴 height: 100% 的百分比解析
         this.contentEl.addClass("headings-view-content");
-        this.contentEl.setCssProps({ display: "flex", "flex-direction": "column", overflow: "hidden" });
 
         // 進入節點編輯：F2。F2 是 Obsidian 內建「重新命名檔案」的預設快捷鍵，註冊在視圖自己的 Scope（建構時建立）上，
         // 視圖作用中時優先於全域快捷鍵。編輯中不處理（交給編輯器）；回傳 false 代表已處理、不再往上找
@@ -175,8 +175,8 @@ export class HeadingsView extends ItemView {
                     const host = element.createDiv({ cls: "markdown-embed-content" }).createDiv({ cls: "markdown-preview-view markdown-rendered" });
                     void MarkdownRenderer.render(this.plugin.app, text, host, this.state.file?.path ?? "", this);
                     const onClick = (evt: MouseEvent) => {
-                        const target = evt.target;
-                        if (!(target instanceof Element)) return;
+                        const target = evt.target as Node | null;
+                        if (!target?.instanceOf(Element)) return;
                         // 內部連結：這不是 Markdown 視圖，Obsidian 不會替我們處理點擊，自己交給 openLinkText；同檔案的片段連結直接在視圖裡跳
                         const link = target.closest<HTMLAnchorElement>("a.internal-link");
                         if (link) {
@@ -186,7 +186,7 @@ export class HeadingsView extends ItemView {
                             return;
                         }
                         // 核取方塊：渲染出來的第 n 個對應原文第 n 個任務行；點了直接切換並寫回，畫面等 cache 更新重畫
-                        if (!(target instanceof HTMLInputElement) || !target.classList.contains("task-list-item-checkbox")) return;
+                        if (!target.instanceOf(HTMLInputElement) || !target.classList.contains("task-list-item-checkbox")) return;
                         evt.stopPropagation();
                         const boxes = Array.from(host.querySelectorAll<HTMLInputElement>("input.task-list-item-checkbox"));
                         const line = taskLineOffsets(text)[boxes.indexOf(target)];
@@ -514,7 +514,7 @@ export class HeadingsView extends ItemView {
         const leaf = this.app.workspace.getLeaf("split");
         const state: HeadingsViewState = { filePath: file.path, file, doc: null };
         await leaf.setViewState({ type: VIEW_TYPE_HEADINGS, active: true, state });
-        await this.app.workspace.revealLeaf(leaf);
+        await revealLeaf(this.app.workspace, leaf);
     }
 
     private currentLayoutId(): LayoutId {

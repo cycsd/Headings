@@ -164,7 +164,7 @@ export class NodeEditing {
 		if (this.editor) editor.owner.file = this.editor.file;
 		// 要等元件掛完才 focus 得到，原因同 BlockViewEditor。
 		// 聚焦後依文件實際長度放游標（掛上時文件剛設好，初始選取不一定對）；編輯器被重掛時 cursor 仍是同一個意圖
-		setTimeout(() => {
+		window.setTimeout(() => {
 			const cm = editor.activeCM;
 			if (!cm) return;
 			cm.focus();
@@ -187,8 +187,8 @@ export class NodeEditing {
 				onHeight(h);
 			}
 		};
-		let frame = requestAnimationFrame(() => {
-			frame = requestAnimationFrame(() => {
+		let frame = window.requestAnimationFrame(() => {
+			frame = window.requestAnimationFrame(() => {
 				fit();
 				requestReveal(this.state, node.id, "ensure", false);
 			});
@@ -229,8 +229,8 @@ export class NodeEditing {
 		};
 		document.addEventListener("pointerdown", onPointerDown, true);
 		return () => {
-			cancelAnimationFrame(frame);
-			clearTimeout(settle);
+			window.cancelAnimationFrame(frame);
+			window.clearTimeout(settle);
 			this.bounds.delete(node.id);
 			document.removeEventListener("pointerdown", onPointerDown, true);
 			el.removeEventListener("keydown", onKeydownCapture, true);

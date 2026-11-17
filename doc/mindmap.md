@@ -343,6 +343,18 @@ view/confirm-modal.ts、TreeNodeBox 編輯模式與雙擊、LayoutHost 鍵盤與
 - 衝突沿用鏡像快照：寫入時檔案與鏡像不同就放棄並把內容放進剪貼簿。新增子節點時先展開目標。錨點被搜尋過濾濾掉等放不進樹時取消新增。
 - 已知的小代價：寫入到 cache 更新之間（毫秒級）虛擬節點已消失、真節點還沒出現，可能閃一下。
 
+### 社群外掛審核的風險 (2026-11-17)
+- 頁面的 Risks 抓不到（動態載入），由使用者貼上清單。本機補裝 `@eslint/json`（早就列在 devDependencies 卻沒裝，eslint 一直跑不起來）後可用 `npx eslint src` 重現。
+- 錯誤：① no-unsupported-api：`revealLeaf`（1.7.2）與 `update()`（1.13.0）比 minAppVersion 1.5.11 新 → 以功能偵測包起來
+  （extension/workspace.ts 的 `revealLeaf` helper 有就用、沒有退回 `setActiveLeaf`；設定頁 `rerender` 有 update 才呼叫，否則 `display()`），
+  不用調高 minAppVersion。② no-static-styles-assignment：視圖容器的 flex 樣式改成 app.css 的 `.headings-view-content`；拖曳小影子的固定定位樣式改到
+  LayoutHost 的全域 CSS（`body > .headings-drag-clone.node` 夠 specific、不會被 `.node` 的 scoped 樣式蓋掉），inline 只剩隨游標與縮放變的值。
+  規則只放行「右邊不是字面量」的賦值，`setCssProps` 也只放行 `--` 開頭的鍵。
+- 警告：`@codemirror/commands` 補進 dependencies；`instanceof HTMLInputElement` 改 `.instanceOf()`（跨視窗）；探針改用 `createDiv()`；
+  `setTimeout` / `requestAnimationFrame` / `clearTimeout` 改 `window.` 版（popout 視窗）。
+- 順手修了本機 lint 的幾個錯誤：模板字串裡的物件、`unknown` 轉字串、`any` 賦值。仍保留的警告：`setDynamicTooltip` 與 `display` 被標 deprecated，
+  但舊版 Obsidian 的設定頁還需要；Svelte 的 `$state` / `$effect` 在 .svelte.ts 被當成未定義（eslint 設定問題）。
+
 ### 進入編輯的快捷鍵 (2026-11-16)
 - 使用者回報 F2 進不了編輯。一開始推測是 F2 被 Obsidian 內建「重新命名檔案」搶走，改註冊在視圖 Scope 後仍沒反應；加診斷發現
   `this.scope` 是 null（ItemView 預設沒有 Scope，`this.scope?.register` 靜默什麼都沒做）。真正的原因是這個。

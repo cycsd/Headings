@@ -401,7 +401,9 @@ export class HeadingsSettingTab extends PluginSettingTab {
 
 	/** 1.13 以後用 update() 重畫宣告式設定；舊版重跑 display() */
 	private rerender() {
-		if (typeof this.update === "function") this.update();
+		// update() 是 1.13.0 才有的，manifest 的 minAppVersion 更低：有就用、沒有就重跑 display()
+		const update = (this as { update?: () => void }).update;
+		if (typeof update === "function") update.call(this);
 		else this.display();
 	}
 }

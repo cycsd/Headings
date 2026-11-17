@@ -49,11 +49,7 @@ export function startNodeDrag(
 		// 影子只要節點本體：收合把手、icon 列、「…」等按鈕都拿掉
 		clone.querySelectorAll("button").forEach((button) => button.remove());
 		anchor = null;
-		// 定位相關的樣式寫 inline：節點自己的 scoped CSS（.node.svelte-xxx）比 .headings-drag-clone 更 specific，寫在 CSS 會被蓋掉
-		clone.style.position = "fixed";
-		clone.style.margin = "0";
-		clone.style.pointerEvents = "none";
-		clone.style.zIndex = "var(--layer-popover, 30)";
+		// 固定的定位樣式在 LayoutHost 的全域 CSS（選擇器夠 specific，不會被節點自己的 scoped 樣式蓋掉）；這裡只放隨游標與縮放變的值
 		clone.style.width = `${nodeEl.offsetWidth}px`;
 		clone.style.maxHeight = `${GHOST_MAX_HEIGHT / scale}px`;
 		clone.style.transform = `scale(${scale})`;

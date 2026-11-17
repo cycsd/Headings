@@ -1,6 +1,7 @@
 import { MarkdownView, Platform, type CachedMetadata, type TFile } from "obsidian";
 import type HeadingsPlugin from "../main";
 import { Effect } from "effect";
+import { revealLeaf } from "../extension/workspace";
 import { getFileCached } from "../extension/app";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -42,7 +43,7 @@ export class PluginDocumentService implements DocumentService {
      */
     async locate(file: TFile, anchor: number, head: number): Promise<MarkdownView> {
         const view = this.findMarkdownView(file) ?? (await this.openMarkdownView(file));
-        await this.plugin.app.workspace.revealLeaf(view.leaf);
+        await revealLeaf(this.plugin.app.workspace, view.leaf);
         this.locate_view(view, anchor, head);
         return view;
     }

@@ -548,6 +548,12 @@
   --ring: oklch(55.6% 0 0);
 }
 
+.headings-view-content {
+  flex-direction: column;
+  display: flex;
+  overflow: hidden;
+}
+
 @property --tw-rotate-x {
   syntax: "*";
   inherits: false

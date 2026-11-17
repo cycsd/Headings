@@ -162,7 +162,7 @@ export class FileViewStore {
 		this.entries.delete(path);
 		this.entries.set(path, memory);
 		while (this.entries.size > this.limit) {
-			const oldest = this.entries.keys().next().value;
+			const oldest = this.entries.keys().next().value as string | undefined;
 			if (oldest === undefined) break;
 			this.entries.delete(oldest);
 		}
