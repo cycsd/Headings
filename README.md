@@ -13,12 +13,16 @@ There is also a set of editor commands for going to, copying and moving headings
 
 ## Headings view
 
-<!-- Screenshots to add: doc/img/headings_view_mindmap.png (mind map overview), doc/img/headings_view_drag.gif (drag with drop preview), doc/img/headings_view_edit.gif (editing a node in place). See doc/demo/recording-script.md. -->
-
 Draws the note you have open as a picture. Collapse, edit and drag on the picture, and the changes are written back to the file.
 
 Open it with the ribbon icon or the command **Open Headings view**.
 The view shows the note that is currently open, and updates when you switch notes or the file changes.
+
+
+
+https://github.com/user-attachments/assets/76b024fe-7555-4cb9-8676-26c319119ac1
+
+
 
 ### Layouts
 
