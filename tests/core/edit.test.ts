@@ -398,6 +398,35 @@ describe("moveNode before / after（插在兄弟之間）", () => {
         expect(next).toContain("  - 子項目 B-2\n\n有序清單：");
     });
 
+    it("最後一個子標題插到父節點後面（插入點落在剪掉的範圍內）：下一個標題不能黏到段落後面", () => {
+        const text = "## Packing list\n\n- Passport\n\n### Budget\nbudget paragraph\n## Notes for later\n\nThe rate.\n";
+        const pos = (s: string) => text.indexOf(s);
+        const point = (offset: number) => ({ line: 0, col: 0, offset });
+        const pos2 = (from: string, to: string) => ({ start: point(pos(from)), end: point(pos(to) + to.length) });
+        const cache = {
+            headings: [
+                { heading: "Packing list", level: 2, position: pos2("## Packing list", "## Packing list") },
+                { heading: "Budget", level: 3, position: pos2("### Budget", "### Budget") },
+                { heading: "Notes for later", level: 2, position: pos2("## Notes for later", "## Notes for later") },
+            ],
+            sections: [
+                { type: "heading", position: pos2("## Packing list", "## Packing list") },
+                { type: "list", position: pos2("- Passport", "- Passport") },
+                { type: "heading", position: pos2("### Budget", "### Budget") },
+                { type: "paragraph", position: pos2("budget paragraph", "budget paragraph") },
+                { type: "heading", position: pos2("## Notes for later", "## Notes for later") },
+                { type: "paragraph", position: pos2("The rate.", "The rate.") },
+            ],
+        } as unknown as CachedMetadata;
+        const root = buildTree(cache, text, "t.md");
+        const packing = byTitle(root, "Packing list");
+        const budget = byTitle(root, "Budget");
+        const move = moveNode(text, budget, packing, "after")!;
+        const next = applyPatches(text, move.patches);
+        expect(next).toBe("## Packing list\n\n- Passport\n\n## Budget\nbudget paragraph\n\n## Notes for later\n\nThe rate.\n");
+        expect(next.slice(move.nodeStart, move.nodeStart + 9)).toBe("## Budget");
+    });
+
     it("巢狀 list item 插到上一層旁邊會減一層縮排", () => {
         const root = tree();
         const sub1 = listItemOf(root, "4. 清單", "- 項目 B").children[0]!;

@@ -383,11 +383,21 @@ export const moveNode = (
 
     // 清單項之間只隔一個換行，其餘空一行；插前面時分隔接在 body 後面
     const sep = source.kind === "listItem" && target.kind === "listItem" ? "\n" : "\n\n";
-    const insert = before ? body + sep : sep + body;
-    const lead = (before ? 0 : sep.length) + indent.length;
+    let insert = before ? body + sep : sep + body;
+    let lead = (before ? 0 : sep.length) + indent.length;
 
     // 插入點落在被剪掉的範圍裡（例如搬到自己父節點的最後面）就移到剪掉範圍之後，兩個補丁才不會重疊
-    if (at > cut.from && at < cut.to) at = cut.to;
+    if (at > cut.from && at < cut.to) {
+        at = cut.to;
+        // 剪掉的範圍已經把前面接合處的空行留好、也吃掉了後面的換行：改成 body 在前、分隔接在後面，
+        // 不然下一個節點會直接黏在 body 最後一行後面（例如 ## 標題被當成段落的一部分）
+        if (!before && cut.to < doc.length) {
+            let following = 0;
+            while (following < sep.length && doc[cut.to + following] === "\n") following += 1;
+            insert = body + "\n".repeat(sep.length - following);
+            lead = indent.length;
+        }
+    }
     // 插入點在剪掉範圍之後的話，套完補丁後會往前移剪掉的長度
     const shifted = at >= cut.to ? at - (cut.to - cut.from) : at;
     return { patches: [cut, { from: at, to: at, insert }], nodeStart: shifted + lead };
