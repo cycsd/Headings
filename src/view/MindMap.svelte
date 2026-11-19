@@ -2,6 +2,7 @@
 	import { getContext, untrack } from "svelte";
 	import { NODE_UI, type NodeUi } from "./node-ui";
 	import { edgePan, refreshDropTarget } from "./node-drag";
+	import { nodeBudget } from "./node-budget";
 	import { SvelteMap } from "svelte/reactivity";
 	import type { Attachment } from "svelte/attachments";
 	import PanZoom from "../lib/components/PanZoom.svelte";
@@ -109,12 +110,15 @@
 	$effect(() => {
 		const nodes = placement.nodes;
 		const pz = panZoom;
-		const editingId = ui.state.editingId;
+		// 編輯中、或剛展開 / 收合的節點當錨點：它變大小時，靠根那一側的上角在螢幕上不動，其他節點讓位
+		const editingId = ui.state.editingId ?? ui.state.expandAnchor;
 		if (nodes.length === 0 || !pz) return;
 		untrack(() => {
 			const changed = placement !== lastPlacement;
 			lastPlacement = placement;
 			if (editingId !== null) lastEditing = editingId;
+			// 展開 / 收合只需要處理第一次因它而變的重排，之後的錨點交給 lastEditing 沿用到下一次重排
+			if (ui.state.editingId === null && ui.state.expandAnchor !== null && changed) ui.state.expandAnchor = null;
 			const wanted = editingId ?? lastEditing ?? nodes[0]!.node.id;
 			const placed = nodes.find((n) => n.node.id === wanted) ?? nodes[0]!;
 			const point = anchorPoint(placed);
@@ -125,6 +129,27 @@
 			// 離開編輯後處理完一次重排就把錨點還給根（編輯前後尺寸一樣時沒有重排，會留到下一次佈局變動才還）
 			if (editingId === null && changed) lastEditing = null;
 		});
+	});
+
+	/**
+	 * 把目前畫面資訊提供給展開與編輯器：節點最多能長多大、畫面可見高度，都是內容座標（見 node-budget.ts）。
+	 * 呼叫時才讀 placement 與視口，不追蹤；卸載時清掉，換佈局後別的佈局不會拿到舊的。
+	 */
+	$effect(() => {
+		const pz = panZoom;
+		if (!pz) return;
+		ui.state.budgetFor = (id) => {
+			const bounds = pz.visibleBounds();
+			return bounds ? nodeBudget(placement.nodes, id, bounds, bounds.zoom) : null;
+		};
+		ui.state.visibleHeight = () => {
+			const bounds = pz.visibleBounds();
+			return bounds ? bounds.bottom - bounds.top : null;
+		};
+		return () => {
+			ui.state.budgetFor = null;
+			ui.state.visibleHeight = null;
+		};
 	});
 
 	/**

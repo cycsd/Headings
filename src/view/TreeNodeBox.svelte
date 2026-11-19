@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { getContext, untrack } from "svelte";
+	import { getContext, tick, untrack } from "svelte";
 	import { setIcon, type IconName } from "obsidian";
 	import type { Attachment } from "svelte/attachments";
 	import type { Box } from "./editor-size";
+	import type { ExpandedBox } from "./host-state.svelte";
 	import { countNodes, sectionTypesOf, type SectionNode, type TreeNode } from "../core/tree";
 	import { DROP_PLACEHOLDER_ID } from "../core/tree-ops";
 	import { SECTION_TYPES } from "../core/section-types";
@@ -12,6 +13,8 @@
 	import { CONTENT_SECTION_TYPES, LINK_ICON, sectionIcon } from "./section-icons";
 	import { contentTypeLabel } from "../labels";
 	import { t } from "../i18n";
+	import { requestReveal } from "./tree-state";
+	import { effectiveMaxHeight, expandContentMaxHeight, hiddenLineCount, usableViewport, wideMaxWidth } from "./node-limits";
 
 	/**
 	 * 三種佈局共用的節點：標題列（chevron、標題、徽章或 icon 列）加內容區。
@@ -145,8 +148,95 @@
 
 	/** heading 有內容型別或連結時才有 icon 列；沒有的話「…」直接放在標題列 */
 	let hasIconRow = $derived(isHeading && (types.length > 0 || hasLinks));
-	/** 內容區最大高度，0 為不限制 */
-	let maxNodeHeight = $derived(ui.state.maxNodeHeight > 0 ? `${ui.state.maxNodeHeight}px` : "none");
+	/** 內容區最大高度（內容座標）：設定值，0（自動）時依視圖高度換算；不隨縮放變 */
+	let maxNodeHeight = $derived(`${effectiveMaxHeight(ui.state.maxNodeHeight, usableViewport(ui.state.viewport))}px`);
+
+	/**
+	 * 內容的尺寸狀態（HostState.expanded，不存檔）：
+	 * - 平常（沒有記錄）：內容比上限高就裁切（底部淡出），下面一列「還有約 N 行」。預設顯示或從記憶還原的內容走這條，開檔時所有節點大小穩定。
+	 * - 使用者點出內容（icon 列）：那一刻算一次最大寬度與內容區最大高度（見 node-limits.ts、node-budget.ts），之後固定；
+	 *   內容貼合，超過高度上限在內容區裡捲動，捲動時仍有「還有約 N 行」。再點亮其他型別不重算，內容全收回才清掉。
+	 * - 點「還有約 N 行」：展開到顯示全部內容，沒有高度上限與捲軸；「收合」回到上一個狀態。
+	 */
+	let box = $derived(ui.state.expanded.get(node.id));
+	let contentEl: HTMLElement | undefined = $state();
+	let hiddenLines = $state(0);
+
+	function watchClip(): Attachment<HTMLElement> {
+		return (el) => {
+			// 讀 litSections 讓內容區增減節點時重掛；裁切與否由尺寸變化驅動（內容區本身、各 section 渲染完都會觸發）
+			void litSections.length;
+			const measure = () => {
+				const hidden = el.scrollHeight - el.clientHeight;
+				const fontSize = parseFloat(getComputedStyle(el).fontSize) || 16;
+				hiddenLines = untrack(() => box?.full) || hidden <= 1 ? 0 : hiddenLineCount(hidden, fontSize * 1.5);
+			};
+			const observer = new ResizeObserver(measure);
+			observer.observe(el);
+			for (const child of Array.from(el.children)) observer.observe(child);
+			measure();
+			return () => observer.disconnect();
+		};
+	}
+
+	/** 算一次尺寸：寬度由佈局預算決定（只有心智圖才加寬，沒有固定上限；樹狀表格的 cell 寬度由表格決定），高度上限見 expandContentMaxHeight */
+	function measureBox(user: boolean): ExpandedBox | null {
+		if (!nodeEl || !contentEl) return null;
+		const id = node.id;
+		const budget = untrack(() => ui.state.budgetFor?.(id)) ?? null;
+		const visible = untrack(() => ui.state.visibleHeight?.()) ?? ui.state.viewport.h;
+		const width =
+			budget && !flat ? wideMaxWidth({ nodeWidth: nodeEl.offsetWidth, displayMax: maxNodeWidth, budgetWidth: budget.maxWidth }) : maxNodeWidth;
+		const height = expandContentMaxHeight({
+			nodeHeight: nodeEl.offsetHeight,
+			contentHeight: contentEl.clientHeight,
+			visibleHeight: visible,
+			budgetHeight: budget?.maxHeight ?? null,
+		});
+		return { width, height, user, full: false };
+	}
+
+	/** 心智圖：尺寸變動的節點當錨點，靠根那一側的上角不動；變大後被推到畫面外的話帶回來 */
+	function anchorAndReveal() {
+		if (ui.state.layoutId === "mindmap") ui.state.expandAnchor = node.id;
+		requestReveal(ui.state, node.id, "ensure", false);
+	}
+
+	/**
+	 * 使用者在 icon 列點亮 / 收回內容之後：內容出現的那一刻（還沒有記錄）算一次尺寸；已經有就沿用，內容全收回就清掉。
+	 * 等 DOM 更新完才量（要有內容區才量得到標題列與內距佔的高度）；tick 之後、畫面繪製之前，不會閃一下。
+	 */
+	async function afterContentChange() {
+		await tick();
+		const id = node.id;
+		if (litSections.length === 0) {
+			ui.state.expanded.delete(id);
+			return;
+		}
+		if (ui.state.expanded.has(id)) return;
+		const next = measureBox(true);
+		if (!next) return;
+		ui.state.expanded.set(id, next);
+		anchorAndReveal();
+	}
+
+	/** 「還有約 N 行」展開到全部內容；「收合」回到上一個狀態（使用者點出來的回到有上限的捲動，其他的回到平常的裁切） */
+	function toggleFull(evt: MouseEvent) {
+		evt.stopPropagation();
+		ui.select(node.id);
+		const id = node.id;
+		const current = ui.state.expanded.get(id);
+		if (current?.full) {
+			if (current.user) ui.state.expanded.set(id, { ...current, full: false });
+			else ui.state.expanded.delete(id);
+		} else if (current) {
+			ui.state.expanded.set(id, { ...current, full: true });
+		} else {
+			const next = measureBox(false);
+			if (next) ui.state.expanded.set(id, { ...next, full: true });
+		}
+		anchorAndReveal();
+	}
 
 	/**
 	 * 編輯器尺寸：進入編輯時量一次，之後不變（內容多了在編輯器內捲動），節點外形在編輯期間就不會一直跳。
@@ -159,7 +249,7 @@
 			editorBox = null;
 			return;
 		}
-		if (untrack(() => editorBox) === null) editorBox = ui.measureEditor(node, untrack(() => nodeEl));
+		if (untrack(() => editorBox) === null) editorBox = untrack(() => ui.measureEditor(node, nodeEl));
 	});
 	/** CodeMirror 畫完後量到實際內容高度，鎖成這個高度（開啟時剛好裝下、不出捲軸） */
 	function lockHeight(h: number) {
@@ -187,7 +277,7 @@
 	data-node-id={placeholder ? undefined : node.id}
 	data-drop-placeholder={placeholder ? "" : undefined}
 	bind:this={nodeEl}
-	style="--max-node-width: {maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}{placeholder ? ` width: ${placeholderSize.w}px; height: ${placeholderSize.h}px;` : ""}"
+	style="--max-node-width: {box?.width ?? maxNodeWidth}px; --max-node-height: {maxNodeHeight}; {branchStyle(branch)}{placeholder ? ` width: ${placeholderSize.w}px; height: ${placeholderSize.h}px;` : ""}"
 	onclick={handleClick}
 	ondblclick={handleDoubleClick}
 	oncontextmenu={openMenu}
@@ -213,7 +303,10 @@
 							class:lit={lit.has(type)}
 							aria-label={contentTypeLabel(type)}
 							onpointerdown={stop}
-							onclick={() => ui.toggleLit(node.id, type)}
+							onclick={() => {
+								ui.toggleLit(node.id, type);
+								void afterContentChange();
+							}}
 						>
 							<span class="ico" {@attach icon(sectionIcon(type))}></span>
 						</button>
@@ -229,7 +322,10 @@
 							class="ctl"
 							aria-label={t("tooltipToggleContent")}
 							onpointerdown={stop}
-							onclick={() => ui.setLit(node.id, allLit ? [] : types)}
+							onclick={() => {
+								ui.setLit(node.id, allLit ? [] : types);
+								void afterContentChange();
+							}}
 						>
 							<span class="ico" {@attach icon(allLit ? "fold-vertical" : "unfold-vertical")}></span>
 						</button>
@@ -265,7 +361,16 @@
 	</div>
 
 	{#if isHeading && litSections.length > 0}
-		<div class="content">
+		<!-- 展開時內容區的高度是進入那一刻定好的值；平常用節點最大高度裁切，裁到才淡出 -->
+		<div
+			class="content"
+			class:clipped={hiddenLines > 0 && !box}
+			class:capped={box !== undefined && !box.full}
+			class:full={box?.full}
+			style={box ? (box.full ? "max-height: none;" : `max-height: ${box.height}px;`) : ""}
+			bind:this={contentEl}
+			{@attach watchClip()}
+		>
 			{#each litSections as section (section.id)}
 				{#if section.type === SECTION_TYPES.yaml}
 					<div class="section" {@attach ui.renderFrontmatter(sectionText(section))}></div>
@@ -274,6 +379,17 @@
 				{/if}
 			{/each}
 		</div>
+		{#if box?.full}
+			<div class="more">
+				<button type="button" class="more-btn" onpointerdown={stop} onclick={toggleFull}>{t("nodeCollapse")}</button>
+			</div>
+		{:else if hiddenLines > 0}
+			<div class="more">
+				<button type="button" class="more-btn" aria-label={t("tooltipExpandContent")} onpointerdown={stop} onclick={toggleFull}>
+					{t("nodeMoreLines").replace("{n}", String(hiddenLines))}
+				</button>
+			</div>
+		{/if}
 	{/if}
 	{/if}
 
@@ -565,14 +681,46 @@
 		width: 16px;
 		height: 16px;
 	}
-	/* 超過最大高度的內容在節點內垂直捲動；PanZoom 不吃無修飾鍵的垂直滾輪，所以不衝突 */
+	/*
+	 * 超過最大高度的內容平常裁掉（不放捲軸，滾輪留給畫布），被裁到才在底部做淡出，下面一列顯示「還有約 N 行」讓使用者展開；
+	 * 展開後高度由 inline style 的 max-height 定，放不下的在內容區裡捲動（PanZoom 的 innerScrollConsumes 會把滾輪讓給還能捲的內容區）
+	 */
 	.content {
 		margin-top: 4px;
 		padding: 4px 4px 0;
 		border-top: 1px solid color-mix(in srgb, var(--branch) 40%, transparent);
 		max-height: var(--max-node-height);
-		overflow: auto;
+		overflow: hidden;
 		font-weight: normal;
+	}
+	.content.clipped {
+		mask-image: linear-gradient(to bottom, black calc(100% - 2.5em), transparent);
+	}
+	.content.capped {
+		overflow: auto;
+	}
+	.content.full {
+		overflow: visible;
+	}
+	.more {
+		display: flex;
+		justify-content: flex-end;
+		padding: 0 4px;
+	}
+	.more-btn {
+		height: auto;
+		padding: 0 6px;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: var(--font-ui-smaller);
+		box-shadow: none;
+		cursor: pointer;
+	}
+	.more-btn:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
 	}
 	.section + .section {
 		margin-top: 6px;

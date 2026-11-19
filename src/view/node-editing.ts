@@ -12,7 +12,18 @@ import { createEmbeddableMarkdownEditor } from "../extension/obsidian-markdown-e
 import type { HostState, NewNodeState } from "./host-state.svelte";
 import type { NodeCommand } from "./node-ui";
 import { requestReveal, revealNode, selectNode } from "./tree-state";
-import { clampHeight, domMeasurer, heightBounds, innerBox, innerMaxWidth, resolveEditorBox, type Box, type HeightBounds } from "./editor-size";
+import {
+	clampHeight,
+	domMeasurer,
+	heightBounds,
+	innerBox,
+	innerMaxHeight,
+	innerMaxWidth,
+	resolveEditorBox,
+	type Box,
+	type HeightBounds,
+} from "./editor-size";
+import { effectiveMaxWidth, usableViewport } from "./node-limits";
 import { buildIdMap, collectStarts, diffPatch, findByStart, remapHostState, type MovedSubtree } from "./id-remap";
 
 /** 畫完修正高度時多留的餘裕，游標在最後一行也不會剛好出捲軸 */
@@ -116,14 +127,26 @@ export class NodeEditing {
 		const text = this.textOf(node);
 		const s = this.state;
 		const measure = domMeasurer(nodeEl ?? document.body);
+		// 預算（保留後代與兄弟在視窗內）是節點外框的大小，換成編輯器能用的內容框。新增的節點也有：虛擬節點已經在樹裡、
+		// 佈局用預設尺寸排過了；只有沒有佈局資訊（大綱、佈局還沒掛上）才沒有預算
+		const budget = s.budgetFor?.(node.id) ?? null;
+		const displayMax = effectiveMaxWidth(s.maxNodeWidth, usableViewport(s.viewport));
+		const maxNodeWidth = displayMax;
 		const input = {
 			text,
 			// 量不到原本的大小 = 節點一掛上就在編輯中（新增的節點），給打字用的起手尺寸
 			node: nodeEl ? innerBox(nodeEl) : null,
 			custom: { enabled: s.editorSizeEnabled, width: s.editorWidth, maxHeight: s.editorMaxHeight },
-			maxWidth: nodeEl ? innerMaxWidth(nodeEl, s.maxNodeWidth) : s.maxNodeWidth,
-			maxHeight: s.maxNodeHeight,
-			viewportHeight: window.innerHeight,
+			maxWidth: nodeEl ? innerMaxWidth(nodeEl, maxNodeWidth) : maxNodeWidth,
+			// 關閉自訂時高度上限用自動：目前畫面可見高度（內容座標，不是視窗像素）的 80%，不再受節點最大高度限制
+			maxHeight: 0,
+			viewportHeight: s.visibleHeight?.() ?? s.viewport.h,
+			budget: budget
+				? {
+						maxWidth: innerMaxWidth(nodeEl, budget.maxWidth),
+						maxHeight: budget.maxHeight === null ? null : innerMaxHeight(nodeEl, budget.maxHeight),
+					}
+				: undefined,
 		};
 		this.bounds.set(node.id, heightBounds(input, measure));
 		return resolveEditorBox(measure, input);

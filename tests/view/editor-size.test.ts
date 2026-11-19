@@ -33,10 +33,36 @@ describe("resolveEditorBox（關閉自訂：依內容貼合）", () => {
         expect(resolveEditorBox(measure, { ...base, text: tall })).toEqual({ w: 200, h: 100 });
     });
 
-    it("高度不超過內容最大高度；0 時用視窗一半", () => {
+    it("高度不超過上限；0（自動）時用可見高度的 80%", () => {
         const text = Array.from({ length: 50 }, () => "x").join("\n"); // 1000 高
         expect(resolveEditorBox(measure, { ...base, text }).h).toBe(320);
-        expect(resolveEditorBox(measure, { ...base, text, maxHeight: 0 }).h).toBe(400);
+        expect(resolveEditorBox(measure, { ...base, text, maxHeight: 0 }).h).toBe(640);
+    });
+
+    it("佈局預算再限制寬高，但不低於節點原本的大小與最小寬度", () => {
+        const wide = "x".repeat(25); // 自然寬 250
+        expect(resolveEditorBox(measure, { ...base, text: wide }).w).toBe(250);
+        expect(resolveEditorBox(measure, { ...base, text: wide, budget: { maxWidth: 220, maxHeight: null } }).w).toBe(220);
+        // 預算比節點原本還小（空間不夠）：寧可推出畫面，不縮到比 MIN_EDITOR_WIDTH 小
+        expect(resolveEditorBox(measure, { ...base, text: wide, budget: { maxWidth: 120, maxHeight: null } }).w).toBe(MIN_EDITOR_WIDTH);
+        const text = Array.from({ length: 50 }, () => "x").join("\n");
+        expect(resolveEditorBox(measure, { ...base, text, maxHeight: 0, budget: { maxWidth: null, maxHeight: 200 } }).h).toBe(200);
+        expect(resolveEditorBox(measure, { ...base, text, maxHeight: 0, budget: { maxWidth: null, maxHeight: 10 } }).h).toBe(40);
+    });
+
+    it("有佈局預算：寬度直接取可用的最大寬度（短文字也是），下限仍是節點原本的寬與 MIN_EDITOR_WIDTH", () => {
+        const budget = (maxWidth: number) => ({ maxWidth, maxHeight: null });
+        expect(resolveEditorBox(measure, { ...base, text: "ab", maxWidth: 600, budget: budget(480) }).w).toBe(480);
+        // 有預算時沒有固定上限：預算比節點最大寬度還寬就用預算
+        expect(resolveEditorBox(measure, { ...base, text: "ab", maxWidth: 400, budget: budget(900) }).w).toBe(900);
+        // 預算小於下限：寧可推出畫面
+        expect(resolveEditorBox(measure, { ...base, text: "ab", node: { w: 260, h: 40 }, maxWidth: 600, budget: budget(150) }).w).toBe(260);
+    });
+
+    it("開啟自訂時不套預算", () => {
+        const many = Array.from({ length: 40 }, () => "x").join("\n");
+        const custom = { ...base, custom: { enabled: true, width: 360, maxHeight: 200 }, budget: { maxWidth: 100, maxHeight: 50 } };
+        expect(resolveEditorBox(measure, { ...custom, text: many })).toEqual({ w: 360, h: 200 });
     });
 
     it("節點本來就比上限大時以節點為準，不會縮小", () => {
@@ -54,6 +80,14 @@ describe("resolveEditorBox（新增的節點：量不到原本大小）", () => 
     });
 });
 
+describe("resolveEditorBox（新增的節點有佈局預算）", () => {
+    it("直接取可用的最大寬度，不再固定 320；預算小於最小寬度時用 MIN_EDITOR_WIDTH", () => {
+        const budget = (maxWidth: number) => ({ maxWidth, maxHeight: null });
+        expect(resolveEditorBox(measure, { ...base, node: null, text: "## ", maxWidth: 300, budget: budget(700) }).w).toBe(700);
+        expect(resolveEditorBox(measure, { ...base, node: null, text: "## ", budget: budget(120) }).w).toBe(MIN_EDITOR_WIDTH);
+    });
+});
+
 describe("resolveEditorBox（開啟自訂）", () => {
     const custom = { ...base, custom: { enabled: true, width: 360, maxHeight: 200 } };
 
@@ -65,8 +99,8 @@ describe("resolveEditorBox（開啟自訂）", () => {
         expect(resolveEditorBox(measure, { ...custom, text: many })).toEqual({ w: 360, h: 200 });
     });
 
-    it("編輯器最大高度 0 時用視窗一半", () => {
+    it("編輯器最大高度 0 時用可見高度的 80%", () => {
         const many = Array.from({ length: 40 }, () => "x").join("\n");
-        expect(resolveEditorBox(measure, { ...custom, custom: { ...custom.custom, maxHeight: 0 }, text: many }).h).toBe(400);
+        expect(resolveEditorBox(measure, { ...custom, custom: { ...custom.custom, maxHeight: 0 }, text: many }).h).toBe(640);
     });
 });

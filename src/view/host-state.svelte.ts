@@ -6,8 +6,22 @@ import type { PanPoint, ZoomLayout } from "./view-memory";
 import type { TreeNode } from "../core/tree";
 import type { DropPosition, TextPatch } from "../core/edit";
 import type { SearchMode } from "../settings-model";
+import type { NodeBudget } from "./node-budget";
+import { DEFAULT_VIEWPORT, type Viewport } from "./node-limits";
 
 export type RevealMode = "center" | "ensure";
+
+/** 節點內容的尺寸狀態（使用者點出內容或展開後），單位是內容座標 */
+export type ExpandedBox = {
+	/** 節點外框最大寬度 */
+	width: number;
+	/** 內容區最大高度；放不下的在內容區裡捲動 */
+	height: number;
+	/** 使用者自己點出內容（icon 列）算出來的；false 是點「還有約 N 行」才算的 */
+	user: boolean;
+	/** 點過「還有約 N 行」：展開到顯示全部內容，不再有高度上限與捲軸 */
+	full: boolean;
+};
 
 /**
  * 新增節點的草稿：新增兄弟 / 子節點時檔案先不動，畫面上放一個虛擬節點（node）讓使用者打字，離開編輯才寫入。
@@ -111,6 +125,21 @@ export type HostState = {
 	pan: Partial<Record<ZoomLayout, PanPoint>>;
 	/** 換檔時加一，佈局據此把視口重新擺到記住的位置（或預設位置） */
 	viewportSeq: number;
+	/**
+	 * 視圖容器的大小（螢幕像素），一般顯示的自動寬高上限用它換算（見 node-limits.ts）。
+	 * 視窗調整時 LayoutHost 等停止變動、且變化夠大才更新，避免拖側邊欄時整張圖一直重排。
+	 */
+	viewport: Viewport;
+	/** 節點 → 使用者點出內容那一刻（或點「還有約 N 行」）算好的尺寸，之後固定；只是暫時的閱讀狀態，不存檔 */
+	expanded: SvelteMap<string, ExpandedBox>;
+	/** 最近一次展開 / 收合的節點：心智圖的錨點（它靠根那一側的上角在螢幕上不動），處理完第一次重排就清掉 */
+	expandAnchor: string | null;
+	/**
+	 * 佈局提供的目前畫面資訊，沒有（大綱、佈局還沒掛上）就是 null；由佈局元件掛上時設、卸載時清掉。
+	 * budgetFor：節點在目前佈局下最多能長多大（node-budget.ts）；visibleHeight：目前畫面可見高度（內容座標）。
+	 */
+	budgetFor: ((id: string) => NodeBudget | null) | null;
+	visibleHeight: (() => number | null) | null;
 };
 
 export function createHostState(
@@ -143,6 +172,11 @@ export function createHostState(
 		zoom: {},
 		pan: {},
 		viewportSeq: 0,
+		viewport: DEFAULT_VIEWPORT,
+		expanded: new SvelteMap<string, ExpandedBox>(),
+		expandAnchor: null,
+		budgetFor: null,
+		visibleHeight: null,
 		collapsed: new SvelteSet<string>(),
 		iconsOpen: new SvelteSet<string>(),
 		litTypes: new SvelteMap<string, ReadonlySet<string>>(),
@@ -155,6 +189,8 @@ export function resetNodeState(state: HostState) {
 	state.collapsed.clear();
 	state.iconsOpen.clear();
 	state.litTypes.clear();
+	state.expanded.clear();
+	state.expandAnchor = null;
 	state.focusId = null;
 	state.expandDepth = 0;
 	state.selectedId = null;

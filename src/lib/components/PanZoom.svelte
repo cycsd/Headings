@@ -346,6 +346,23 @@
 		panY += dy;
 	}
 
+	/**
+	 * 目前視口在內容座標裡的範圍與縮放：螢幕位置 = 內容座標 × 縮放 + 平移，反過來就是 (視口邊界 − 平移) ÷ 縮放。
+	 * 節點的位置與尺寸是內容座標，拿它們跟視口比較（展開與編輯器的尺寸預算）一定要用這個，不能混螢幕像素。視口還沒掛上回傳 null。
+	 */
+	export function visibleBounds(): { left: number; right: number; top: number; bottom: number; zoom: number } | null {
+		if (!viewport) return null;
+		const box = viewport.getBoundingClientRect();
+		if (box.width === 0 || box.height === 0) return null;
+		return {
+			left: -panX / zoom,
+			right: (box.width - panX) / zoom,
+			top: -panY / zoom,
+			bottom: (box.height - panY) / zoom,
+			zoom,
+		};
+	}
+
 	/** 視口在螢幕上的矩形（拖曳靠邊判斷用） */
 	export function viewportRect(): DOMRect | null {
 		return viewport?.getBoundingClientRect() ?? null;

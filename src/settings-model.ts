@@ -62,8 +62,9 @@ export const DEFAULT_SETTINGS: HeadingsSettings = {
 		desktop: "mindmap",
 		mobile: "outline",
 	},
-	maxNodeWidth: 320,
-	maxNodeHeight: 320,
+	// 0 = 自動（依視圖大小，見 view/node-limits.ts）；已經存過數字的使用者保留原值，視為手動設定
+	maxNodeWidth: 0,
+	maxNodeHeight: 0,
 	defaultExpandEnabled: false,
 	defaultExpandDepth: 1,
 	nodeStyle: { branchBorder: true, branchBackground: true },
@@ -75,8 +76,9 @@ export const DEFAULT_SETTINGS: HeadingsSettings = {
 	mindmapDirection: "both",
 };
 
-export const MAX_NODE_WIDTH_RANGE = { min: 160, max: 1200, step: 20 } as const;
-/** 0 代表不限制；滑桿從 0 跳到 120 */
+/** 0 代表自動（依視圖大小）；滑桿從 0 跳到 160 */
+export const MAX_NODE_WIDTH_RANGE = { min: 0, max: 1200, step: 20, minLimit: 160 } as const;
+/** 0 代表自動（依視圖大小）；滑桿從 0 跳到 120 */
 export const MAX_NODE_HEIGHT_RANGE = { min: 0, max: 1200, step: 20, minLimit: 120 } as const;
 export const EDITOR_WIDTH_RANGE = { min: 200, max: 1200, step: 20 } as const;
 /** 0 代表不限制；滑桿從 0 跳到 120 */
@@ -159,21 +161,14 @@ export const migrateSettings = (raw: unknown): { settings: HeadingsSettings; mig
 		}
 	}
 
-	let maxNodeWidth = DEFAULT_SETTINGS.maxNodeWidth;
-	if (typeof data.maxNodeWidth === "number" && Number.isFinite(data.maxNodeWidth)) {
-		maxNodeWidth = Math.min(MAX_NODE_WIDTH_RANGE.max, Math.max(MAX_NODE_WIDTH_RANGE.min, data.maxNodeWidth));
-		if (maxNodeWidth !== data.maxNodeWidth) migrated = true;
-	} else if (data.maxNodeWidth !== undefined) {
-		migrated = true;
-	}
-
-	/** 高度欄位：夾範圍後，0 以上、下限以下的值沒有意義，拉到下限 */
+	/** 寬 / 高欄位：夾範圍後，0（自動）以上、下限以下的值沒有意義，拉到下限 */
 	const readHeight = (value: unknown, fallback: number, range: { min: number; max: number; minLimit: number }): number => {
 		const read = readClamped(value, fallback, range.min, range.max);
 		const normalized = normalizeHeight(read.value, range.minLimit);
 		if (read.migrated || normalized !== read.value) migrated = true;
 		return normalized;
 	};
+	const maxNodeWidth = readHeight(data.maxNodeWidth, DEFAULT_SETTINGS.maxNodeWidth, MAX_NODE_WIDTH_RANGE);
 	const maxNodeHeight = readHeight(data.maxNodeHeight, DEFAULT_SETTINGS.maxNodeHeight, MAX_NODE_HEIGHT_RANGE);
 
 	let editorSizeEnabled = DEFAULT_SETTINGS.editorSizeEnabled;
