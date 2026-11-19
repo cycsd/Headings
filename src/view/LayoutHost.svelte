@@ -12,6 +12,7 @@
 	import { applyCollapseSubtree, applyExpandSubtree, closeSearch, requestReveal, revealNode, setFocus, setSearchQuery, visibleRoot } from "./tree-state";
 	import { navigate, type NavKey } from "./keyboard-nav";
 	import SearchBar from "./SearchBar.svelte";
+	import { effectiveMaxWidth, usableViewport, viewportChanged, VIEWPORT_SETTLE_MS, type Viewport } from "./node-limits";
 
 	interface Props {
 		state: HostState;
@@ -206,6 +207,35 @@
 		}
 	});
 
+	/**
+	 * 量視圖容器大小給一般顯示的自動寬高上限用（node-limits.ts）。掛上時量一次；之後調整視窗或側邊欄時
+	 * 等停止變動 VIEWPORT_SETTLE_MS、且變化超過門檻才更新，不然拖側邊欄時所有節點一直重排。量到 0（分頁在背景）就保留原值。
+	 */
+	$effect(() => {
+		const el = container;
+		const present = state.tree !== null && visible !== null;
+		if (!el || !present) return;
+		const measure = (): Viewport | null => {
+			const size = { w: el.clientWidth, h: el.clientHeight };
+			return size.w > 0 && size.h > 0 ? size : null;
+		};
+		const first = measure();
+		if (first) state.viewport = first;
+		let timer: number | undefined;
+		const observer = new ResizeObserver(() => {
+			window.clearTimeout(timer);
+			timer = window.setTimeout(() => {
+				const next = measure();
+				if (next && viewportChanged(state.viewport, next)) state.viewport = next;
+			}, VIEWPORT_SETTLE_MS);
+		});
+		observer.observe(el);
+		return () => {
+			window.clearTimeout(timer);
+			observer.disconnect();
+		};
+	});
+
 	/** 選取節點後把焦點放到容器上，鍵盤才會進來；編輯中焦點歸編輯器，搜尋中（Enter 跳到命中時）焦點留在輸入框 */
 	$effect(() => {
 		if (state.selectedId !== null && state.editingId === null && state.search === null) container?.focus({ preventScroll: true });
@@ -251,7 +281,7 @@
 		<!-- 換佈局或換聚焦根都重新掛載，mindmap 才會把新的根置中 -->
 		{#key `${entry.id}:${state.focusId ?? ""}`}
 			{@const Layout = entry.component}
-			<Layout tree={displayTree ?? visible} {getText} {onRenderMarkdown} maxNodeWidth={state.maxNodeWidth} {collapsed} />
+			<Layout tree={displayTree ?? visible} {getText} {onRenderMarkdown} maxNodeWidth={effectiveMaxWidth(state.maxNodeWidth, usableViewport(state.viewport))} {collapsed} />
 		{/key}
 	</div>
 {/if}

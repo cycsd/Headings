@@ -26,8 +26,12 @@ const TOGGLE_GROUPS = [
 const allOn = (settings: Record<string, unknown>, group: (typeof TOGGLE_GROUPS)[number]): boolean =>
 	group.types.every((type) => getPath(settings, `${group.key}.${type}`) === true);
 
-/** 高度類的滑桿：0 為不限制，0 到下限之間的值拉到下限 */
-const HEIGHT_KEYS: Record<string, number> = { maxNodeHeight: MAX_NODE_HEIGHT_RANGE.minLimit, editorMaxHeight: EDITOR_HEIGHT_RANGE.minLimit };
+/** 有「0 = 自動 / 不限」的滑桿：0 到下限之間的值拉到下限 */
+const HEIGHT_KEYS: Record<string, number> = {
+	maxNodeWidth: MAX_NODE_WIDTH_RANGE.minLimit,
+	maxNodeHeight: MAX_NODE_HEIGHT_RANGE.minLimit,
+	editorMaxHeight: EDITOR_HEIGHT_RANGE.minLimit,
+};
 const normalizeValue = (key: string, value: unknown): unknown => {
 	if (typeof value === "number" && key in HEIGHT_KEYS) return normalizeHeight(value, HEIGHT_KEYS[key]);
 	// 心智圖方向在設定頁是開關（只往右），存的是 both / right
@@ -119,7 +123,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 					.setLimits(MAX_NODE_WIDTH_RANGE.min, MAX_NODE_WIDTH_RANGE.max, MAX_NODE_WIDTH_RANGE.step)
 					.setValue(this.plugin.settings.maxNodeWidth)
 					.setDynamicTooltip()
-					.onChange((value) => this.applySetting("maxNodeWidth", value)),
+					.onChange((value) => this.applySetting("maxNodeWidth", normalizeValue("maxNodeWidth", value))),
 			);
 
 		new Setting(containerEl)
@@ -275,9 +279,11 @@ export class HeadingsSettingTab extends PluginSettingTab {
 						control: {
 							type: "slider",
 							key: "maxNodeWidth",
-							...MAX_NODE_WIDTH_RANGE,
+							min: MAX_NODE_WIDTH_RANGE.min,
+							max: MAX_NODE_WIDTH_RANGE.max,
+							step: MAX_NODE_WIDTH_RANGE.step,
 							defaultValue: DEFAULT_SETTINGS.maxNodeWidth,
-							displayFormat: (value: number) => `${value}px`,
+							displayFormat: (value: number) => (value === 0 ? t("settingAuto") : `${value}px`),
 						},
 					},
 					{
@@ -290,7 +296,7 @@ export class HeadingsSettingTab extends PluginSettingTab {
 							max: MAX_NODE_HEIGHT_RANGE.max,
 							step: MAX_NODE_HEIGHT_RANGE.step,
 							defaultValue: DEFAULT_SETTINGS.maxNodeHeight,
-							displayFormat: (value: number) => (value === 0 ? t("settingUnlimited") : `${value}px`),
+							displayFormat: (value: number) => (value === 0 ? t("settingAuto") : `${value}px`),
 						},
 					},
 					{

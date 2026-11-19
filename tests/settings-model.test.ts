@@ -7,13 +7,14 @@ describe("migrateSettings", () => {
         expect(migrateSettings(undefined).settings).toEqual(DEFAULT_SETTINGS);
     });
 
-    it("預設值：9 種型別全部關閉、預設顯示內容 10 種全部關閉、桌面 mindmap、手機 outline、寬度 320", () => {
+    it("預設值：9 種型別全部關閉、預設顯示內容 10 種全部關閉、桌面 mindmap、手機 outline、寬高自動（0）", () => {
         expect(Object.keys(DEFAULT_SETTINGS.nodeTypes)).toHaveLength(9);
         expect(Object.values(DEFAULT_SETTINGS.nodeTypes).every((v) => v === false)).toBe(true);
         expect(Object.keys(DEFAULT_SETTINGS.defaultLitTypes)).toHaveLength(10);
         expect(Object.values(DEFAULT_SETTINGS.defaultLitTypes).every((v) => v === false)).toBe(true);
         expect(DEFAULT_SETTINGS.defaultLayout).toEqual({ desktop: "mindmap", mobile: "outline" });
-        expect(DEFAULT_SETTINGS.maxNodeWidth).toBe(320);
+        expect(DEFAULT_SETTINGS.maxNodeWidth).toBe(0);
+        expect(DEFAULT_SETTINGS.maxNodeHeight).toBe(0);
     });
 
     it("完整且正確的設定原樣保留，migrated 為 false", () => {
@@ -38,13 +39,15 @@ describe("migrateSettings", () => {
         expect(result.settings).toEqual(input);
     });
 
-    it("maxNodeHeight 0 為不限制，介於 0 與下限之間拉到下限，非數字退回預設", () => {
+    it("maxNodeHeight 0 為自動，介於 0 與下限之間拉到下限，非數字退回預設（自動）；已存過的數字原樣保留當手動設定", () => {
         expect(migrateSettings({ maxNodeHeight: 0 }).settings.maxNodeHeight).toBe(0);
         expect(migrateSettings({ maxNodeHeight: 0 }).migrated).toBe(false);
         expect(migrateSettings({ maxNodeHeight: 50 }).settings.maxNodeHeight).toBe(120);
         expect(migrateSettings({ maxNodeHeight: 50 }).migrated).toBe(true);
-        expect(migrateSettings({ maxNodeHeight: "tall" }).settings.maxNodeHeight).toBe(320);
-        expect(migrateSettings({}).settings.maxNodeHeight).toBe(320);
+        expect(migrateSettings({ maxNodeHeight: "tall" }).settings.maxNodeHeight).toBe(0);
+        expect(migrateSettings({}).settings.maxNodeHeight).toBe(0);
+        expect(migrateSettings({ maxNodeHeight: 320 }).settings.maxNodeHeight).toBe(320);
+        expect(migrateSettings({ maxNodeHeight: 320 }).migrated).toBe(false);
     });
 
     it("defaultExpandEnabled 預設關閉，defaultExpandDepth 夾在 0–9、預設 1", () => {
@@ -72,7 +75,7 @@ describe("migrateSettings", () => {
         expect(settings.editorSizeEnabled).toBe(false);
         expect(settings.editorWidth).toBe(360);
         expect(settings.editorMaxHeight).toBe(320);
-        expect(editorSize(settings)).toEqual({ width: 320, maxHeight: 320 });
+        expect(editorSize(settings)).toEqual({ width: 0, maxHeight: 0 });
         expect(editorSize({ ...settings, maxNodeWidth: 500, maxNodeHeight: 0 })).toEqual({ width: 500, maxHeight: 0 });
 
         const custom = migrateSettings({ editorSizeEnabled: true, editorWidth: 50, editorMaxHeight: 60 });
@@ -145,10 +148,13 @@ describe("migrateSettings", () => {
         expect(settings.defaultLayout).toEqual({ desktop: "mindmap", mobile: "tree-table" });
     });
 
-    it("maxNodeWidth 超出範圍會被夾住，非數字退回預設", () => {
+    it("maxNodeWidth：0 為自動，介於 0 與下限之間拉到 160，超出範圍夾住，非數字退回預設（自動）", () => {
+        expect(migrateSettings({ maxNodeWidth: 0 }).settings.maxNodeWidth).toBe(0);
+        expect(migrateSettings({ maxNodeWidth: 0 }).migrated).toBe(false);
         expect(migrateSettings({ maxNodeWidth: 10 }).settings.maxNodeWidth).toBe(160);
         expect(migrateSettings({ maxNodeWidth: 99999 }).settings.maxNodeWidth).toBe(1200);
-        expect(migrateSettings({ maxNodeWidth: "wide" }).settings.maxNodeWidth).toBe(320);
+        expect(migrateSettings({ maxNodeWidth: "wide" }).settings.maxNodeWidth).toBe(0);
+        expect(migrateSettings({ maxNodeWidth: 320 }).settings.maxNodeWidth).toBe(320);
     });
 
     it("rememberFileViews 預設開啟，非布林退回預設並標記 migrated", () => {
